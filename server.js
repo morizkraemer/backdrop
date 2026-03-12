@@ -397,8 +397,12 @@ app.post('/api/go', (req, res) => {
   const s = state.getState();
   const next = s.currentCueIndex + 1;
   if (next >= s.playlist.length) {
-    mpv.stop();
-    state.updateState({ currentCueIndex: -1 });
+    if (s.playlistLoop && s.playlist.length > 0) {
+      playCue(0);
+    } else {
+      mpv.stop();
+      state.updateState({ currentCueIndex: -1 });
+    }
   } else {
     playCue(next);
   }

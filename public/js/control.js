@@ -319,7 +319,20 @@ function uploadFiles(files) {
 btnGo.addEventListener('click', () => api('POST', '/go').then(() => {}));
 btnStop.addEventListener('click', () => api('POST', '/stop').then(() => {}));
 btnLoop.addEventListener('click', () => {
-  api('PUT', '/settings', { playlistLoop: !state.playlistLoop }).then(() => {});
+  const next = !state.playlistLoop;
+  state = { ...state, playlistLoop: next };
+  render();
+  api('PUT', '/settings', { playlistLoop: next })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (data) {
+        state = { ...state, ...data };
+        render();
+      } else {
+        state = { ...state, playlistLoop: !next };
+        render();
+      }
+    });
 });
 
 connectWs();
