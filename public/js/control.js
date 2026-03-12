@@ -10,7 +10,7 @@ let state = {
   isTransitioning: false,
   mpvConnected: false,
 };
-let selectedCueId = null;
+let openPopupCueId = null;
 let ws = null;
 
 const uploadZone = document.getElementById('uploadZone');
@@ -23,13 +23,14 @@ const btnGo = document.getElementById('btnGo');
 const btnStop = document.getElementById('btnStop');
 const status = document.getElementById('status');
 const mpvStatus = document.getElementById('mpvStatus');
-const cueSettings = document.getElementById('cueSettings');
-const noSelection = document.getElementById('noSelection');
-const settingsFields = document.getElementById('settingsFields');
-const settingLoop = document.getElementById('settingLoop');
-const settingDisplayMode = document.getElementById('settingDisplayMode');
-const settingDuration = document.getElementById('settingDuration');
-const settingHold = document.getElementById('settingHold');
+const cuePopupBackdrop = document.getElementById('cuePopupBackdrop');
+const cuePopup = document.getElementById('cuePopup');
+const popupLoop = document.getElementById('popupLoop');
+const popupDisplayMode = document.getElementById('popupDisplayMode');
+const popupDuration = document.getElementById('popupDuration');
+const popupHold = document.getElementById('popupHold');
+const popupCancel = document.getElementById('popupCancel');
+const popupSave = document.getElementById('popupSave');
 
 function connectWs() {
   ws = new WebSocket(WS_URL);
@@ -124,21 +125,19 @@ function renderPlaylist() {
     const cuePlaceholder = media?.type === 'image'
       ? '<span class="cue-thumb-placeholder" style="display:none">▶</span>'
       : '<span class="cue-thumb-placeholder">▶</span>';
+    const editing = openPopupCueId === cue.id;
     return `
-      <div class="cue-row ${active ? 'active' : ''}" data-cue-id="${cue.id}" data-index="${i}" draggable="true">
+      <div class="cue-row ${active ? 'active' : ''} ${editing ? 'editing' : ''}" data-cue-id="${cue.id}" data-index="${i}" draggable="true">
         <span class="handle">⋮⋮</span>
         <span class="cue-thumb-wrap">${cueThumb}${cuePlaceholder}</span>
         <span class="num">Q${i + 1}</span>
         <span class="name">${escapeHtml(getMediaName(cue.mediaId))}</span>
+        <button class="cue-edit-btn" data-cue-id="${cue.id}" title="Edit settings">✎ Edit</button>
       </div>
     `;
   }).join('');
 
   cueList.querySelectorAll('.cue-row').forEach((row) => {
-    row.addEventListener('click', () => {
-      selectedCueId = row.dataset.cueId;
-      renderSettings();
-    });
     row.addEventListener('dblclick', () => {
       api('POST', `/go/${row.dataset.cueId}`).then(() => {});
     });
@@ -170,59 +169,68 @@ function renderPlaylist() {
     });
   });
 
+  cueList.querySelectorAll('.cue-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openCuePopup(btn.dataset.cueId, btn);
+    });
+  });
+
   btnGo.disabled = state.isTransitioning;
   btnStop.disabled = false;
 }
 
-function renderSettings() {
-  if (!selectedCueId) {
-    noSelection.hidden = false;
-    settingsFields.hidden = true;
-    return;
-  }
-  const cue = state.playlist.find((c) => c.id === selectedCueId);
-  if (!cue) {
-    selectedCueId = null;
-    noSelection.hidden = false;
-    settingsFields.hidden = true;
-    return;
-  }
-  noSelection.hidden = true;
-  settingsFields.hidden = false;
+function openCuePopup(cueId, anchorEl) {
+  const cue = state.playlist.find((c) => c.id === cueId);
+  if (!cue) return;
 
+  openPopupCueId = cueId;
   const media = state.library.find((m) => m.id === cue.mediaId);
   const isVideo = media?.type === 'video';
 
-  settingLoop.checked = cue.settings?.loop ?? false;
-  settingLoop.disabled = !isVideo;
-  settingDisplayMode.value = cue.settings?.displayMode ?? 'fill';
+  popupLoop.checked = cue.settings?.loop ?? false;
+  popupLoop.disabled = !isVideo;
+  popupDisplayMode.value = cue.settings?.displayMode ?? 'fill';
   const dur = cue.settings?.duration;
-  settingDuration.value = dur != null ? dur : '';
-  settingHold.checked = dur == null || dur === '';
+  popupDuration.value = dur != null ? dur : '';
+  popupHold.checked = dur == null || dur === '';
 
-  settingLoop.onchange = () => updateCueSettings({ loop: settingLoop.checked });
-  settingDisplayMode.onchange = () => updateCueSettings({ displayMode: settingDisplayMode.value });
-  settingDuration.oninput = () => {
-    settingHold.checked = settingDuration.value === '';
-    updateCueSettings({ duration: settingDuration.value ? Number(settingDuration.value) : null });
-  };
-  settingHold.onchange = () => {
-    if (settingHold.checked) {
-      settingDuration.value = '';
-      updateCueSettings({ duration: null });
-    }
-  };
+  cuePopupBackdrop.hidden = false;
+
+  render();
 }
 
-function updateCueSettings(updates) {
-  if (!selectedCueId) return;
-  api('PUT', `/playlist/${selectedCueId}`, updates).then(() => {});
+function closeCuePopup() {
+  cuePopupBackdrop.hidden = true;
+  openPopupCueId = null;
+  render();
 }
+
+popupCancel.addEventListener('click', () => closeCuePopup());
+
+popupSave.addEventListener('click', () => {
+  if (!openPopupCueId) return;
+  const duration = popupHold.checked ? null : (popupDuration.value ? Number(popupDuration.value) : null);
+  api('PUT', `/playlist/${openPopupCueId}`, {
+    loop: popupLoop.checked,
+    displayMode: popupDisplayMode.value,
+    duration,
+  }).then(() => closeCuePopup());
+});
+
+popupDuration.oninput = () => { popupHold.checked = popupDuration.value === ''; };
+popupHold.onchange = () => {
+  if (popupHold.checked) popupDuration.value = '';
+};
+
+cuePopupBackdrop.addEventListener('click', (e) => {
+  if (e.target === cuePopupBackdrop) closeCuePopup();
+});
+cuePopup.addEventListener('click', (e) => e.stopPropagation());
 
 function render() {
   renderLibrary();
   renderPlaylist();
-  renderSettings();
 
   diskSpace.textContent = `Free: ${formatBytes(state.diskFree)}`;
 

@@ -38,29 +38,32 @@
       </section>
     </main>
 
-    <footer class="cue-settings" id="cueSettings">
-      <div class="cue-settings-inner" id="cueSettingsInner">
-        <p class="no-selection" id="noSelection">Select a cue to edit settings</p>
-        <div class="settings-fields" id="settingsFields" hidden>
-          <label>
-            <input type="checkbox" id="settingLoop"> Loop (video)
-          </label>
-          <label>
-            Display:
-            <select id="settingDisplayMode">
-              <option value="stretch">Stretch</option>
-              <option value="centered">Centered</option>
-              <option value="fill">Fill</option>
-            </select>
-          </label>
-          <label>
-            Duration (sec):
-            <input type="number" id="settingDuration" min="0" step="1" placeholder="Hold">
-            <input type="checkbox" id="settingHold"> Hold
-          </label>
+    <div class="cue-popup-backdrop" id="cuePopupBackdrop" hidden>
+      <div class="cue-popup" id="cuePopup">
+        <div class="cue-popup-inner">
+        <label>
+          <input type="checkbox" id="popupLoop"> Loop (video)
+        </label>
+        <label>
+          Display:
+          <select id="popupDisplayMode">
+            <option value="stretch">Stretch</option>
+            <option value="centered">Centered</option>
+            <option value="fill">Fill</option>
+          </select>
+        </label>
+        <label>
+          Duration (sec):
+          <input type="number" id="popupDuration" min="0" step="1" placeholder="Hold">
+          <input type="checkbox" id="popupHold"> Hold
+        </label>
+        </div>
+        <div class="cue-popup-actions">
+          <button type="button" class="btn btn-cancel" id="popupCancel">Cancel</button>
+          <button type="button" class="btn btn-save" id="popupSave">Save</button>
         </div>
       </div>
-    </footer>
+    </div>
   </div>
   <script src="js/control.js"></script>
 </body>

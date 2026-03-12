@@ -323,7 +323,7 @@ body {
   border-radius: 6px;
   cursor: pointer;
   margin-bottom: 0.25rem;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
 }
 
 .cue-thumb-wrap {
@@ -365,6 +365,11 @@ body {
   border-color: var(--accent);
 }
 
+.cue-row.editing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
 .cue-row .handle {
   cursor: grab;
   color: var(--text-muted);
@@ -396,40 +401,66 @@ body {
   text-overflow: ellipsis;
 }
 
-.cue-settings {
-  background: var(--bg-panel);
-  border-top: 1px solid var(--border);
-  padding: 0.75rem 1rem;
-}
-
-.cue-settings-inner {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.no-selection {
-  margin: 0;
-  font-size: 0.875rem;
+.cue-edit-btn {
+  flex-shrink: 0;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
   color: var(--text-muted);
-}
-
-.settings-fields {
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.25rem;
 }
 
-.settings-fields label {
+.cue-edit-btn:hover {
+  background: var(--border);
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.cue-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.cue-popup-backdrop[hidden] {
+  display: none !important;
+}
+
+.cue-popup {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  min-width: 220px;
+}
+
+.cue-popup-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cue-popup-inner label {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-size: 0.875rem;
 }
 
-.settings-fields input[type="number"] {
+.cue-popup-inner input[type="number"] {
   width: 4rem;
   padding: 0.25rem 0.5rem;
   background: var(--bg);
@@ -438,10 +469,45 @@ body {
   color: var(--text);
 }
 
-.settings-fields select {
+.cue-popup-inner select {
   padding: 0.25rem 0.5rem;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text);
+}
+
+.cue-popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.cue-popup-actions .btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+
+.btn-cancel {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.btn-cancel:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.btn-save {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+}
+
+.btn-save:hover {
+  background: var(--accent-dim);
 }
