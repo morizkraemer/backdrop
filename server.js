@@ -51,6 +51,19 @@ function getMediaType(filename) {
   return IMAGE_EXT.includes(ext) ? 'image' : 'video';
 }
 
+function sanitizeFilename(name) {
+  const base = path.basename(name || '');
+  return base.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').slice(0, 200) || 'unnamed';
+}
+
+function isValidId(id) {
+  return typeof id === 'string' && /^[a-zA-Z0-9-]{1,64}$/.test(id);
+}
+
+function isValidDisplayMode(m) {
+  return ['stretch', 'centered', 'fill'].includes(m);
+}
+
 function clearDurationTimer() {
   if (durationTimer) {
     clearTimeout(durationTimer);
@@ -161,9 +174,9 @@ fs.mkdirSync(config.uploadsDir, { recursive: true });
 const storage = multer.diskStorage({
   destination: config.uploadsDir,
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase().slice(1) || 'bin';
-    const id = uuidv4();
-    cb(null, `${id}-${file.originalname}`);
+    const safe = sanitizeFilename(file.originalname);
+    const id = uuidv4().replace(/-/g, '');
+    cb(null, `${id}-${safe}`);
   },
 });
 const upload = multer({
@@ -178,7 +191,19 @@ const upload = multer({
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(config.uploadsDir));
+app.get(/^\/uploads\/.+/, (req, res) => {
+  const requested = req.path.replace(/^\/uploads\/?/, '') || '';
+  const filePath = path.join(config.uploadsDir, requested);
+  const resolved = path.resolve(filePath);
+  const uploadsResolved = path.resolve(config.uploadsDir);
+  if (!resolved.startsWith(uploadsResolved + path.sep) && resolved !== uploadsResolved) {
+    return res.status(403).send('Forbidden');
+  }
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    return res.status(404).send('Not found');
+  }
+  res.sendFile(resolved);
+});
 
 app.get('/', (req, res) => res.redirect('/control'));
 app.get('/control', (req, res) => res.sendFile(path.join(__dirname, 'public', 'control.html')));
@@ -196,7 +221,7 @@ app.post('/api/upload', (req, res) => {
     }
     if (!req.file) return res.status(400).json({ error: 'No file' });
 
-    const id = path.basename(req.file.filename).split('-')[0];
+    const id = path.basename(req.file.filename).slice(0, 32);
     const item = {
       id,
       filename: req.file.filename,
@@ -219,6 +244,7 @@ app.get('/api/library', (req, res) => {
 });
 
 app.delete('/api/library/:id', (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
   const s = state.getState();
   const item = s.library.find((m) => m.id === req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
@@ -258,7 +284,7 @@ app.get('/api/state', (req, res) => res.json({ ...state.getState(), diskFree: ge
 
 app.post('/api/playlist', (req, res) => {
   const { mediaId, settings = {} } = req.body;
-  if (!mediaId) return res.status(400).json({ error: 'mediaId required' });
+  if (!mediaId || !isValidId(mediaId)) return res.status(400).json({ error: 'mediaId required' });
   const s = state.getState();
   if (!s.library.some((m) => m.id === mediaId)) return res.status(404).json({ error: 'Media not found' });
   const id = `cue-${uuidv4().slice(0, 8)}`;
@@ -277,6 +303,7 @@ app.post('/api/playlist', (req, res) => {
 });
 
 app.put('/api/playlist/:cueId', (req, res) => {
+  if (!isValidId(req.params.cueId)) return res.status(400).json({ error: 'Invalid cue ID' });
   const s = state.getState();
   const idx = s.playlist.findIndex((c) => c.id === req.params.cueId);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
@@ -284,8 +311,15 @@ app.put('/api/playlist/:cueId', (req, res) => {
   const cue = { ...s.playlist[idx] };
   cue.settings = { ...cue.settings };
   if (loop !== undefined) cue.settings.loop = !!loop;
-  if (displayMode !== undefined) cue.settings.displayMode = displayMode;
-  if (duration !== undefined) cue.settings.duration = duration === null || duration === '' ? null : Number(duration);
+  if (displayMode !== undefined) {
+    if (!isValidDisplayMode(displayMode)) return res.status(400).json({ error: 'Invalid displayMode' });
+    cue.settings.displayMode = displayMode;
+  }
+  if (duration !== undefined) {
+    const d = duration === null || duration === '' ? null : Number(duration);
+    if (d !== null && (isNaN(d) || d < 0)) return res.status(400).json({ error: 'Invalid duration' });
+    cue.settings.duration = d;
+  }
   const playlist = [...s.playlist];
   playlist[idx] = cue;
   state.updateState({ playlist });
@@ -307,6 +341,7 @@ app.put('/api/playlist/:cueId', (req, res) => {
 });
 
 app.delete('/api/playlist/:cueId', (req, res) => {
+  if (!isValidId(req.params.cueId)) return res.status(400).json({ error: 'Invalid cue ID' });
   const s = state.getState();
   const idx = s.playlist.findIndex((c) => c.id === req.params.cueId);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
@@ -332,6 +367,7 @@ app.delete('/api/playlist/:cueId', (req, res) => {
 app.put('/api/playlist/reorder', (req, res) => {
   const ids = req.body;
   if (!Array.isArray(ids)) return res.status(400).json({ error: 'Array of IDs required' });
+  if (ids.some((id) => !isValidId(id))) return res.status(400).json({ error: 'Invalid cue ID in reorder' });
   const s = state.getState();
   const byId = new Map(s.playlist.map((c) => [c.id, c]));
   const playlist = ids.map((id) => byId.get(id)).filter(Boolean);
@@ -357,6 +393,7 @@ app.post('/api/go', (req, res) => {
 });
 
 app.post('/api/go/:cueId', (req, res) => {
+  if (!isValidId(req.params.cueId)) return res.status(400).json({ error: 'Invalid cue ID' });
   const s = state.getState();
   const idx = s.playlist.findIndex((c) => c.id === req.params.cueId);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
@@ -385,3 +422,11 @@ wss.on('connection', (ws) => {
 mpv.connect().catch((err) => {
   console.warn('mpv not available:', err.message);
 });
+
+function shutdown() {
+  state.flush();
+  mpv.disconnect();
+  process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

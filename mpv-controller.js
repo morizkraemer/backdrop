@@ -27,6 +27,15 @@ class MpvController extends EventEmitter {
     this.minBackoff = 1000;
     this.maxBackoff = 10000;
     this.intentionalDisconnect = false;
+    this.requestTimeoutMs = 10000;
+    this.maxBufferSize = 1024 * 1024; // 1MB
+  }
+
+  _rejectPending(err) {
+    for (const [, { reject }] of this.pending) {
+      try { reject(err); } catch (_) {}
+    }
+    this.pending.clear();
   }
 
   connect() {
@@ -69,6 +78,10 @@ class MpvController extends EventEmitter {
 
   _onData(chunk) {
     this.buffer += chunk;
+    if (this.buffer.length > this.maxBufferSize) {
+      this.buffer = '';
+      return;
+    }
     let idx;
     while ((idx = this.buffer.indexOf('\n')) !== -1) {
       const line = this.buffer.slice(0, idx);
@@ -100,6 +113,8 @@ class MpvController extends EventEmitter {
   _onClose() {
     this.connected = false;
     this.socket = null;
+    this._rejectPending(new Error('Connection closed'));
+    this.buffer = '';
     this.emit('disconnected');
     if (!this.intentionalDisconnect) this._scheduleReconnect();
   }
@@ -144,7 +159,17 @@ class MpvController extends EventEmitter {
   _command(cmd, args = []) {
     return new Promise((resolve, reject) => {
       const id = ++this.requestId;
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        const p = this.pending.get(id);
+        if (p) {
+          this.pending.delete(id);
+          p.reject(new Error('Request timeout'));
+        }
+      }, this.requestTimeoutMs);
+      this.pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); resolve(v); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
       this._send({ command: [cmd, ...args], request_id: id });
     });
   }
