@@ -267,7 +267,7 @@ Both run inside the LXC container with `Restart=always`.
 ```ini
 [Unit]
 Description=Screenview Media Server
-After=network.target
+After=network.target screenview-mpv.service
 
 [Service]
 Type=simple
@@ -288,7 +288,7 @@ WantedBy=multi-user.target
 ```ini
 [Unit]
 Description=Screenview mpv Display
-After=screenview.service
+After=network.target
 
 [Service]
 Type=simple
@@ -354,4 +354,107 @@ module.exports = {
 5. Control page: HTML/CSS/JS with library, playlist, settings, upload progress
 6. systemd service files
 7. SETUP.md: LXC creation, /dev/dri passthrough, HDMI resolution, packages, deploy
+
+---
+
+## Implementation Breakdown
+
+Each step is broken into sub-tasks with acceptance criteria. Complete sub-tasks in order within each step.
+
+### 1. Scaffold
+
+| # | Sub-task | Acceptance criteria |
+|---|----------|----------------------|
+| 1.1 | Create `package.json` | `name`, `main`, `scripts.start`, dependencies: express, multer, ws, uuid |
+| 1.2 | Create `config.js` | Exports port, mpvSocket, uploadsDir, maxFileSize, minFreeDisk, isDev; reads from env |
+| 1.3 | Create directory structure | `public/`, `public/css/`, `public/js/`, `uploads/`, `setup/` |
+| 1.4 | Run `npm install` | No errors; `node_modules` populated |
+| 1.5 | Minimal server stub | `node server.js` starts, serves something on port 3000 |
+
+### 2. mpv-controller.js
+
+| # | Sub-task | Acceptance criteria |
+|---|----------|----------------------|
+| 2.1 | Socket connection | `connect()` opens Unix socket to config path; `disconnect` event on close |
+| 2.2 | Newline-delimited JSON parser | Parse incoming stream; handle partial lines (buffer until `\n`) |
+| 2.3 | Request/response tracking | Each command gets unique `request_id`; responses matched via Map; promises resolve/reject |
+| 2.4 | Event demux | Messages without `request_id` treated as events; emit `file-ended`, `file-loaded` |
+| 2.5 | Core API: `loadFile(path, opts)` | Sends `loadfile`; applies loop, displayMode via `set_property` after load |
+| 2.6 | Core API: `stop()`, `setProperty()`, `getProperty()` | All return promises; correct mpv JSON commands |
+| 2.7 | Auto-reconnect | On socket close: exponential backoff (1s→10s), retry connect; emit `connected`/`disconnected` |
+| 2.8 | Command queue | While disconnected, queue commands; flush on reconnect |
+| 2.9 | Re-send current cue on reconnect | Expose `onReconnect(callback)` or similar; server passes current cue to restore |
+| 2.10 | Display mode mapping | `stretch`→keepaspect=no; `centered`→keepaspect=yes,panscan=0; `fill`→keepaspect=yes,panscan=1 |
+
+### 3. state.js
+
+| # | Sub-task | Acceptance criteria |
+|---|----------|----------------------|
+| 3.1 | `load()` | Read state.json; return parsed object; throw or return empty on missing file |
+| 3.2 | Atomic write | Write to `state.json.tmp`, then `fs.rename` to `state.json` |
+| 3.3 | Corruption recovery | On JSON parse error: rename corrupt file to `state.json.corrupt.<timestamp>`, return empty state |
+| 3.4 | Debounced save | `save(state)` schedules write; 100ms debounce; rapid calls coalesce |
+| 3.5 | API shape | `getState()`, `saveState(partial)` or `updateState(updater)`; in-memory copy, save on change |
+| 3.6 | Default state | Empty: `{ library: [], playlist: [], currentCueIndex: -1 }` |
+
+### 4. server.js
+
+| # | Sub-task | Acceptance criteria |
+|---|----------|----------------------|
+| 4.1 | Express setup | Static files from `public/`, JSON body parser, CORS if needed |
+| 4.2 | Upload endpoint | POST `/api/upload`; multer; validate extension (whitelist); check size ≤1GB; check disk free ≥500MB |
+| 4.3 | Library endpoints | GET list, DELETE by id (remove file + playlist refs) |
+| 4.4 | Playlist endpoints | GET, POST (add cue), PUT (update cue), DELETE, PUT reorder |
+| 4.5 | Playback endpoints | POST `/api/go`, POST `/api/go/:cueId`, POST `/api/stop` |
+| 4.6 | State endpoint | GET `/api/state` returns full state + `diskFree` bytes |
+| 4.7 | `playCue(index)` | Check `isTransitioning`; cancel duration timer; load file in mpv; set display mode; start timer if duration set |
+| 4.8 | `advance()` | Increment index; if past end call `stop()`; else `playCue(index)`; set/clear transition lock |
+| 4.9 | mpv event: `file-ended` | For non-looping video: call `advance()`; check lock first |
+| 4.10 | Duration timer | On expiry: call `advance()`; check lock; clear on manual advance |
+| 4.11 | Transition lock | Set on advance start; clear on `file-loaded` or 2s timeout |
+| 4.12 | WebSocket | Broadcast full state to all clients on any change |
+| 4.13 | Delete playing media | If deleted media is current cue: advance to next or stop |
+| 4.14 | UUID filenames | On upload: `uuid + '-' + originalName`; store in library |
+
+### 5. Control Page
+
+| # | Sub-task | Acceptance criteria |
+|---|----------|----------------------|
+| 5.1 | HTML shell | `control.html` with semantic structure; script/style links |
+| 5.2 | CSS: dark theme | Background #1a1a2e; high contrast text; green accent for active cue |
+| 5.3 | CSS: layout | Two-column (library | playlist); responsive stack on narrow viewport |
+| 5.4 | Media library: upload | Drag-drop zone; file input; per-file progress bar during upload |
+| 5.5 | Media library: grid | Thumbnail for images (scaled); icon for videos; name, type badge, size, delete btn |
+| 5.6 | Media library: add to playlist | "+" button per item; adds cue with default settings |
+| 5.7 | Playlist: cue list | Numbered rows (Q1, Q2…); media name; drag handle; click to select |
+| 5.8 | Playlist: active highlight | Current cue row highlighted in green |
+| 5.9 | Playlist: GO / STOP | Large buttons; GO disabled during transition; STOP always enabled |
+| 5.10 | Playlist: jump | Double-click cue → POST `/api/go/:cueId` |
+| 5.11 | Playlist: reorder | Drag-and-drop reorder; PUT `/api/playlist/reorder` |
+| 5.12 | Cue settings bar | Visible when cue selected; loop toggle, display mode, duration input, "Hold" toggle |
+| 5.13 | Live updates | Changing settings calls PUT; active cue updates display immediately |
+| 5.14 | WebSocket sync | Connect on load; on message, replace local state; re-render |
+| 5.15 | Disk space indicator | Show free space; update on state refresh |
+| 5.16 | Status line | Show "Playing Q3" / "Stopped" / "Transitioning..." |
+
+### 6. systemd Configs
+
+| # | Sub-task | Acceptance criteria |
+|---|----------|----------------------|
+| 6.1 | `screenview.service` | Node.js; WorkingDirectory, ExecStart, Restart, env vars |
+| 6.2 | `screenview-mpv.service` | mpv with IPC socket, DRM, VA-API; RuntimeDirectory; video/render groups |
+| 6.3 | Startup order | mpv starts first (creates socket); Node starts after. `screenview.service` has `After=screenview-mpv.service` |
+| 6.4 | Install instructions | `systemctl enable`, `systemctl start`; verify both run |
+
+### 7. SETUP.md
+
+| # | Sub-task | Acceptance criteria |
+|---|----------|----------------------|
+| 7.1 | LXC container | Create privileged Debian 12; add cgroup + mount for /dev/dri |
+| 7.2 | HDMI resolution | How to find connector; kernel cmdline; EDID fallback |
+| 7.3 | Console blanking | `consoleblank=0` in grub |
+| 7.4 | Package install | Node.js (from NodeSource or nvm), mpv, dependencies |
+| 7.5 | User & permissions | Create `screenview` user; ownership of /opt/screenview |
+| 7.6 | Deployment | Copy files; npm install --production; systemd enable/start |
+| 7.7 | Verification | Checklist: mpv shows window, server responds, control page loads |
 
