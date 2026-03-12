@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Screenview Control</title>
+  <link rel="stylesheet" href="css/control.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Screenview</h1>
+      <div class="status" id="status">Connecting…</div>
+    </header>
+
+    <main class="main">
+      <section class="panel library-panel">
+        <h2>Media Library</h2>
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v">
+          <p>Drop files here or click to upload</p>
+        </div>
+        <div class="upload-progress" id="uploadProgress"></div>
+        <div class="library-grid" id="libraryGrid"></div>
+        <div class="disk-space" id="diskSpace">—</div>
+      </section>
+
+      <section class="panel playlist-panel">
+        <h2>Playlist</h2>
+        <div class="playback-controls">
+          <button class="btn btn-go" id="btnGo" disabled>GO</button>
+          <button class="btn btn-stop" id="btnStop">STOP</button>
+        </div>
+        <div class="cue-list" id="cueList"></div>
+      </section>
+    </main>
+
+    <footer class="cue-settings" id="cueSettings">
+      <div class="cue-settings-inner" id="cueSettingsInner">
+        <p class="no-selection" id="noSelection">Select a cue to edit settings</p>
+        <div class="settings-fields" id="settingsFields" hidden>
+          <label>
+            <input type="checkbox" id="settingLoop"> Loop (video)
+          </label>
+          <label>
+            Display:
+            <select id="settingDisplayMode">
+              <option value="stretch">Stretch</option>
+              <option value="centered">Centered</option>
+              <option value="fill">Fill</option>
+            </select>
+          </label>
+          <label>
+            Duration (sec):
+            <input type="number" id="settingDuration" min="0" step="1" placeholder="Hold">
+            <input type="checkbox" id="settingHold"> Hold
+          </label>
+        </div>
+      </div>
+    </footer>
+  </div>
+  <script src="js/control.js"></script>
+</body>
+</html>

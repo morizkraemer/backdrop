@@ -1,0 +1,8 @@
+node_modules/
+uploads/*
+!uploads/.gitkeep
+state.json
+state.json.tmp
+state.json.corrupt.*
+*.log
+.DS_Store
