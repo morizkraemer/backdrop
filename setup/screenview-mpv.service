@@ -1,0 +1,19 @@
+[Unit]
+Description=Screenview mpv Display
+After=network.target
+
+[Service]
+Type=simple
+User=screenview
+RuntimeDirectory=screenview
+ExecStart=/usr/bin/mpv --idle --force-window=yes \
+    --input-ipc-server=/run/screenview/mpv.sock \
+    --vo=drm --hwdec=vaapi --fs --no-terminal --really-quiet \
+    --no-input-default-bindings --no-osc --no-osd-bar \
+    --image-display-duration=inf
+Restart=always
+RestartSec=3
+SupplementaryGroups=video render
+
+[Install]
+WantedBy=multi-user.target

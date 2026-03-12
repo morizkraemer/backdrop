@@ -1,0 +1,16 @@
+[Unit]
+Description=Screenview Media Server
+After=network.target screenview-mpv.service
+
+[Service]
+Type=simple
+User=screenview
+WorkingDirectory=/opt/screenview
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=MPV_SOCKET=/run/screenview/mpv.sock
+
+[Install]
+WantedBy=multi-user.target
