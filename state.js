@@ -71,6 +71,14 @@ function createStateManager(statePath) {
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(persist, DEBOUNCE_MS);
     },
+
+    flush() {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+        persist();
+      }
+    },
   };
 }
 

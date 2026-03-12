@@ -253,10 +253,25 @@ function uploadFiles(files) {
       if (e.lengthComputable) prog.value = (e.loaded / e.total) * 100;
     };
     xhr.onload = () => {
-      div.remove();
-      if (xhr.status >= 200 && xhr.status < 300) render();
+      if (xhr.status >= 200 && xhr.status < 300) {
+        div.remove();
+        render();
+      } else {
+        let err = 'Upload failed';
+        try {
+          const body = JSON.parse(xhr.responseText);
+          err = body.error || err;
+        } catch (_) {}
+        div.innerHTML = `<span class="upload-error">${escapeHtml(err)}</span> <button class="retry">Retry</button>`;
+        div.classList.add('error');
+        div.querySelector('.retry').onclick = () => { div.remove(); uploadFiles([file]); };
+      }
     };
-    xhr.onerror = () => div.remove();
+    xhr.onerror = () => {
+      div.innerHTML = `<span class="upload-error">Network error</span> <button class="retry">Retry</button>`;
+      div.classList.add('error');
+      div.querySelector('.retry').onclick = () => { div.remove(); uploadFiles([file]); };
+    };
     xhr.open('POST', `${API}/upload`);
     xhr.send(fd);
   }
