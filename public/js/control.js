@@ -8,6 +8,7 @@ let state = {
   currentCueIndex: -1,
   diskFree: 0,
   isTransitioning: false,
+  mpvConnected: false,
 };
 let selectedCueId = null;
 let ws = null;
@@ -21,6 +22,7 @@ const cueList = document.getElementById('cueList');
 const btnGo = document.getElementById('btnGo');
 const btnStop = document.getElementById('btnStop');
 const status = document.getElementById('status');
+const mpvStatus = document.getElementById('mpvStatus');
 const cueSettings = document.getElementById('cueSettings');
 const noSelection = document.getElementById('noSelection');
 const settingsFields = document.getElementById('settingsFields');
@@ -61,14 +63,24 @@ function api(method, path, body) {
   return fetch(`${API}${path}`, opts);
 }
 
+function thumbUrl(item) {
+  if (!item) return null;
+  return item.type === 'image'
+    ? `/uploads/${encodeURIComponent(item.filename)}?t=${encodeURIComponent(item.addedAt || '')}`
+    : null;
+}
+
 function renderLibrary() {
   libraryGrid.innerHTML = state.library.map((item) => {
     const thumb = item.type === 'image'
-      ? `<img class="thumb" src="/uploads/${encodeURIComponent(item.filename)}" alt="">`
+      ? `<img class="thumb" src="${thumbUrl(item)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      : '';
+    const placeholder = item.type === 'image'
+      ? '<div class="thumb-placeholder" style="display:none">?</div>'
       : '<div class="thumb-placeholder">▶</div>';
     return `
       <div class="library-item" data-id="${item.id}">
-        ${thumb}
+        <div class="thumb-wrap">${thumb}${placeholder}</div>
         <span class="name">${escapeHtml(item.originalName)}</span>
         <span class="meta">
           <span class="badge">${item.type}</span>
@@ -97,16 +109,25 @@ function renderLibrary() {
 }
 
 function renderPlaylist() {
+  const getMedia = (mediaId) => state.library.find((x) => x.id === mediaId);
   const getMediaName = (mediaId) => {
-    const m = state.library.find((x) => x.id === mediaId);
+    const m = getMedia(mediaId);
     return m ? m.originalName : '?';
   };
 
   cueList.innerHTML = state.playlist.map((cue, i) => {
     const active = i === state.currentCueIndex;
+    const media = getMedia(cue.mediaId);
+    const cueThumb = media?.type === 'image'
+      ? `<img class="cue-thumb" src="${thumbUrl(media)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      : '';
+    const cuePlaceholder = media?.type === 'image'
+      ? '<span class="cue-thumb-placeholder" style="display:none">▶</span>'
+      : '<span class="cue-thumb-placeholder">▶</span>';
     return `
       <div class="cue-row ${active ? 'active' : ''}" data-cue-id="${cue.id}" data-index="${i}" draggable="true">
         <span class="handle">⋮⋮</span>
+        <span class="cue-thumb-wrap">${cueThumb}${cuePlaceholder}</span>
         <span class="num">Q${i + 1}</span>
         <span class="name">${escapeHtml(getMediaName(cue.mediaId))}</span>
       </div>
@@ -204,6 +225,13 @@ function render() {
   renderSettings();
 
   diskSpace.textContent = `Free: ${formatBytes(state.diskFree)}`;
+
+  if (state.mpvConnected === false) {
+    mpvStatus.hidden = false;
+    mpvStatus.textContent = 'mpv disconnected';
+  } else {
+    mpvStatus.hidden = true;
+  }
 
   const idx = state.currentCueIndex;
   if (idx >= 0 && idx < state.playlist.length) {

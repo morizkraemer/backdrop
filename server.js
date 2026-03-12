@@ -38,6 +38,7 @@ function broadcastState() {
     ...s,
     diskFree: getDiskFree(),
     isTransitioning,
+    mpvConnected: mpv.connected,
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -417,11 +418,20 @@ const server = app.listen(config.port, () => {
 
 wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws) => {
-  ws.send(JSON.stringify({ ...state.getState(), diskFree: getDiskFree() }));
+  ws.send(JSON.stringify({
+    ...state.getState(),
+    diskFree: getDiskFree(),
+    isTransitioning,
+    mpvConnected: mpv.connected,
+  }));
 });
+
+mpv.on('connected', () => broadcastState());
+mpv.on('disconnected', () => broadcastState());
 
 mpv.connect().catch((err) => {
   console.warn('mpv not available:', err.message);
+  broadcastState();
 });
 
 function shutdown() {
