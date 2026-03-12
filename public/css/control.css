@@ -310,6 +310,23 @@ body {
   opacity: 0.9;
 }
 
+.btn-loop {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.btn-loop:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.btn-loop.active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
 .cue-list {
   overflow-y: auto;
   flex: 1;

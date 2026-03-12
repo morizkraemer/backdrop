@@ -135,10 +135,14 @@ function advance() {
   const s = state.getState();
   const next = s.currentCueIndex + 1;
   if (next >= s.playlist.length) {
-    mpv.stop();
-    state.updateState({ currentCueIndex: -1 });
-    broadcastState();
-    clearDurationTimer();
+    if (s.playlistLoop && s.playlist.length > 0) {
+      playCue(0);
+    } else {
+      mpv.stop();
+      state.updateState({ currentCueIndex: -1 });
+      broadcastState();
+      clearDurationTimer();
+    }
     return;
   }
   playCue(next);
@@ -282,6 +286,14 @@ app.delete('/api/library/:id', (req, res) => {
 
 app.get('/api/playlist', (req, res) => res.json(state.getState().playlist));
 app.get('/api/state', (req, res) => res.json({ ...state.getState(), diskFree: getDiskFree() }));
+
+app.put('/api/settings', (req, res) => {
+  const { playlistLoop } = req.body;
+  if (typeof playlistLoop !== 'boolean') return res.status(400).json({ error: 'playlistLoop must be boolean' });
+  state.updateState({ playlistLoop });
+  broadcastState();
+  res.json(state.getState());
+});
 
 app.post('/api/playlist', (req, res) => {
   const { mediaId, settings = {} } = req.body;

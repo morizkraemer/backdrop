@@ -9,6 +9,7 @@ let state = {
   diskFree: 0,
   isTransitioning: false,
   mpvConnected: false,
+  playlistLoop: false,
 };
 let openPopupCueId = null;
 let ws = null;
@@ -21,6 +22,7 @@ const diskSpace = document.getElementById('diskSpace');
 const cueList = document.getElementById('cueList');
 const btnGo = document.getElementById('btnGo');
 const btnStop = document.getElementById('btnStop');
+const btnLoop = document.getElementById('btnLoop');
 const status = document.getElementById('status');
 const mpvStatus = document.getElementById('mpvStatus');
 const cuePopupBackdrop = document.getElementById('cuePopupBackdrop');
@@ -178,6 +180,7 @@ function renderPlaylist() {
 
   btnGo.disabled = state.isTransitioning;
   btnStop.disabled = false;
+  btnLoop.classList.toggle('active', state.playlistLoop);
 }
 
 function openCuePopup(cueId, anchorEl) {
@@ -315,6 +318,9 @@ function uploadFiles(files) {
 
 btnGo.addEventListener('click', () => api('POST', '/go').then(() => {}));
 btnStop.addEventListener('click', () => api('POST', '/stop').then(() => {}));
+btnLoop.addEventListener('click', () => {
+  api('PUT', '/settings', { playlistLoop: !state.playlistLoop }).then(() => {});
+});
 
 connectWs();
 render();
