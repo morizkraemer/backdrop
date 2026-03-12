@@ -95,7 +95,7 @@ function playCue(index) {
     return;
   }
 
-  const filePath = path.join(config.uploadsDir, media.filename);
+  const filePath = path.resolve(config.uploadsDir, media.filename);
   if (!fs.existsSync(filePath)) {
     advance();
     return;
@@ -106,7 +106,7 @@ function playCue(index) {
 
   const { loop = false, displayMode = 'fill', duration = null } = cue.settings || {};
 
-  mpv.loadFile(filePath, { loop, displayMode })
+  mpv.loadFile(filePath, { loop, displayMode, isImage: media.type === 'image' })
     .then(() => {
       state.updateState({ currentCueIndex: index });
       clearTransitionLock();
@@ -327,11 +327,12 @@ app.put('/api/playlist/:cueId', (req, res) => {
   if (idx === s.currentCueIndex) {
     const media = s.library.find((m) => m.id === cue.mediaId);
     if (media) {
-      const filePath = path.join(config.uploadsDir, media.filename);
+      const filePath = path.resolve(config.uploadsDir, media.filename);
       if (fs.existsSync(filePath)) {
         mpv.loadFile(filePath, {
           loop: cue.settings.loop,
           displayMode: cue.settings.displayMode,
+          isImage: media.type === 'image',
         }).catch(console.error);
       }
     }

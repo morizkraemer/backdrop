@@ -175,13 +175,16 @@ class MpvController extends EventEmitter {
   }
 
   async loadFile(path, opts = {}) {
-    const { loop = false, displayMode = 'fill' } = opts;
+    const { loop = false, displayMode = 'fill', isImage = false } = opts;
     const mode = DISPLAY_MODES[displayMode] || DISPLAY_MODES.fill;
 
     await this._command('loadfile', [path, 'replace']);
     await this.setProperty('loop-file', loop ? 'inf' : 'no');
     await this.setProperty('keepaspect', mode.keepaspect);
     await this.setProperty('panscan', mode.panscan);
+    if (isImage) {
+      await this.setProperty('image-display-duration', 'inf');
+    }
   }
 
   stop() {
