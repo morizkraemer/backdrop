@@ -317,6 +317,44 @@ app.post('/api/playlist', (req, res) => {
   res.status(201).json(cue);
 });
 
+app.post('/api/playlist/upload', (req, res) => {
+  const free = getDiskFree();
+  if (free < config.minFreeDisk) {
+    return res.status(507).json({ error: 'Insufficient disk space' });
+  }
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File too large' });
+      return res.status(400).json({ error: err.message || 'Upload failed' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No file' });
+
+    const id = path.basename(req.file.filename).slice(0, 32);
+    const item = {
+      id,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      type: getMediaType(req.file.filename),
+      size: req.file.size,
+      addedAt: new Date().toISOString(),
+      playlistOnly: true,
+    };
+    const cueId = `cue-${uuidv4().slice(0, 8)}`;
+    const cue = {
+      id: cueId,
+      mediaId: id,
+      settings: { loop: false, displayMode: 'fill', duration: null },
+    };
+    state.updateState((s) => ({
+      ...s,
+      library: [...s.library, item],
+      playlist: [...s.playlist, cue],
+    }));
+    broadcastState();
+    res.status(201).json({ item, cue });
+  });
+});
+
 app.put('/api/playlist/:cueId', (req, res) => {
   if (!isValidId(req.params.cueId)) return res.status(400).json({ error: 'Invalid cue ID' });
   const s = state.getState();
@@ -361,8 +399,22 @@ app.delete('/api/playlist/:cueId', (req, res) => {
   const s = state.getState();
   const idx = s.playlist.findIndex((c) => c.id === req.params.cueId);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  const mediaId = s.playlist[idx].mediaId;
   const playlist = s.playlist.filter((c) => c.id !== req.params.cueId);
   let currentCueIndex = s.currentCueIndex;
+
+  let library = s.library;
+  const media = s.library.find((m) => m.id === mediaId);
+  if (media?.playlistOnly && !playlist.some((c) => c.mediaId === mediaId)) {
+    const filePath = path.join(config.uploadsDir, media.filename);
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch (e) {
+      console.error('Delete playlist-only file error:', e);
+    }
+    library = s.library.filter((m) => m.id !== mediaId);
+  }
+
   if (s.currentCueIndex === idx) {
     if (playlist.length > 0) {
       currentCueIndex = -1;
@@ -375,7 +427,7 @@ app.delete('/api/playlist/:cueId', (req, res) => {
   } else if (s.currentCueIndex > idx) {
     currentCueIndex = s.currentCueIndex - 1;
   }
-  state.updateState({ playlist, currentCueIndex });
+  state.updateState({ library, playlist, currentCueIndex });
   broadcastState();
   res.status(204).send();
 });
