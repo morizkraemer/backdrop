@@ -8,8 +8,10 @@ let state = {
   currentCueIndex: -1,
   diskFree: 0,
   isTransitioning: false,
+  mpvConnected: false,
+  playlistLoop: false,
 };
-let selectedCueId = null;
+let openPopupCueId = null;
 let ws = null;
 
 const uploadZone = document.getElementById('uploadZone');
@@ -20,14 +22,17 @@ const diskSpace = document.getElementById('diskSpace');
 const cueList = document.getElementById('cueList');
 const btnGo = document.getElementById('btnGo');
 const btnStop = document.getElementById('btnStop');
+const btnLoop = document.getElementById('btnLoop');
 const status = document.getElementById('status');
-const cueSettings = document.getElementById('cueSettings');
-const noSelection = document.getElementById('noSelection');
-const settingsFields = document.getElementById('settingsFields');
-const settingLoop = document.getElementById('settingLoop');
-const settingDisplayMode = document.getElementById('settingDisplayMode');
-const settingDuration = document.getElementById('settingDuration');
-const settingHold = document.getElementById('settingHold');
+const mpvStatus = document.getElementById('mpvStatus');
+const cuePopupBackdrop = document.getElementById('cuePopupBackdrop');
+const cuePopup = document.getElementById('cuePopup');
+const popupLoop = document.getElementById('popupLoop');
+const popupDisplayMode = document.getElementById('popupDisplayMode');
+const popupDuration = document.getElementById('popupDuration');
+const popupHold = document.getElementById('popupHold');
+const popupCancel = document.getElementById('popupCancel');
+const popupSave = document.getElementById('popupSave');
 
 function connectWs() {
   ws = new WebSocket(WS_URL);
@@ -61,14 +66,24 @@ function api(method, path, body) {
   return fetch(`${API}${path}`, opts);
 }
 
+function thumbUrl(item) {
+  if (!item) return null;
+  return item.type === 'image'
+    ? `/uploads/${encodeURIComponent(item.filename)}?t=${encodeURIComponent(item.addedAt || '')}`
+    : null;
+}
+
 function renderLibrary() {
   libraryGrid.innerHTML = state.library.map((item) => {
     const thumb = item.type === 'image'
-      ? `<img class="thumb" src="/uploads/${encodeURIComponent(item.filename)}" alt="">`
+      ? `<img class="thumb" src="${thumbUrl(item)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      : '';
+    const placeholder = item.type === 'image'
+      ? '<div class="thumb-placeholder" style="display:none">?</div>'
       : '<div class="thumb-placeholder">▶</div>';
     return `
       <div class="library-item" data-id="${item.id}">
-        ${thumb}
+        <div class="thumb-wrap">${thumb}${placeholder}</div>
         <span class="name">${escapeHtml(item.originalName)}</span>
         <span class="meta">
           <span class="badge">${item.type}</span>
@@ -97,27 +112,34 @@ function renderLibrary() {
 }
 
 function renderPlaylist() {
+  const getMedia = (mediaId) => state.library.find((x) => x.id === mediaId);
   const getMediaName = (mediaId) => {
-    const m = state.library.find((x) => x.id === mediaId);
+    const m = getMedia(mediaId);
     return m ? m.originalName : '?';
   };
 
   cueList.innerHTML = state.playlist.map((cue, i) => {
     const active = i === state.currentCueIndex;
+    const media = getMedia(cue.mediaId);
+    const cueThumb = media?.type === 'image'
+      ? `<img class="cue-thumb" src="${thumbUrl(media)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      : '';
+    const cuePlaceholder = media?.type === 'image'
+      ? '<span class="cue-thumb-placeholder" style="display:none">▶</span>'
+      : '<span class="cue-thumb-placeholder">▶</span>';
+    const editing = openPopupCueId === cue.id;
     return `
-      <div class="cue-row ${active ? 'active' : ''}" data-cue-id="${cue.id}" data-index="${i}" draggable="true">
+      <div class="cue-row ${active ? 'active' : ''} ${editing ? 'editing' : ''}" data-cue-id="${cue.id}" data-index="${i}" draggable="true">
         <span class="handle">⋮⋮</span>
+        <span class="cue-thumb-wrap">${cueThumb}${cuePlaceholder}</span>
         <span class="num">Q${i + 1}</span>
         <span class="name">${escapeHtml(getMediaName(cue.mediaId))}</span>
+        <button class="cue-edit-btn" data-cue-id="${cue.id}" title="Edit settings">✎ Edit</button>
       </div>
     `;
   }).join('');
 
   cueList.querySelectorAll('.cue-row').forEach((row) => {
-    row.addEventListener('click', () => {
-      selectedCueId = row.dataset.cueId;
-      renderSettings();
-    });
     row.addEventListener('dblclick', () => {
       api('POST', `/go/${row.dataset.cueId}`).then(() => {});
     });
@@ -149,61 +171,86 @@ function renderPlaylist() {
     });
   });
 
+  cueList.querySelectorAll('.cue-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openCuePopup(btn.dataset.cueId, btn);
+    });
+  });
+
   btnGo.disabled = state.isTransitioning;
   btnStop.disabled = false;
+  btnLoop.classList.toggle('active', state.playlistLoop);
 }
 
-function renderSettings() {
-  if (!selectedCueId) {
-    noSelection.hidden = false;
-    settingsFields.hidden = true;
-    return;
-  }
-  const cue = state.playlist.find((c) => c.id === selectedCueId);
-  if (!cue) {
-    selectedCueId = null;
-    noSelection.hidden = false;
-    settingsFields.hidden = true;
-    return;
-  }
-  noSelection.hidden = true;
-  settingsFields.hidden = false;
+function openCuePopup(cueId, anchorEl) {
+  const cue = state.playlist.find((c) => c.id === cueId);
+  if (!cue) return;
 
+  openPopupCueId = cueId;
   const media = state.library.find((m) => m.id === cue.mediaId);
   const isVideo = media?.type === 'video';
 
-  settingLoop.checked = cue.settings?.loop ?? false;
-  settingLoop.disabled = !isVideo;
-  settingDisplayMode.value = cue.settings?.displayMode ?? 'fill';
+  popupLoop.checked = cue.settings?.loop ?? false;
+  popupLoop.disabled = !isVideo;
+  popupDisplayMode.value = cue.settings?.displayMode ?? 'fill';
   const dur = cue.settings?.duration;
-  settingDuration.value = dur != null ? dur : '';
-  settingHold.checked = dur == null || dur === '';
+  popupDuration.value = dur != null ? dur : '';
+  popupHold.checked = dur == null || dur === '';
 
-  settingLoop.onchange = () => updateCueSettings({ loop: settingLoop.checked });
-  settingDisplayMode.onchange = () => updateCueSettings({ displayMode: settingDisplayMode.value });
-  settingDuration.oninput = () => {
-    settingHold.checked = settingDuration.value === '';
-    updateCueSettings({ duration: settingDuration.value ? Number(settingDuration.value) : null });
-  };
-  settingHold.onchange = () => {
-    if (settingHold.checked) {
-      settingDuration.value = '';
-      updateCueSettings({ duration: null });
+  cuePopupBackdrop.hidden = false;
+
+  render();
+}
+
+function closeCuePopup() {
+  cuePopupBackdrop.hidden = true;
+  openPopupCueId = null;
+  render();
+}
+
+popupCancel.addEventListener('click', () => closeCuePopup());
+
+popupSave.addEventListener('click', () => {
+  if (!openPopupCueId) return;
+  const duration = popupHold.checked ? null : (popupDuration.value ? Number(popupDuration.value) : null);
+  api('PUT', `/playlist/${openPopupCueId}`, {
+    loop: popupLoop.checked,
+    displayMode: popupDisplayMode.value,
+    duration,
+  }).then((r) => {
+    if (r.ok) {
+      closeCuePopup();
+    } else {
+      r.json().catch(() => ({})).then((body) => {
+        alert(body?.error || 'Failed to save settings');
+      });
     }
-  };
-}
+  });
+});
 
-function updateCueSettings(updates) {
-  if (!selectedCueId) return;
-  api('PUT', `/playlist/${selectedCueId}`, updates).then(() => {});
-}
+popupDuration.oninput = () => { popupHold.checked = popupDuration.value === ''; };
+popupHold.onchange = () => {
+  if (popupHold.checked) popupDuration.value = '';
+};
+
+cuePopupBackdrop.addEventListener('click', (e) => {
+  if (e.target === cuePopupBackdrop) closeCuePopup();
+});
+cuePopup.addEventListener('click', (e) => e.stopPropagation());
 
 function render() {
   renderLibrary();
   renderPlaylist();
-  renderSettings();
 
   diskSpace.textContent = `Free: ${formatBytes(state.diskFree)}`;
+
+  if (state.mpvConnected === false) {
+    mpvStatus.hidden = false;
+    mpvStatus.textContent = 'mpv disconnected';
+  } else {
+    mpvStatus.hidden = true;
+  }
 
   const idx = state.currentCueIndex;
   if (idx >= 0 && idx < state.playlist.length) {
@@ -279,6 +326,26 @@ function uploadFiles(files) {
 
 btnGo.addEventListener('click', () => api('POST', '/go').then(() => {}));
 btnStop.addEventListener('click', () => api('POST', '/stop').then(() => {}));
+btnLoop.addEventListener('click', () => {
+  const next = !state.playlistLoop;
+  state = { ...state, playlistLoop: next };
+  render();
+  api('PUT', '/settings', { playlistLoop: next })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (data) {
+        state = { ...state, ...data };
+        render();
+      } else {
+        state = { ...state, playlistLoop: !next };
+        render();
+      }
+    })
+    .catch(() => {
+      state = { ...state, playlistLoop: !next };
+      render();
+    });
+});
 
 connectWs();
 render();

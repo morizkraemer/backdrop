@@ -9,6 +9,7 @@ const DEFAULT_STATE = {
   library: [],
   playlist: [],
   currentCueIndex: -1,
+  playlistLoop: false,
 };
 
 function load(statePath) {
@@ -19,6 +20,7 @@ function load(statePath) {
       library: parsed.library ?? [],
       playlist: parsed.playlist ?? [],
       currentCueIndex: typeof parsed.currentCueIndex === 'number' ? parsed.currentCueIndex : -1,
+      playlistLoop: typeof parsed.playlistLoop === 'boolean' ? parsed.playlistLoop : false,
     };
   } catch (err) {
     if (err.code === 'ENOENT') return { ...DEFAULT_STATE };
@@ -67,6 +69,7 @@ function createStateManager(statePath) {
         library: newState.library ?? [],
         playlist: newState.playlist ?? [],
         currentCueIndex: typeof newState.currentCueIndex === 'number' ? newState.currentCueIndex : -1,
+        playlistLoop: typeof newState.playlistLoop === 'boolean' ? newState.playlistLoop : false,
       };
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(persist, DEBOUNCE_MS);

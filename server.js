@@ -38,6 +38,7 @@ function broadcastState() {
     ...s,
     diskFree: getDiskFree(),
     isTransitioning,
+    mpvConnected: mpv.connected,
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -134,10 +135,14 @@ function advance() {
   const s = state.getState();
   const next = s.currentCueIndex + 1;
   if (next >= s.playlist.length) {
-    mpv.stop();
-    state.updateState({ currentCueIndex: -1 });
-    broadcastState();
-    clearDurationTimer();
+    if (s.playlistLoop && s.playlist.length > 0) {
+      playCue(0);
+    } else {
+      mpv.stop();
+      state.updateState({ currentCueIndex: -1 });
+      broadcastState();
+      clearDurationTimer();
+    }
     return;
   }
   playCue(next);
@@ -282,6 +287,14 @@ app.delete('/api/library/:id', (req, res) => {
 app.get('/api/playlist', (req, res) => res.json(state.getState().playlist));
 app.get('/api/state', (req, res) => res.json({ ...state.getState(), diskFree: getDiskFree() }));
 
+app.put('/api/settings', (req, res) => {
+  const { playlistLoop } = req.body;
+  if (typeof playlistLoop !== 'boolean') return res.status(400).json({ error: 'playlistLoop must be boolean' });
+  state.updateState({ playlistLoop });
+  broadcastState();
+  res.json(state.getState());
+});
+
 app.post('/api/playlist', (req, res) => {
   const { mediaId, settings = {} } = req.body;
   if (!mediaId || !isValidId(mediaId)) return res.status(400).json({ error: 'mediaId required' });
@@ -384,8 +397,12 @@ app.post('/api/go', (req, res) => {
   const s = state.getState();
   const next = s.currentCueIndex + 1;
   if (next >= s.playlist.length) {
-    mpv.stop();
-    state.updateState({ currentCueIndex: -1 });
+    if (s.playlistLoop && s.playlist.length > 0) {
+      playCue(0);
+    } else {
+      mpv.stop();
+      state.updateState({ currentCueIndex: -1 });
+    }
   } else {
     playCue(next);
   }
@@ -417,11 +434,20 @@ const server = app.listen(config.port, () => {
 
 wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws) => {
-  ws.send(JSON.stringify({ ...state.getState(), diskFree: getDiskFree() }));
+  ws.send(JSON.stringify({
+    ...state.getState(),
+    diskFree: getDiskFree(),
+    isTransitioning,
+    mpvConnected: mpv.connected,
+  }));
 });
+
+mpv.on('connected', () => broadcastState());
+mpv.on('disconnected', () => broadcastState());
 
 mpv.connect().catch((err) => {
   console.warn('mpv not available:', err.message);
+  broadcastState();
 });
 
 function shutdown() {
