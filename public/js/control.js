@@ -218,7 +218,15 @@ popupSave.addEventListener('click', () => {
     loop: popupLoop.checked,
     displayMode: popupDisplayMode.value,
     duration,
-  }).then(() => closeCuePopup());
+  }).then((r) => {
+    if (r.ok) {
+      closeCuePopup();
+    } else {
+      r.json().catch(() => ({})).then((body) => {
+        alert(body?.error || 'Failed to save settings');
+      });
+    }
+  });
 });
 
 popupDuration.oninput = () => { popupHold.checked = popupDuration.value === ''; };
@@ -332,6 +340,10 @@ btnLoop.addEventListener('click', () => {
         state = { ...state, playlistLoop: !next };
         render();
       }
+    })
+    .catch(() => {
+      state = { ...state, playlistLoop: !next };
+      render();
     });
 });
 
