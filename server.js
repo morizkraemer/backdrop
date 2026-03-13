@@ -457,6 +457,9 @@ function ensureSocketDir() {
 
 function spawnMpvProcess() {
   ensureSocketDir();
+  if (fs.existsSync(config.mpvSocket)) {
+    try { fs.unlinkSync(config.mpvSocket); } catch (_) {}
+  }
   const mpvBin = process.platform === 'linux' && fs.existsSync('/usr/bin/mpv') ? '/usr/bin/mpv' : 'mpv';
   const hasDisplay = !!process.env.DISPLAY;
   const args = [
@@ -468,7 +471,7 @@ function spawnMpvProcess() {
     '--no-input-default-bindings',
     '--image-display-duration=inf',
   ];
-  if (config.isDev) {
+  if (config.isDev || process.platform === 'darwin') {
     if (hasDisplay) {
       args.push('--geometry=1280x720');
     } else {
@@ -503,17 +506,32 @@ function waitForSocket(maxMs = 5000) {
   });
 }
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function connectMpv() {
   if (config.spawnMpv) {
     spawnMpvProcess();
-    if (!(await waitForSocket(10000))) {
+    if (await waitForSocket(10000)) {
+      await sleep(500);
+    } else {
       console.warn('mpv socket did not appear in time at', config.mpvSocket);
     }
   }
-  mpv.connect().catch((err) => {
-    console.warn('mpv not available:', err.message, '(socket:', config.mpvSocket + ')');
-    broadcastState();
-  });
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await mpv.connect();
+      return;
+    } catch (err) {
+      if (attempt < 3) {
+        await sleep(1000);
+      } else {
+        console.warn('mpv not available:', err.message, '(socket:', config.mpvSocket + ')');
+        broadcastState();
+      }
+    }
+  }
 }
 
 connectMpv();

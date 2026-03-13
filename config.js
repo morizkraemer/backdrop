@@ -4,7 +4,7 @@ const maxFileSize = Math.max(0, parseInt(process.env.MAX_FILE_SIZE || String(102
 const minFreeDisk = Math.max(0, parseInt(process.env.MIN_FREE_DISK || String(500 * 1024 * 1024), 10));
 
 const isDev = process.env.NODE_ENV !== 'production';
-const spawnMpv = process.env.SPAWN_MPV !== '0' && process.env.SPAWN_MPV !== 'false';
+const spawnMpv = process.env.SPAWN_MPV === '1';
 
 module.exports = {
   port: Math.max(1, parseInt(process.env.PORT || '3000', 10)),
