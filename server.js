@@ -1,3 +1,4 @@
+const { spawn } = require('child_process');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -22,6 +23,7 @@ const mpv = new MpvController(config.mpvSocket);
 let durationTimer = null;
 let isTransitioning = false;
 let wss = null;
+let mpvProcess = null;
 
 function getDiskFree() {
   try {
@@ -401,6 +403,7 @@ app.post('/api/go', (req, res) => {
       playCue(0);
     } else {
       mpv.stop();
+      clearDurationTimer();
       state.updateState({ currentCueIndex: -1 });
     }
   } else {
@@ -445,14 +448,72 @@ wss.on('connection', (ws) => {
 mpv.on('connected', () => broadcastState());
 mpv.on('disconnected', () => broadcastState());
 
-mpv.connect().catch((err) => {
-  console.warn('mpv not available:', err.message);
-  broadcastState();
-});
+function ensureSocketDir() {
+  const dir = path.dirname(config.mpvSocket);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+function spawnMpvProcess() {
+  ensureSocketDir();
+  const args = [
+    '--idle',
+    '--force-window=yes',
+    `--input-ipc-server=${config.mpvSocket}`,
+    '--no-osc',
+    '--no-osd-bar',
+    '--no-input-default-bindings',
+    '--image-display-duration=inf',
+  ];
+  if (config.isDev) {
+    args.push('--geometry=1280x720');
+  } else {
+    args.push('--vo=drm', '--hwdec=vaapi', '--fs', '--no-terminal', '--really-quiet');
+  }
+  mpvProcess = spawn('mpv', args, { stdio: 'ignore' });
+  mpvProcess.on('error', (err) => console.warn('Failed to spawn mpv:', err.message));
+  mpvProcess.on('exit', (code, signal) => {
+    mpvProcess = null;
+    if (code != null && code !== 0) console.warn('mpv exited:', code);
+  });
+  return mpvProcess;
+}
+
+function waitForSocket(maxMs = 5000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const check = () => {
+      if (fs.existsSync(config.mpvSocket)) return resolve(true);
+      if (Date.now() - start > maxMs) return resolve(false);
+      setTimeout(check, 100);
+    };
+    check();
+  });
+}
+
+async function connectMpv() {
+  if (config.spawnMpv) {
+    spawnMpvProcess();
+    if (!(await waitForSocket())) {
+      console.warn('mpv socket did not appear in time');
+    }
+  }
+  mpv.connect().catch((err) => {
+    console.warn('mpv not available:', err.message);
+    broadcastState();
+  });
+}
+
+connectMpv();
 
 function shutdown() {
   state.flush();
   mpv.disconnect();
+  if (mpvProcess) {
+    mpvProcess.kill('SIGTERM');
+    mpvProcess = null;
+  }
   process.exit(0);
 }
 process.on('SIGTERM', shutdown);

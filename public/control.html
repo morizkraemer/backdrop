@@ -33,14 +33,14 @@
         <div class="playback-controls">
           <button class="btn btn-go" id="btnGo" disabled>GO</button>
           <button class="btn btn-stop" id="btnStop">STOP</button>
-          <button class="btn btn-loop" id="btnLoop" title="Loop playlist">↻ Loop</button>
+          <button class="btn btn-loop" id="btnLoop" title="Loop playlist" aria-pressed="false">↻ Loop</button>
         </div>
         <div class="cue-list" id="cueList"></div>
       </section>
     </main>
 
-    <div class="cue-popup-backdrop" id="cuePopupBackdrop" hidden>
-      <div class="cue-popup" id="cuePopup">
+    <div class="cue-popup-backdrop" id="cuePopupBackdrop" hidden aria-hidden="true">
+      <div class="cue-popup" id="cuePopup" role="dialog" aria-modal="true" aria-label="Cue settings" tabindex="-1">
         <div class="cue-popup-inner">
         <label>
           <input type="checkbox" id="popupLoop"> Loop (video)
