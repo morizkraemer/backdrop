@@ -98,19 +98,18 @@ systemctl start screenview-mpv screenview
 
 ## Dev Mode (macOS/Linux)
 
-For local development without DRM:
-
-**Terminal 1 – mpv (windowed):**
+For local development, the server spawns mpv automatically:
 
 ```bash
-mpv --idle --force-window=yes --input-ipc-server=/tmp/screenview-mpv.sock \
-    --geometry=1280x720 --no-osc --no-osd-bar --no-input-default-bindings
+NODE_ENV=development node server.js
 ```
 
-**Terminal 2 – server:**
+Or: `npm start` with `NODE_ENV=development`.
+
+Then open `http://localhost:3000/control`. mpv opens in a 1280×720 window.
+
+To run mpv separately (e.g. for debugging), set `SPAWN_MPV=0`:
 
 ```bash
-MPV_SOCKET=/tmp/screenview-mpv.sock NODE_ENV=development node server.js
+SPAWN_MPV=0 MPV_SOCKET=/tmp/screenview-mpv.sock NODE_ENV=development node server.js
 ```
-
-Then open `http://localhost:3000/control`.

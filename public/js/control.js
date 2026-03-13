@@ -113,14 +113,11 @@ function renderLibrary() {
 
 function renderPlaylist() {
   const getMedia = (mediaId) => state.library.find((x) => x.id === mediaId);
-  const getMediaName = (mediaId) => {
-    const m = getMedia(mediaId);
-    return m ? m.originalName : '?';
-  };
 
   cueList.innerHTML = state.playlist.map((cue, i) => {
     const active = i === state.currentCueIndex;
     const media = getMedia(cue.mediaId);
+    const mediaName = media ? media.originalName : '?';
     const cueThumb = media?.type === 'image'
       ? `<img class="cue-thumb" src="${thumbUrl(media)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">`
       : '';
@@ -133,7 +130,7 @@ function renderPlaylist() {
         <span class="handle">⋮⋮</span>
         <span class="cue-thumb-wrap">${cueThumb}${cuePlaceholder}</span>
         <span class="num">Q${i + 1}</span>
-        <span class="name">${escapeHtml(getMediaName(cue.mediaId))}</span>
+        <span class="name">${escapeHtml(mediaName)}</span>
         <button class="cue-edit-btn" data-cue-id="${cue.id}" title="Edit settings">✎ Edit</button>
       </div>
     `;
@@ -174,16 +171,17 @@ function renderPlaylist() {
   cueList.querySelectorAll('.cue-edit-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      openCuePopup(btn.dataset.cueId, btn);
+      openCuePopup(btn.dataset.cueId);
     });
   });
 
   btnGo.disabled = state.isTransitioning;
   btnStop.disabled = false;
   btnLoop.classList.toggle('active', state.playlistLoop);
+  btnLoop.setAttribute('aria-pressed', String(state.playlistLoop));
 }
 
-function openCuePopup(cueId, anchorEl) {
+function openCuePopup(cueId) {
   const cue = state.playlist.find((c) => c.id === cueId);
   if (!cue) return;
 
@@ -199,12 +197,15 @@ function openCuePopup(cueId, anchorEl) {
   popupHold.checked = dur == null || dur === '';
 
   cuePopupBackdrop.hidden = false;
+  cuePopupBackdrop.setAttribute('aria-hidden', 'false');
+  cuePopup.focus();
 
   render();
 }
 
 function closeCuePopup() {
   cuePopupBackdrop.hidden = true;
+  cuePopupBackdrop.setAttribute('aria-hidden', 'true');
   openPopupCueId = null;
   render();
 }
@@ -238,6 +239,9 @@ cuePopupBackdrop.addEventListener('click', (e) => {
   if (e.target === cuePopupBackdrop) closeCuePopup();
 });
 cuePopup.addEventListener('click', (e) => e.stopPropagation());
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && openPopupCueId) closeCuePopup();
+});
 
 function render() {
   renderLibrary();

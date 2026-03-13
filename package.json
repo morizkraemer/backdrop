@@ -4,12 +4,20 @@
   "description": "Digital signage app - mpv + Node.js for LED panel control",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "start:all": "MPV_SOCKET=/tmp/screenview-mpv.sock concurrently -k -n mpv,server \"mpv --idle --force-window=yes --input-ipc-server=/tmp/screenview-mpv.sock --geometry=1280x720 --no-osc --no-osd-bar --no-input-default-bindings\" \"node server.js\"",
+    "start:all:headless": "MPV_SOCKET=/tmp/screenview-mpv.sock concurrently -k -n mpv,server \"mpv --idle --force-window=no --input-ipc-server=/tmp/screenview-mpv.sock --vo=null --no-terminal --really-quiet\" \"node server.js\"",
+    "start:pm2": "pm2 start npm --name screenview -- run start:all",
+    "start:pm2:headless": "pm2 start npm --name screenview -- run start:all:headless"
   },
   "dependencies": {
     "express": "^4.21.0",
     "multer": "^1.4.5-lts.1",
     "ws": "^8.18.0",
     "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "pm2": "^5.4.0"
   }
 }
