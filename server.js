@@ -457,9 +457,11 @@ function ensureSocketDir() {
 
 function spawnMpvProcess() {
   ensureSocketDir();
+  const mpvBin = process.platform === 'linux' && fs.existsSync('/usr/bin/mpv') ? '/usr/bin/mpv' : 'mpv';
+  const hasDisplay = !!process.env.DISPLAY;
   const args = [
     '--idle',
-    '--force-window=yes',
+    `--force-window=${hasDisplay ? 'yes' : 'no'}`,
     `--input-ipc-server=${config.mpvSocket}`,
     '--no-osc',
     '--no-osd-bar',
@@ -467,12 +469,21 @@ function spawnMpvProcess() {
     '--image-display-duration=inf',
   ];
   if (config.isDev) {
-    args.push('--geometry=1280x720');
+    if (hasDisplay) {
+      args.push('--geometry=1280x720');
+    } else {
+      args.push('--vo=null', '--no-terminal', '--really-quiet');
+    }
   } else {
     args.push('--vo=drm', '--hwdec=vaapi', '--fs', '--no-terminal', '--really-quiet');
   }
-  mpvProcess = spawn('mpv', args, { stdio: 'ignore' });
-  mpvProcess.on('error', (err) => console.warn('Failed to spawn mpv:', err.message));
+  console.log('Spawning mpv, socket:', config.mpvSocket);
+  mpvProcess = spawn(mpvBin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+  mpvProcess.stderr?.on('data', (d) => process.stderr.write(d));
+  mpvProcess.on('error', (err) => {
+    console.warn('Failed to spawn mpv:', err.message);
+    if (err.code === 'ENOENT') console.warn('Install mpv: apt install mpv');
+  });
   mpvProcess.on('exit', (code, signal) => {
     mpvProcess = null;
     if (code != null && code !== 0) console.warn('mpv exited:', code);
@@ -495,12 +506,12 @@ function waitForSocket(maxMs = 5000) {
 async function connectMpv() {
   if (config.spawnMpv) {
     spawnMpvProcess();
-    if (!(await waitForSocket())) {
-      console.warn('mpv socket did not appear in time');
+    if (!(await waitForSocket(10000))) {
+      console.warn('mpv socket did not appear in time at', config.mpvSocket);
     }
   }
   mpv.connect().catch((err) => {
-    console.warn('mpv not available:', err.message);
+    console.warn('mpv not available:', err.message, '(socket:', config.mpvSocket + ')');
     broadcastState();
   });
 }
