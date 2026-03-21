@@ -17,25 +17,35 @@
     </header>
 
     <main class="main">
-      <section class="panel library-panel">
-        <h2>Media Library</h2>
-        <div class="upload-zone" id="uploadZone">
-          <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v">
-          <p>Drop files here or click to upload</p>
+      <div class="upload-progress" id="uploadProgress"></div>
+      <section class="panel library-panel" id="libraryPanel">
+        <div class="library-header">
+          <h2>Media Library</h2>
+          <button type="button" class="btn-add" id="btnAddLibrary" title="Add media">+</button>
         </div>
-        <div class="upload-progress" id="uploadProgress"></div>
-        <div class="library-grid" id="libraryGrid"></div>
+        <button type="button" class="btn-collapse" id="btnCollapseLibrary" title="Collapse library" aria-label="Collapse media library" aria-expanded="true"></button>
+        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v" hidden>
+        <div class="library-drop-zone" id="libraryDropZone">
+          <input type="search" class="library-search" id="librarySearch" placeholder="Search media…" aria-label="Search media library">
+          <div class="library-list" id="libraryList"></div>
+        </div>
         <div class="disk-space" id="diskSpace">—</div>
       </section>
 
       <section class="panel playlist-panel">
-        <h2>Playlist</h2>
+        <div class="playlist-header">
+          <h2>Playlist</h2>
+          <button type="button" class="btn-add" id="btnAddPlaylist" title="Add file to playlist (not library)">+</button>
+        </div>
+        <input type="file" id="playlistFileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v" hidden>
         <div class="playback-controls">
           <button class="btn btn-go" id="btnGo" disabled>GO</button>
           <button class="btn btn-stop" id="btnStop">STOP</button>
           <button class="btn btn-loop" id="btnLoop" title="Loop playlist" aria-pressed="false">↻ Loop</button>
         </div>
-        <div class="cue-list" id="cueList"></div>
+        <div class="cue-drop-zone" id="cueDropZone">
+          <div class="cue-list" id="cueList"></div>
+        </div>
       </section>
     </main>
 

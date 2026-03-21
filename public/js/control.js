@@ -14,10 +14,17 @@ let state = {
 let openPopupCueId = null;
 let ws = null;
 
-const uploadZone = document.getElementById('uploadZone');
 const fileInput = document.getElementById('fileInput');
+const btnAddLibrary = document.getElementById('btnAddLibrary');
+const libraryDropZone = document.getElementById('libraryDropZone');
+const playlistFileInput = document.getElementById('playlistFileInput');
+const btnAddPlaylist = document.getElementById('btnAddPlaylist');
+const cueDropZone = document.getElementById('cueDropZone');
+const btnCollapseLibrary = document.getElementById('btnCollapseLibrary');
+const mainEl = document.querySelector('.main');
 const uploadProgress = document.getElementById('uploadProgress');
-const libraryGrid = document.getElementById('libraryGrid');
+const librarySearch = document.getElementById('librarySearch');
+const libraryList = document.getElementById('libraryList');
 const diskSpace = document.getElementById('diskSpace');
 const cueList = document.getElementById('cueList');
 const btnGo = document.getElementById('btnGo');
@@ -74,7 +81,16 @@ function thumbUrl(item) {
 }
 
 function renderLibrary() {
-  libraryGrid.innerHTML = state.library.map((item) => {
+  const visibleLibrary = state.library.filter((item) => !item.playlistOnly);
+  const query = (librarySearch?.value || '').trim().toLowerCase();
+  const items = query
+    ? visibleLibrary.filter((item) =>
+        (item.originalName || '').toLowerCase().includes(query) ||
+        (item.type || '').toLowerCase().includes(query)
+      )
+    : visibleLibrary;
+
+  libraryList.innerHTML = items.map((item) => {
     const thumb = item.type === 'image'
       ? `<img class="thumb" src="${thumbUrl(item)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">`
       : '';
@@ -97,13 +113,13 @@ function renderLibrary() {
     `;
   }).join('');
 
-  libraryGrid.querySelectorAll('.add').forEach((btn) => {
+  libraryList.querySelectorAll('.add').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       api('POST', '/playlist', { mediaId: btn.dataset.id }).then(() => {});
     });
   });
-  libraryGrid.querySelectorAll('.delete').forEach((btn) => {
+  libraryList.querySelectorAll('.delete').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (confirm('Delete this file?')) api('DELETE', `/library/${btn.dataset.id}`).then(() => {});
@@ -132,6 +148,7 @@ function renderPlaylist() {
         <span class="num">Q${i + 1}</span>
         <span class="name">${escapeHtml(mediaName)}</span>
         <button class="cue-edit-btn" data-cue-id="${cue.id}" title="Edit settings">✎ Edit</button>
+        <button class="cue-delete-btn" data-cue-id="${cue.id}" title="Remove from playlist">×</button>
       </div>
     `;
   }).join('');
@@ -172,6 +189,12 @@ function renderPlaylist() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       openCuePopup(btn.dataset.cueId);
+    });
+  });
+  cueList.querySelectorAll('.cue-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      api('DELETE', `/playlist/${btn.dataset.cueId}`).then(() => {});
     });
   });
 
@@ -272,21 +295,112 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
-uploadZone.addEventListener('click', () => fileInput.click());
-uploadZone.addEventListener('dragover', (e) => {
+librarySearch?.addEventListener('input', () => render());
+
+const LIBRARY_COLLAPSED_KEY = 'screenview-library-collapsed';
+function loadLibraryCollapsed() {
+  const saved = localStorage.getItem(LIBRARY_COLLAPSED_KEY);
+  return saved === 'false' ? false : true;
+}
+const LIBRARY_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>';
+const COLLAPSE_ARROW_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
+function setLibraryCollapsed(collapsed) {
+  localStorage.setItem(LIBRARY_COLLAPSED_KEY, String(collapsed));
+  mainEl?.classList.toggle('library-collapsed', collapsed);
+  if (btnCollapseLibrary) {
+    btnCollapseLibrary.innerHTML = collapsed ? LIBRARY_ICON_SVG : COLLAPSE_ARROW_SVG;
+    btnCollapseLibrary.setAttribute('aria-expanded', String(!collapsed));
+    btnCollapseLibrary.title = collapsed ? 'Expand library' : 'Collapse library';
+  }
+}
+setLibraryCollapsed(loadLibraryCollapsed());
+btnCollapseLibrary?.addEventListener('click', () => setLibraryCollapsed(!loadLibraryCollapsed()));
+
+btnAddLibrary?.addEventListener('click', () => fileInput.click());
+libraryDropZone?.addEventListener('dragover', (e) => {
   e.preventDefault();
-  uploadZone.classList.add('dragover');
+  e.stopPropagation();
+  libraryDropZone.classList.add('dragover');
 });
-uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
-uploadZone.addEventListener('drop', (e) => {
+libraryDropZone?.addEventListener('dragleave', (e) => {
+  if (!libraryDropZone.contains(e.relatedTarget)) {
+    libraryDropZone.classList.remove('dragover');
+  }
+});
+libraryDropZone?.addEventListener('drop', (e) => {
   e.preventDefault();
-  uploadZone.classList.remove('dragover');
+  e.stopPropagation();
+  libraryDropZone.classList.remove('dragover');
   if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
 });
 fileInput.addEventListener('change', () => {
   if (fileInput.files.length) uploadFiles(fileInput.files);
   fileInput.value = '';
 });
+
+btnAddPlaylist?.addEventListener('click', () => playlistFileInput?.click());
+cueDropZone?.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  cueDropZone.classList.add('dragover');
+});
+cueDropZone?.addEventListener('dragleave', (e) => {
+  if (!cueDropZone.contains(e.relatedTarget)) {
+    cueDropZone.classList.remove('dragover');
+  }
+});
+cueDropZone?.addEventListener('drop', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  cueDropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) uploadFilesToPlaylist(e.dataTransfer.files);
+});
+playlistFileInput?.addEventListener('change', () => {
+  if (playlistFileInput.files?.length) {
+    uploadFilesToPlaylist(playlistFileInput.files);
+    playlistFileInput.value = '';
+  }
+});
+
+function uploadFilesToPlaylist(files) {
+  for (const file of files) {
+    const xhr = new XMLHttpRequest();
+    const fd = new FormData();
+    fd.append('file', file);
+
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `<span>${escapeHtml(file.name)}</span> <progress value="0" max="100">0%</progress>`;
+    uploadProgress.appendChild(div);
+    const prog = div.querySelector('progress');
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) prog.value = (e.loaded / e.total) * 100;
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        div.remove();
+        render();
+      } else {
+        let err = 'Upload failed';
+        try {
+          const body = JSON.parse(xhr.responseText);
+          err = body.error || err;
+        } catch (_) {}
+        div.innerHTML = `<span class="upload-error">${escapeHtml(err)}</span> <button class="retry">Retry</button>`;
+        div.classList.add('error');
+        div.querySelector('.retry').onclick = () => { div.remove(); uploadFilesToPlaylist([file]); };
+      }
+    };
+    xhr.onerror = () => {
+      div.innerHTML = `<span class="upload-error">Network error</span> <button class="retry">Retry</button>`;
+      div.classList.add('error');
+      div.querySelector('.retry').onclick = () => { div.remove(); uploadFilesToPlaylist([file]); };
+    };
+    xhr.open('POST', `${API}/playlist/upload`);
+    xhr.send(fd);
+  }
+}
 
 function uploadFiles(files) {
   for (const file of files) {
