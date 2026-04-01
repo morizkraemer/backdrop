@@ -164,9 +164,6 @@ function handleFileEnded() {
 
 // mpv events
 mpv.on('file-ended', handleFileEnded);
-mpv.on('file-loaded', () => {
-  if (isTransitioning) clearTransitionLock();
-});
 mpv.onReconnect(() => {
   const s = state.getState();
   if (s.currentCueIndex >= 0 && s.currentCueIndex < s.playlist.length) {
