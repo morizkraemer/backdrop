@@ -175,13 +175,19 @@ class MpvController extends EventEmitter {
   }
 
   async loadFile(path, opts = {}) {
-    const { loop = false, displayMode = 'fill', isImage = false } = opts;
+    const {
+      loop = false,
+      displayMode = 'fill',
+      isImage = false,
+      color = {},
+    } = opts;
     const mode = DISPLAY_MODES[displayMode] || DISPLAY_MODES.fill;
 
     await this._command('loadfile', [path, 'replace']);
     await this.setProperty('loop-file', loop ? 'inf' : 'no');
     await this.setProperty('keepaspect', mode.keepaspect);
     await this.setProperty('panscan', mode.panscan);
+    await this.applyColorSettings(color);
     if (isImage) {
       await this.setProperty('image-display-duration', 'inf');
     }
@@ -197,6 +203,14 @@ class MpvController extends EventEmitter {
 
   getProperty(name) {
     return this._command('get_property', [name]);
+  }
+
+  async applyColorSettings(color = {}) {
+    const hue = Number.isFinite(color.hue) ? color.hue : 0;
+    const saturation = Number.isFinite(color.saturation) ? color.saturation : 0;
+
+    await this.setProperty('hue', hue);
+    await this.setProperty('saturation', saturation);
   }
 }
 
