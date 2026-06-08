@@ -82,6 +82,7 @@ function getCuePlaybackOptions(cue, media) {
     loop: settings.loop ?? false,
     displayMode: settings.displayMode ?? 'fill',
     isImage: media.type === 'image',
+    freeze: settings.freeze ?? false,
     color: {
       hue: Number.isFinite(settings.tintHue) ? settings.tintHue : 0,
       saturation: Number.isFinite(settings.tintSaturation) ? settings.tintSaturation : 0,
@@ -181,6 +182,8 @@ function handleFileEnded() {
   if (!media || media.type === 'image') return;
   const loop = cue.settings?.loop ?? false;
   if (loop) return;
+  const freeze = cue.settings?.freeze ?? false;
+  if (freeze) return;
   advance();
 }
 
@@ -337,6 +340,7 @@ app.post('/api/playlist', (req, res) => {
       loop: settings.loop ?? false,
       displayMode: settings.displayMode ?? 'fill',
       duration: settings.duration ?? null,
+      freeze: settings.freeze ?? false,
       tintHue,
       tintSaturation,
     },
@@ -372,7 +376,7 @@ app.post('/api/playlist/upload', (req, res) => {
     const cue = {
       id: cueId,
       mediaId: id,
-      settings: { loop: false, displayMode: 'fill', duration: null, tintHue: 0, tintSaturation: 0 },
+      settings: { loop: false, displayMode: 'fill', duration: null, freeze: false, tintHue: 0, tintSaturation: 0 },
     };
     state.updateState((s) => ({
       ...s,
@@ -389,10 +393,11 @@ app.put('/api/playlist/:cueId', (req, res) => {
   const s = state.getState();
   const idx = s.playlist.findIndex((c) => c.id === req.params.cueId);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  const { loop, displayMode, duration, tintHue, tintSaturation } = req.body;
+  const { loop, displayMode, duration, freeze, tintHue, tintSaturation } = req.body;
   const cue = { ...s.playlist[idx] };
   cue.settings = { ...cue.settings };
   if (loop !== undefined) cue.settings.loop = !!loop;
+  if (freeze !== undefined) cue.settings.freeze = !!freeze;
   if (displayMode !== undefined) {
     if (!isValidDisplayMode(displayMode)) return res.status(400).json({ error: 'Invalid displayMode' });
     cue.settings.displayMode = displayMode;

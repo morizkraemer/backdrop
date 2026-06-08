@@ -179,12 +179,14 @@ class MpvController extends EventEmitter {
       loop = false,
       displayMode = 'fill',
       isImage = false,
+      freeze = false,
       color = {},
     } = opts;
     const mode = DISPLAY_MODES[displayMode] || DISPLAY_MODES.fill;
 
     await this._command('loadfile', [path, 'replace']);
     await this.setProperty('loop-file', loop ? 'inf' : 'no');
+    await this.setProperty('keep-open', freeze && !loop ? 'yes' : 'no');
     await this.setProperty('keepaspect', mode.keepaspect);
     await this.setProperty('panscan', mode.panscan);
     await this.applyColorSettings(color);
