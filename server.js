@@ -107,9 +107,9 @@ function playCue(index) {
   isTransitioning = true;
   broadcastState();
 
-  const { loop = false, displayMode = 'fill', duration = null, freeze = false } = cue.settings || {};
+  const { loop = false, displayMode = 'fill', duration = null } = cue.settings || {};
 
-  mpv.loadFile(filePath, { loop, displayMode, isImage: media.type === 'image', freeze })
+  mpv.loadFile(filePath, { loop, displayMode, isImage: media.type === 'image' })
     .then(() => {
       state.updateState({ currentCueIndex: index });
       clearTransitionLock();
@@ -159,8 +159,6 @@ function handleFileEnded() {
   if (!media || media.type === 'image') return;
   const loop = cue.settings?.loop ?? false;
   if (loop) return;
-  const freeze = cue.settings?.freeze ?? false;
-  if (freeze) return;
   advance();
 }
 
@@ -312,7 +310,6 @@ app.post('/api/playlist', (req, res) => {
       loop: settings.loop ?? false,
       displayMode: settings.displayMode ?? 'fill',
       duration: settings.duration ?? null,
-      freeze: settings.freeze ?? false,
     },
   };
   state.updateState((s) => ({ ...s, playlist: [...s.playlist, cue] }));
@@ -346,7 +343,7 @@ app.post('/api/playlist/upload', (req, res) => {
     const cue = {
       id: cueId,
       mediaId: id,
-      settings: { loop: false, displayMode: 'fill', duration: null, freeze: false },
+      settings: { loop: false, displayMode: 'fill', duration: null },
     };
     state.updateState((s) => ({
       ...s,
@@ -363,11 +360,10 @@ app.put('/api/playlist/:cueId', (req, res) => {
   const s = state.getState();
   const idx = s.playlist.findIndex((c) => c.id === req.params.cueId);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  const { loop, displayMode, duration, freeze } = req.body;
+  const { loop, displayMode, duration } = req.body;
   const cue = { ...s.playlist[idx] };
   cue.settings = { ...cue.settings };
   if (loop !== undefined) cue.settings.loop = !!loop;
-  if (freeze !== undefined) cue.settings.freeze = !!freeze;
   if (displayMode !== undefined) {
     if (!isValidDisplayMode(displayMode)) return res.status(400).json({ error: 'Invalid displayMode' });
     cue.settings.displayMode = displayMode;
@@ -390,7 +386,6 @@ app.put('/api/playlist/:cueId', (req, res) => {
           loop: cue.settings.loop,
           displayMode: cue.settings.displayMode,
           isImage: media.type === 'image',
-          freeze: cue.settings.freeze,
         }).catch(console.error);
       }
     }

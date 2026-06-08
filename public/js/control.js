@@ -35,7 +35,6 @@ const mpvStatus = document.getElementById('mpvStatus');
 const cuePopupBackdrop = document.getElementById('cuePopupBackdrop');
 const cuePopup = document.getElementById('cuePopup');
 const popupLoop = document.getElementById('popupLoop');
-const popupFreeze = document.getElementById('popupFreeze');
 const popupDisplayMode = document.getElementById('popupDisplayMode');
 const popupDuration = document.getElementById('popupDuration');
 const popupHold = document.getElementById('popupHold');
@@ -214,11 +213,7 @@ function openCuePopup(cueId) {
   const isVideo = media?.type === 'video';
 
   popupLoop.checked = cue.settings?.loop ?? false;
-  popupLoop.dataset.mediaDisabled = !isVideo;
-  popupLoop.disabled = !isVideo || (cue.settings?.freeze ?? false);
-  popupFreeze.checked = cue.settings?.freeze ?? false;
-  popupFreeze.dataset.mediaDisabled = !isVideo;
-  popupFreeze.disabled = !isVideo || (cue.settings?.loop ?? false);
+  popupLoop.disabled = !isVideo;
   popupDisplayMode.value = cue.settings?.displayMode ?? 'fill';
   const dur = cue.settings?.duration;
   popupDuration.value = dur != null ? dur : '';
@@ -245,7 +240,6 @@ popupSave.addEventListener('click', () => {
   const duration = popupHold.checked ? null : (popupDuration.value ? Number(popupDuration.value) : null);
   api('PUT', `/playlist/${openPopupCueId}`, {
     loop: popupLoop.checked,
-    freeze: popupFreeze.checked,
     displayMode: popupDisplayMode.value,
     duration,
   }).then((r) => {
@@ -259,14 +253,6 @@ popupSave.addEventListener('click', () => {
   });
 });
 
-popupLoop.onchange = () => {
-  if (popupLoop.checked) popupFreeze.checked = false;
-  popupFreeze.disabled = popupLoop.checked || popupFreeze.dataset.mediaDisabled === 'true';
-};
-popupFreeze.onchange = () => {
-  if (popupFreeze.checked) popupLoop.checked = false;
-  popupLoop.disabled = popupFreeze.checked || popupLoop.dataset.mediaDisabled === 'true';
-};
 popupDuration.oninput = () => { popupHold.checked = popupDuration.value === ''; };
 popupHold.onchange = () => {
   if (popupHold.checked) popupDuration.value = '';
