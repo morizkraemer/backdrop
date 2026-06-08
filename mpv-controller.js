@@ -184,6 +184,8 @@ class MpvController extends EventEmitter {
     } = opts;
     const mode = DISPLAY_MODES[displayMode] || DISPLAY_MODES.fill;
 
+    await this.setProperty('keep-open', 'no');
+    await this.setProperty('pause', 'no');
     await this._command('loadfile', [path, 'replace']);
     await this.setProperty('loop-file', loop ? 'inf' : 'no');
     await this.setProperty('keep-open', freeze && !loop ? 'yes' : 'no');
