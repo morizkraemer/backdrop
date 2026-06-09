@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -517,6 +517,51 @@ app.post('/api/stop', (req, res) => {
   state.updateState({ currentCueIndex: -1 });
   broadcastState();
   res.status(204).send();
+});
+
+// Bluetooth pairing control (remote Pi)
+function sshCommand(cmd) {
+  return new Promise((resolve, reject) => {
+    if (!config.btHost) return reject(new Error('BT_HOST not configured'));
+    const args = ['-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=5'];
+    let bin = 'ssh';
+    const fullArgs = [];
+    if (config.btPassword) {
+      bin = 'sshpass';
+      fullArgs.push('-p', config.btPassword);
+      fullArgs.push('ssh', ...args);
+    } else {
+      fullArgs.push(...args);
+    }
+    fullArgs.push(`${config.btUser}@${config.btHost}`, cmd);
+    execFile(bin, fullArgs, { timeout: 10000 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(stderr || err.message));
+      resolve(stdout.trim());
+    });
+  });
+}
+
+app.get('/api/bluetooth/status', async (req, res) => {
+  if (!config.btHost) return res.json({ available: false });
+  try {
+    const out = await sshCommand('bluetoothctl show | grep Discoverable:');
+    const discoverable = out.includes('yes');
+    res.json({ available: true, discoverable });
+  } catch {
+    res.json({ available: false });
+  }
+});
+
+app.post('/api/bluetooth/pairing', async (req, res) => {
+  if (!config.btHost) return res.status(501).json({ error: 'BT_HOST not configured' });
+  const { enabled } = req.body;
+  const onOff = enabled ? 'on' : 'off';
+  try {
+    await sshCommand(`bluetoothctl discoverable ${onOff}`);
+    res.json({ discoverable: !!enabled });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const server = app.listen(config.port, () => {

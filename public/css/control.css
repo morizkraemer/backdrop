@@ -492,6 +492,27 @@ body {
   border-color: var(--accent);
 }
 
+.btn-bt {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.btn-bt:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.btn-bt.active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
 .cue-drop-zone {
   flex: 1;
   min-height: 0;

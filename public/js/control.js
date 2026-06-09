@@ -30,6 +30,7 @@ const cueList = document.getElementById('cueList');
 const btnGo = document.getElementById('btnGo');
 const btnStop = document.getElementById('btnStop');
 const btnLoop = document.getElementById('btnLoop');
+const btnBluetooth = document.getElementById('btnBluetooth');
 const status = document.getElementById('status');
 const mpvStatus = document.getElementById('mpvStatus');
 const cuePopupBackdrop = document.getElementById('cuePopupBackdrop');
@@ -491,6 +492,45 @@ btnLoop.addEventListener('click', () => {
       render();
     });
 });
+
+// Bluetooth pairing toggle
+let btAvailable = false;
+let btDiscoverable = false;
+
+function updateBtButton() {
+  if (!btAvailable) {
+    btnBluetooth.hidden = true;
+    return;
+  }
+  btnBluetooth.hidden = false;
+  btnBluetooth.classList.toggle('active', btDiscoverable);
+  btnBluetooth.textContent = btDiscoverable ? 'BT Pairing ON' : 'BT Pairing';
+}
+
+function fetchBtStatus() {
+  api('GET', '/bluetooth/status')
+    .then((r) => r.ok ? r.json() : null)
+    .then((data) => {
+      if (!data) return;
+      btAvailable = data.available;
+      btDiscoverable = data.discoverable;
+      updateBtButton();
+    })
+    .catch(() => {});
+}
+
+btnBluetooth.addEventListener('click', () => {
+  const next = !btDiscoverable;
+  api('POST', '/bluetooth/pairing', { enabled: next })
+    .then((r) => r.ok ? r.json() : null)
+    .then((data) => {
+      if (data) btDiscoverable = data.discoverable;
+      updateBtButton();
+    })
+    .catch(() => {});
+});
+
+fetchBtStatus();
 
 connectWs();
 render();

@@ -11,6 +11,9 @@ Restart=always
 RestartSec=3
 Environment=NODE_ENV=production
 Environment=MPV_SOCKET=/run/screenview/mpv.sock
+Environment=BT_HOST=192.168.178.242
+Environment=BT_USER=bhf
+Environment=BT_PASSWORD=12345
 
 [Install]
 WantedBy=multi-user.target
