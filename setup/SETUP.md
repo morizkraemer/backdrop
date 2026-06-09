@@ -89,7 +89,55 @@ systemctl enable screenview-mpv screenview
 systemctl start screenview-mpv screenview
 ```
 
-## 8. Verification
+## 8. Audio (Snapcast to Raspberry Pi)
+
+Route audio from mpv through PulseAudio → Snapcast → a Raspberry Pi with speakers.
+
+### On the backdrop LXC:
+
+```bash
+apt install -y pulseaudio pulseaudio-utils alsa-utils socat snapserver
+
+# Create the Snapcast FIFO
+mkfifo /tmp/snapfifo
+chmod 666 /tmp/snapfifo
+
+# Reduce Snapcast buffer for low latency
+sed -i 's/#buffer = 1000/buffer = 200/' /etc/snapserver.conf
+
+# Install PulseAudio service
+cp /opt/screenview/setup/pulseaudio-screenview.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable pulseaudio-screenview snapserver
+systemctl start pulseaudio-screenview snapserver
+```
+
+PM2 must be started with PulseAudio env vars so mpv can connect:
+
+```bash
+export PULSE_SERVER=unix:/run/user/1000/pulse/native
+export XDG_RUNTIME_DIR=/run/user/1000
+pm2 delete screenview
+cd /opt/screenview/backdrop
+pm2 start npm --name screenview --update-env -- run start:all
+pm2 save
+```
+
+### On the Raspberry Pi:
+
+```bash
+apt install -y snapclient
+
+# Configure to connect to backdrop and output to USB audio
+cat > /etc/default/snapclient <<EOF
+SNAPCLIENT_OPTS="--host <backdrop-ip> --soundcard hw:CODEC --hostID bhf-audio"
+EOF
+
+systemctl enable snapclient
+systemctl start snapclient
+```
+
+## 9. Verification
 
 - **mpv**: `systemctl status screenview-mpv` – should show active
 - **Node**: `systemctl status screenview` – should show active

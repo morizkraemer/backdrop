@@ -1,0 +1,15 @@
+[Unit]
+Description=PulseAudio for screenview (audio routing to Snapcast)
+Before=pm2-screenview.service
+
+[Service]
+Type=simple
+User=screenview
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/usr/bin/pulseaudio --disallow-exit --disallow-module-loading=0 --log-target=journal
+ExecStartPost=/bin/sleep 1
+ExecStartPost=/bin/bash -c "export XDG_RUNTIME_DIR=/run/user/1000; pactl load-module module-pipe-sink file=/tmp/snapfifo sink_name=snapcast format=s16le rate=48000 channels=2; pactl set-default-sink snapcast"
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
