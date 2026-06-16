@@ -7,8 +7,10 @@
     "start": "node server.js",
     "start:all": "MPV_SOCKET=/tmp/screenview-mpv.sock concurrently -k -n mpv,server \"mpv --idle --force-window=yes --input-ipc-server=/tmp/screenview-mpv.sock --geometry=1280x720 --no-osc --no-osd-bar --no-input-default-bindings --ao=pulse\" \"node server.js\"",
     "start:all:headless": "MPV_SOCKET=/tmp/screenview-mpv.sock concurrently -k -n mpv,server \"mpv --idle --force-window=no --input-ipc-server=/tmp/screenview-mpv.sock --vo=null --no-terminal --really-quiet\" \"node server.js\"",
+    "start:all:prod": "MPV_SOCKET=/tmp/screenview-mpv.sock concurrently -k -n mpv,server \"mpv --idle --input-ipc-server=/tmp/screenview-mpv.sock --vo=drm --hwdec=vaapi --fs --no-terminal --really-quiet --no-osc --no-osd-bar --no-input-default-bindings --ao=pulse --image-display-duration=inf\" \"node server.js\"",
     "start:pm2": "pm2 start npm --name screenview -- run start:all",
-    "start:pm2:headless": "pm2 start npm --name screenview -- run start:all:headless"
+    "start:pm2:headless": "pm2 start npm --name screenview -- run start:all:headless",
+    "start:pm2:prod": "pm2 start npm --name screenview -- run start:all:prod"
   },
   "dependencies": {
     "express": "^4.21.0",
