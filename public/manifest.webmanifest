@@ -1,6 +1,6 @@
 {
-  "name": "Backdrop Control",
-  "short_name": "Backdrop",
+  "name": "backdrop",
+  "short_name": "backdrop",
   "id": "/control",
   "start_url": "/control",
   "scope": "/",

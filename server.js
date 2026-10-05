@@ -565,7 +565,7 @@ app.post('/api/bluetooth/pairing', async (req, res) => {
 });
 
 const server = app.listen(config.port, () => {
-  console.log(`Backdrop listening on port ${config.port}`);
+  console.log(`backdrop listening on port ${config.port}`);
 });
 
 wss = new WebSocketServer({ server, path: '/ws' });
