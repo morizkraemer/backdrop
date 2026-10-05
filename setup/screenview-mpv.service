@@ -1,5 +1,5 @@
 [Unit]
-Description=Screenview mpv Display
+Description=Backdrop mpv Display
 After=network.target
 
 [Service]

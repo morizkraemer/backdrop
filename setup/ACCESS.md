@@ -1,6 +1,6 @@
 # Server Access & Deployment
 
-How to reach the running Screenview install and push updates to it.
+How to reach the running Backdrop install and push updates to it.
 
 > This repo is public. Do not commit passwords or keys here. Access is
 > SSH-key based; secrets live only in `/opt/screenview/backdrop/.env` on the
@@ -43,6 +43,10 @@ ssh root@192.168.178.18 "pct exec 102 -- bash -c 'cat >> /root/.ssh/authorized_k
 ```
 
 ## How the app runs
+
+The app was renamed from "Screenview" to "Backdrop". System-level names
+(Linux user, `/opt/screenview`, PM2 process, socket paths, service files)
+intentionally still say `screenview`.
 
 - Code: `/opt/screenview/backdrop` (git checkout, owned by `screenview`, branch `feature/implementation`)
 - Process: PM2 as user `screenview`, `PM2_HOME=/opt/screenview/.pm2`, app name `screenview`, running `npm run start:all:prod`

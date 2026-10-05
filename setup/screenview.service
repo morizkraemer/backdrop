@@ -1,5 +1,5 @@
 [Unit]
-Description=Screenview Media Server
+Description=Backdrop Media Server
 After=network.target screenview-mpv.service
 
 [Service]

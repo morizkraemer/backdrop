@@ -1,5 +1,5 @@
 {
-  "name": "screenview",
+  "name": "backdrop",
   "version": "1.0.0",
   "description": "Digital signage app - mpv + Node.js for LED panel control",
   "main": "server.js",

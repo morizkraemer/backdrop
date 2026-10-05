@@ -1,8 +1,8 @@
-# Screenview Setup Guide
+# Backdrop Setup Guide
 
 > For access to the live install and deploy steps, see [ACCESS.md](ACCESS.md).
 
-Deploy the Screenview media signage app in a Proxmox LXC container, driving a 2304×768 LED panel via mpv with DRM output.
+Deploy the Backdrop media signage app in a Proxmox LXC container, driving a 2304×768 LED panel via mpv with DRM output.
 
 ## 1. LXC Container
 
@@ -60,7 +60,7 @@ chown -R screenview:screenview /opt/screenview
 
 ## 6. Deploy Application
 
-Copy the Screenview files to `/opt/screenview`:
+Copy the Backdrop files to `/opt/screenview`:
 
 ```
 /opt/screenview/

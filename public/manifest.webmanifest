@@ -1,6 +1,6 @@
 {
-  "name": "Screenview Control",
-  "short_name": "Screenview",
+  "name": "Backdrop Control",
+  "short_name": "Backdrop",
   "id": "/control",
   "start_url": "/control",
   "scope": "/",
