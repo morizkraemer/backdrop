@@ -1,5 +1,7 @@
 # Screenview Setup Guide
 
+> For access to the live install and deploy steps, see [ACCESS.md](ACCESS.md).
+
 Deploy the Screenview media signage app in a Proxmox LXC container, driving a 2304×768 LED panel via mpv with DRM output.
 
 ## 1. LXC Container
