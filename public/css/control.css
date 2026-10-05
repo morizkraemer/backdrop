@@ -119,6 +119,23 @@ body {
   display: none;
 }
 
+@media (min-width: 769px) {
+  .app {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .main {
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .main .library-panel,
+  .main .playlist-panel {
+    min-height: 0;
+  }
+}
+
 @media (max-width: 768px) {
   .main {
     grid-template-columns: 1fr;
@@ -532,6 +549,7 @@ body {
 .cue-list {
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .cue-row {
