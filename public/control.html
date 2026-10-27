@@ -112,6 +112,9 @@
           <button type="button" class="btn-secondary" id="btnNewFolder" title="New folder" aria-label="New folder">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5"/><path d="M9.5 13.5h5"/></svg>
           </button>
+          <button type="button" class="btn-secondary" id="btnRemoteUpload" title="QR code for uploading from a phone" aria-label="Phone upload QR code" aria-haspopup="dialog">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3"/><path d="M21 14v.01"/><path d="M17 21h4v-4"/><path d="M14 18v3"/></svg>
+          </button>
           <button type="button" class="btn-secondary" id="btnUpload">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 20h16"/></svg>
             Upload
@@ -200,6 +203,18 @@
           </div>
         </div>
       </aside>
+    </div>
+
+    <div class="qr-backdrop" id="qrBackdrop" hidden>
+      <div class="qr-dialog" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
+        <div class="qr-head">
+          <h2 id="qrTitle">Upload from a phone</h2>
+          <button type="button" class="btn-icon" id="qrClose" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="qr-body" id="qrBody"></div>
+      </div>
     </div>
 
     <div class="uploads" id="uploads" aria-live="polite"></div>

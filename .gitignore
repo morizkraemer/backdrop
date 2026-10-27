@@ -4,6 +4,8 @@ uploads/*
 state.json
 state.json.tmp
 state.json.corrupt.*
+remote-upload.json
+remote-upload.json.tmp
 *.log
 .DS_Store
 .env
