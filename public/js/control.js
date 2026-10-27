@@ -1489,5 +1489,93 @@ hdmiSources.addEventListener('click', (e) => {
   if (b && !b.disabled) sendHdmiSource(Number(b.dataset.input));
 });
 
+// --- Remote uploads (QR code for the Cloudflare Tunnel upload page) ---
+
+const qrBackdrop = $('qrBackdrop');
+const qrBody = $('qrBody');
+const btnRemoteUpload = $('btnRemoteUpload');
+let remoteUpload = null;
+let remoteUploadError = null;
+let remoteUploadBusy = false;
+
+function renderRemoteUpload() {
+  const r = remoteUpload;
+  if (!r) {
+    qrBody.innerHTML = `<p class="qr-note${remoteUploadError ? ' error' : ''}">${escapeHtml(remoteUploadError || 'Loading…')}</p>`;
+    return;
+  }
+  if (r.disabled) {
+    qrBody.innerHTML = '<p class="qr-note">Remote uploads are turned off on this server (REMOTE_UPLOAD_PORT=0).</p>';
+    return;
+  }
+  if (!r.configured) {
+    qrBody.innerHTML = `<p class="qr-note">Not set up yet. Once the Cloudflare Tunnel is running, set <code>REMOTE_UPLOAD_URL</code> in the server's .env and restart. Steps are in <code>setup/REMOTE-UPLOAD.md</code>.</p>`;
+    return;
+  }
+  qrBody.innerHTML = `
+    <div class="qr-code${r.enabled ? '' : ' closed'}">${r.qr}${r.enabled ? '' : '<span>Closed</span>'}</div>
+    <div class="qr-url"><span>${escapeHtml(r.url)}</span><button type="button" class="btn-secondary" id="qrCopy">Copy</button></div>
+    <p class="qr-note">Anyone with this code can send photos and videos from anywhere. They land in the “${escapeHtml(r.folderName)}” folder.</p>
+    <label class="qr-toggle">
+      <input type="checkbox" id="qrEnabled" ${r.enabled ? 'checked' : ''} ${remoteUploadBusy ? 'disabled' : ''}>
+      <span>Accept uploads</span>
+    </label>
+    <div class="qr-actions">
+      <button type="button" class="btn-secondary" id="qrRotate" ${remoteUploadBusy ? 'disabled' : ''}>New link</button>
+      <span class="qr-hint">Makes old QR codes stop working</span>
+    </div>
+    ${remoteUploadError ? `<p class="qr-note error">${escapeHtml(remoteUploadError)}</p>` : ''}`;
+}
+
+function remoteUploadCall(method, path, body) {
+  remoteUploadBusy = true;
+  remoteUploadError = null;
+  renderRemoteUpload();
+  return api(method, `/remote-upload${path}`, body)
+    .then(async (r) => {
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Request failed');
+      remoteUpload = data;
+    })
+    .catch((err) => { remoteUploadError = err.message; })
+    .finally(() => {
+      remoteUploadBusy = false;
+      renderRemoteUpload();
+    });
+}
+
+function setQrOpen(open) {
+  qrBackdrop.hidden = !open;
+  if (!open) return btnRemoteUpload.focus();
+  remoteUpload = null;
+  remoteUploadCall('GET', '');
+  $('qrClose').focus();
+}
+
+btnRemoteUpload.addEventListener('click', () => setQrOpen(true));
+$('qrClose').addEventListener('click', () => setQrOpen(false));
+qrBackdrop.addEventListener('click', (e) => {
+  if (e.target === qrBackdrop) setQrOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !qrBackdrop.hidden) setQrOpen(false);
+});
+qrBody.addEventListener('change', (e) => {
+  if (e.target.id === 'qrEnabled') remoteUploadCall('PUT', '', { enabled: e.target.checked });
+});
+qrBody.addEventListener('click', (e) => {
+  if (e.target.id === 'qrRotate' && confirm('Make a new link? The current QR code stops working, including any you printed or shared.')) {
+    remoteUploadCall('POST', '/rotate');
+  }
+  if (e.target.id === 'qrCopy' && remoteUpload?.url) {
+    // The clipboard API only exists over https; on the LAN select the link instead
+    const selectUrl = () => getSelection().selectAllChildren(qrBody.querySelector('.qr-url span'));
+    if (!navigator.clipboard) return selectUrl();
+    navigator.clipboard.writeText(remoteUpload.url)
+      .then(() => { e.target.textContent = 'Copied'; })
+      .catch(selectUrl);
+  }
+});
+
 connectWs();
 render();

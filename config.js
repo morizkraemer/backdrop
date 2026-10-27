@@ -28,4 +28,12 @@ module.exports = {
   hdmiOutput: Math.max(1, parseInt(process.env.HDMI_OUTPUT || '1', 10)),
   hdmiSources: (process.env.HDMI_SOURCES || 'Backdrop,FOH,Stage,Balkon')
     .split(',').map((n) => n.trim()).filter(Boolean),
+  // Upload-only server for the Cloudflare Tunnel (setup/REMOTE-UPLOAD.md).
+  // REMOTE_UPLOAD_URL is the public https address the QR code points to.
+  // Set REMOTE_UPLOAD_PORT=0 to turn remote uploads off.
+  remoteUploadUrl: process.env.REMOTE_UPLOAD_URL || null,
+  remoteUploadPort: Math.max(0, parseInt(process.env.REMOTE_UPLOAD_PORT ?? '3100', 10) || 0),
+  remoteUploadHost: process.env.REMOTE_UPLOAD_HOST || '127.0.0.1',
+  remoteUploadFolder: process.env.REMOTE_UPLOAD_FOLDER || 'Remote uploads',
+  remoteUploadSettingsPath: process.env.REMOTE_UPLOAD_SETTINGS || path.join(__dirname, 'remote-upload.json'),
 };

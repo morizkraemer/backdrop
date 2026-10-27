@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#111214">
+  <title>Send to backdrop</title>
+  <style>
+    :root {
+      --bg: #111214;
+      --bg-raised: #17181b;
+      --border: #26282d;
+      --text: #ececee;
+      --text-muted: #9a9da4;
+      --live: #3ddc84;
+      --live-ink: #0b1a10;
+      --danger: #ff6b66;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    main {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 32px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    h1 { margin: 0; font-size: 24px; letter-spacing: -0.01em; }
+    p { margin: 0; color: var(--text-muted); }
+    .pick {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 64px;
+      border-radius: 14px;
+      border: none;
+      background: var(--live);
+      color: var(--live-ink);
+      font: inherit;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .pick svg { width: 22px; height: 22px; }
+    .pick:disabled { opacity: 0.5; }
+    ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    li {
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+    .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pct { color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .bar { height: 4px; border-radius: 2px; background: #26282d; overflow: hidden; }
+    .bar div { height: 100%; width: 0; background: var(--live); transition: width 0.2s; }
+    li.done .pct { color: var(--live); }
+    li.done .bar { display: none; }
+    li.error { border-color: #5a2b2a; }
+    li.error .pct { color: var(--danger); white-space: normal; text-align: right; }
+    li.error .bar { display: none; }
+    .retry { align-self: flex-start; font: inherit; font-size: 14px; color: var(--text); background: none; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+    .note { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Send to backdrop</h1>
+    <p>Pick photos or videos. They go straight into the backdrop media library.</p>
+    <button type="button" class="pick" id="pick">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 20h16"/></svg>
+      Choose files
+    </button>
+    <input type="file" id="files" multiple hidden
+      accept="image/*,video/*,.jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v">
+    <ul id="list" aria-live="polite"></ul>
+    <p class="note" id="note" hidden>Keep this page open until every file says Sent.</p>
+  </main>
+  <script>
+    const base = location.pathname.replace(/\/+$/, '');
+    const list = document.getElementById('list');
+    const input = document.getElementById('files');
+    const note = document.getElementById('note');
+    let active = 0;
+    const queue = [];
+
+    document.getElementById('pick').addEventListener('click', () => input.click());
+    input.addEventListener('change', () => {
+      for (const file of input.files) queue.push(addRow(file));
+      input.value = '';
+      pump();
+    });
+    window.addEventListener('beforeunload', (e) => {
+      if (active || queue.length) e.preventDefault();
+    });
+
+    function addRow(file) {
+      const li = document.createElement('li');
+      li.innerHTML = '<div class="row"><span class="name"></span><span class="pct">Waiting</span></div><div class="bar"><div></div></div>';
+      li.querySelector('.name').textContent = file.name;
+      list.prepend(li);
+      return { file, li, pct: li.querySelector('.pct'), bar: li.querySelector('.bar div') };
+    }
+
+    // Two files at a time keeps a phone on mobile data responsive
+    function pump() {
+      note.hidden = !(active || queue.length);
+      while (active < 2 && queue.length) {
+        const job = queue.shift();
+        active++;
+        send(job).finally(() => { active--; pump(); });
+      }
+    }
+
+    async function json(method, url, body) {
+      const res = await fetch(url, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(data.error || `Error ${res.status}`), { status: res.status });
+      return data;
+    }
+
+    function putChunk(url, blob, onProgress) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', url);
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        xhr.upload.onprogress = (e) => onProgress(e.loaded);
+        xhr.onload = () => {
+          let data = {};
+          try { data = JSON.parse(xhr.responseText); } catch (_) {}
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+          else reject(Object.assign(new Error(data.error || `Error ${xhr.status}`), { status: xhr.status, received: data.received }));
+        };
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.send(blob);
+      });
+    }
+
+    function show(job, sent) {
+      const p = Math.floor((sent / job.file.size) * 100);
+      job.pct.textContent = `${p}%`;
+      job.bar.style.width = `${p}%`;
+    }
+
+    async function send(job) {
+      const { file, li } = job;
+      li.className = '';
+      li.querySelector('.retry')?.remove();
+      try {
+        if (!job.id) {
+          const started = await json('POST', `${base}/files`, { name: file.name, size: file.size });
+          job.id = started.id;
+          job.chunkSize = started.chunkSize;
+          job.received = 0;
+        }
+        const url = `${base}/files/${job.id}`;
+        let failures = 0;
+        while (job.received < file.size) {
+          const end = Math.min(job.received + job.chunkSize, file.size);
+          try {
+            const r = await putChunk(`${url}?offset=${job.received}`, file.slice(job.received, end),
+              (loaded) => show(job, job.received + loaded));
+            job.received = r.received;
+            failures = 0;
+          } catch (err) {
+            if (err.status === 403 || err.status === 404 || err.status === 413) throw err;
+            if (++failures > 5) throw err;
+            job.pct.textContent = 'Reconnecting…';
+            await new Promise((r) => setTimeout(r, 1000 * 2 ** failures));
+            // Ask where the server got to before sending again
+            job.received = (await json('GET', url).catch(() => ({ received: job.received }))).received;
+          }
+          show(job, job.received);
+        }
+        await json('POST', `${url}/done`);
+        li.className = 'done';
+        job.pct.textContent = 'Sent';
+      } catch (err) {
+        if (err.status === 404) job.id = null; // upload expired, start over on retry
+        li.className = 'error';
+        job.pct.textContent = err.message;
+        if (err.status !== 403) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'retry';
+          btn.textContent = 'Try again';
+          btn.onclick = () => { btn.remove(); job.pct.textContent = 'Waiting'; queue.push(job); pump(); };
+          li.appendChild(btn);
+        }
+      }
+    }
+  </script>
+</body>
+</html>
