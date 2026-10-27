@@ -6,3 +6,4 @@ state.json.tmp
 state.json.corrupt.*
 *.log
 .DS_Store
+.env

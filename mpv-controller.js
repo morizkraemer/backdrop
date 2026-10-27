@@ -24,6 +24,7 @@ class MpvController extends EventEmitter {
     this.reconnectAttempts = 0;
     this.reconnectTimer = null;
     this.reconnectCallback = null;
+    this.connecting = null;
     this.minBackoff = 1000;
     this.maxBackoff = 10000;
     this.intentionalDisconnect = false;
@@ -39,34 +40,52 @@ class MpvController extends EventEmitter {
   }
 
   connect() {
-    return new Promise((resolve, reject) => {
-      this.socket = new net.Socket();
-      this.socket.setEncoding('utf8');
+    if (this.connected) return Promise.resolve();
+    if (this.connecting) return this.connecting;
+    this.connecting = new Promise((resolve, reject) => {
+      // Only the current socket may change state; a stale socket closing late
+      // must not mark a live connection as disconnected.
+      const sock = new net.Socket();
+      this.socket = sock;
+      sock.setEncoding('utf8');
 
-      this.socket.on('data', (chunk) => this._onData(chunk));
-      this.socket.on('close', () => this._onClose());
-      this.socket.on('error', (err) => {
-        if (!this.connected) reject(err);
+      sock.on('data', (chunk) => {
+        if (sock === this.socket) this._onData(chunk);
+      });
+      sock.on('close', () => {
+        if (sock !== this.socket) return;
+        this.connecting = null;
+        this._onClose();
+      });
+      sock.on('error', (err) => {
+        if (sock === this.socket && !this.connected) reject(err);
       });
 
-      this.socket.connect({ path: this.socketPath }, () => {
+      sock.connect({ path: this.socketPath }, () => {
+        if (sock !== this.socket) return;
+        this.connecting = null;
         this.connected = true;
         this.intentionalDisconnect = false;
         this.reconnectAttempts = 0;
+        this._clearReconnectTimer();
+        console.log('mpv connected');
         this.emit('connected');
         this._flushQueue();
         if (this.reconnectCallback) this.reconnectCallback();
         resolve();
       });
     });
+    return this.connecting;
   }
 
   disconnect() {
     this.intentionalDisconnect = true;
     this._clearReconnectTimer();
+    this.connecting = null;
     if (this.socket) {
-      this.socket.destroy();
+      const sock = this.socket;
       this.socket = null;
+      sock.destroy();
     }
     this.connected = false;
     this.emit('disconnected');
@@ -111,10 +130,12 @@ class MpvController extends EventEmitter {
   }
 
   _onClose() {
+    const wasConnected = this.connected;
     this.connected = false;
     this.socket = null;
     this._rejectPending(new Error('Connection closed'));
     this.buffer = '';
+    if (wasConnected) console.warn('mpv disconnected, reconnecting');
     this.emit('disconnected');
     if (!this.intentionalDisconnect) this._scheduleReconnect();
   }
@@ -175,11 +196,19 @@ class MpvController extends EventEmitter {
   }
 
   async loadFile(path, opts = {}) {
-    const { loop = false, displayMode = 'fill', isImage = false } = opts;
+    const {
+      loop = false,
+      displayMode = 'fill',
+      isImage = false,
+      freeze = false,
+    } = opts;
     const mode = DISPLAY_MODES[displayMode] || DISPLAY_MODES.fill;
 
+    await this.setProperty('keep-open', 'no');
+    await this.setProperty('pause', 'no');
     await this._command('loadfile', [path, 'replace']);
     await this.setProperty('loop-file', loop ? 'inf' : 'no');
+    await this.setProperty('keep-open', freeze && !loop ? 'yes' : 'no');
     await this.setProperty('keepaspect', mode.keepaspect);
     await this.setProperty('panscan', mode.panscan);
     if (isImage) {

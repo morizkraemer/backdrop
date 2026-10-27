@@ -3,14 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Screenview Control</title>
+  <title>backdrop</title>
+  <meta name="theme-color" content="#16213e">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="stylesheet" href="css/control.css">
 </head>
 <body>
   <div class="app">
     <header class="header">
-      <h1>Screenview</h1>
+      <h1>backdrop</h1>
       <div class="header-right">
+        <button class="btn btn-bt" id="btnBluetooth" hidden title="Bluetooth pairing mode">BT Pairing</button>
         <div class="mpv-status" id="mpvStatus" hidden>mpv disconnected</div>
         <div class="status" id="status">Connecting…</div>
       </div>
@@ -54,6 +59,9 @@
         <div class="cue-popup-inner">
         <label>
           <input type="checkbox" id="popupLoop"> Loop (video)
+        </label>
+        <label>
+          <input type="checkbox" id="popupFreeze"> Freeze last frame (video)
         </label>
         <label>
           Display:

@@ -119,6 +119,23 @@ body {
   display: none;
 }
 
+@media (min-width: 769px) {
+  .app {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .main {
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .main .library-panel,
+  .main .playlist-panel {
+    min-height: 0;
+  }
+}
+
 @media (max-width: 768px) {
   .main {
     grid-template-columns: 1fr;
@@ -492,6 +509,27 @@ body {
   border-color: var(--accent);
 }
 
+.btn-bt {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.btn-bt:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.btn-bt.active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
 .cue-drop-zone {
   flex: 1;
   min-height: 0;
@@ -511,6 +549,7 @@ body {
 .cue-list {
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .cue-row {

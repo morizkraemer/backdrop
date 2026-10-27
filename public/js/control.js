@@ -30,11 +30,13 @@ const cueList = document.getElementById('cueList');
 const btnGo = document.getElementById('btnGo');
 const btnStop = document.getElementById('btnStop');
 const btnLoop = document.getElementById('btnLoop');
+const btnBluetooth = document.getElementById('btnBluetooth');
 const status = document.getElementById('status');
 const mpvStatus = document.getElementById('mpvStatus');
 const cuePopupBackdrop = document.getElementById('cuePopupBackdrop');
 const cuePopup = document.getElementById('cuePopup');
 const popupLoop = document.getElementById('popupLoop');
+const popupFreeze = document.getElementById('popupFreeze');
 const popupDisplayMode = document.getElementById('popupDisplayMode');
 const popupDuration = document.getElementById('popupDuration');
 const popupHold = document.getElementById('popupHold');
@@ -213,7 +215,11 @@ function openCuePopup(cueId) {
   const isVideo = media?.type === 'video';
 
   popupLoop.checked = cue.settings?.loop ?? false;
-  popupLoop.disabled = !isVideo;
+  popupLoop.dataset.mediaDisabled = !isVideo;
+  popupLoop.disabled = !isVideo || (cue.settings?.freeze ?? false);
+  popupFreeze.checked = cue.settings?.freeze ?? false;
+  popupFreeze.dataset.mediaDisabled = !isVideo;
+  popupFreeze.disabled = !isVideo || (cue.settings?.loop ?? false);
   popupDisplayMode.value = cue.settings?.displayMode ?? 'fill';
   const dur = cue.settings?.duration;
   popupDuration.value = dur != null ? dur : '';
@@ -240,6 +246,7 @@ popupSave.addEventListener('click', () => {
   const duration = popupHold.checked ? null : (popupDuration.value ? Number(popupDuration.value) : null);
   api('PUT', `/playlist/${openPopupCueId}`, {
     loop: popupLoop.checked,
+    freeze: popupFreeze.checked,
     displayMode: popupDisplayMode.value,
     duration,
   }).then((r) => {
@@ -253,6 +260,14 @@ popupSave.addEventListener('click', () => {
   });
 });
 
+popupLoop.onchange = () => {
+  if (popupLoop.checked) popupFreeze.checked = false;
+  popupFreeze.disabled = popupLoop.checked || popupFreeze.dataset.mediaDisabled === 'true';
+};
+popupFreeze.onchange = () => {
+  if (popupFreeze.checked) popupLoop.checked = false;
+  popupLoop.disabled = popupFreeze.checked || popupLoop.dataset.mediaDisabled === 'true';
+};
 popupDuration.oninput = () => { popupHold.checked = popupDuration.value === ''; };
 popupHold.onchange = () => {
   if (popupHold.checked) popupDuration.value = '';
@@ -464,6 +479,45 @@ btnLoop.addEventListener('click', () => {
       render();
     });
 });
+
+// Bluetooth pairing toggle
+let btAvailable = false;
+let btDiscoverable = false;
+
+function updateBtButton() {
+  if (!btAvailable) {
+    btnBluetooth.hidden = true;
+    return;
+  }
+  btnBluetooth.hidden = false;
+  btnBluetooth.classList.toggle('active', btDiscoverable);
+  btnBluetooth.textContent = btDiscoverable ? 'BT Pairing ON' : 'BT Pairing';
+}
+
+function fetchBtStatus() {
+  api('GET', '/bluetooth/status')
+    .then((r) => r.ok ? r.json() : null)
+    .then((data) => {
+      if (!data) return;
+      btAvailable = data.available;
+      btDiscoverable = data.discoverable;
+      updateBtButton();
+    })
+    .catch(() => {});
+}
+
+btnBluetooth.addEventListener('click', () => {
+  const next = !btDiscoverable;
+  api('POST', '/bluetooth/pairing', { enabled: next })
+    .then((r) => r.ok ? r.json() : null)
+    .then((data) => {
+      if (data) btDiscoverable = data.discoverable;
+      updateBtButton();
+    })
+    .catch(() => {});
+});
+
+fetchBtStatus();
 
 connectWs();
 render();
