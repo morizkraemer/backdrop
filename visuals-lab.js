@@ -3,11 +3,10 @@
  * apart from backdrop's cue list. The lab page (/visuals) lists, previews,
  * edits and plays visuals; DMX plays them through a 16-channel fixture.
  *
- * Backdrop and the lab share mpv, and the wall is in one of two modes: cues
- * (backdrop) or visuals (a visual on air). Playing a visual takes the screen
- * from the cues (takeScreen); exitToCues hands it back, and backdrop calls
- * release() when a cue takes it back. Whoever acted last wins: backdrop's
- * switch, a cue or GO, the lab, or the desk's select channel.
+ * Visuals reach the wall through backdrop's "Visuals" cue: while it is live
+ * (enterCue), the lab and the desk pick and drive the visual; any other cue
+ * or stop ends it (release). The lab can also try a visual on the wall
+ * outside the cue list (takeScreen); the desk only acts during the cue.
  */
 const express = require('express');
 const fs = require('fs');
@@ -27,10 +26,11 @@ const xmlEsc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': 
 
 /**
  * The fixture as an MA fixture type (grandMA2 XML, which dot2 imports from
- * USB: dot2/library). dot2 only knows its own attributes, so each function
- * sits on the nearest one (setup/DMX.md); channel sets name the visuals and
- * ranges. The 8 strips are sub-fixtures with their own dimmer, so the desk's
- * effects can chase across them.
+ * USB: dot2/library): GO and BACK, then the 16 visuals channels, so it
+ * patches at backdrop's GO channel. dot2 only knows its own attributes, so
+ * each function sits on the nearest one (setup/DMX.md); channel sets name the
+ * visuals and ranges. The 8 strips are sub-fixtures with their own dimmer, so
+ * the desk's effects can chase across them.
  */
 function dot2Fixture(slots) {
   const set = (name, from, to) => `<ChannelSet name="${xmlEsc(name)}" from_dmx="${from}" to_dmx="${to}" />`;
@@ -41,24 +41,26 @@ function dot2Fixture(slots) {
 					</ChannelFunction>
 				</ChannelType>`;
   const visualSets = [
-    set('Cues (no visual)', 0, DMX_SLOT - 1),
+    set('Keep', 0, DMX_SLOT - 1),
     ...slots.map((s) => set(s.name, s.value, s.value + DMX_SLOT - 1)),
   ];
   const main = [
-    channel(1, 'GOBO1', 'GOBO', 'GOBO', visualSets, [0, 255]),
-    channel(2, 'DIM', 'DIMMER', 'DIMMER', [set('Closed', 0, 0), set('Open', 255, 255)]),
-    channel(3, 'COLORRGB1', 'RGB', 'COLOR'),
-    channel(4, 'COLORRGB2', 'RGB', 'COLOR'),
-    channel(5, 'COLORRGB3', 'RGB', 'COLOR'),
-    channel(6, 'GOBO1_POS', 'GOBO', 'GOBO', [set('Speed slow', 0, 0), set('Speed fast', 255, 255)]),
-    channel(7, 'SHUTTER', 'SHUTTER', 'BEAM', [set('Open', 0, 9), set('Strobe 1-20 Hz', 10, 255)], [0, 20]),
-    channel(8, 'GOBO2', 'GOBO', 'GOBO', [set('Control min', 0, 0), set('Control max', 255, 255)]),
+    channel(1, 'PRISMA1', 'BEAM', 'BEAM', [set('Rest', 0, 127), set('GO', 128, 255)], [0, 255]),
+    channel(2, 'PRISMA2', 'BEAM', 'BEAM', [set('Rest', 0, 127), set('BACK', 128, 255)], [0, 255]),
+    channel(3, 'GOBO1', 'GOBO', 'GOBO', visualSets, [0, 255]),
+    channel(4, 'DIM', 'DIMMER', 'DIMMER', [set('Closed', 0, 0), set('Open', 255, 255)]),
+    channel(5, 'COLORRGB1', 'RGB', 'COLOR'),
+    channel(6, 'COLORRGB2', 'RGB', 'COLOR'),
+    channel(7, 'COLORRGB3', 'RGB', 'COLOR'),
+    channel(8, 'GOBO1_POS', 'GOBO', 'GOBO', [set('Speed slow', 0, 0), set('Speed fast', 255, 255)]),
+    channel(9, 'SHUTTER', 'SHUTTER', 'BEAM', [set('Open', 0, 9), set('Strobe 1-20 Hz', 10, 255)], [0, 20]),
+    channel(10, 'GOBO2', 'GOBO', 'GOBO', [set('Control min', 0, 0), set('Control max', 255, 255)]),
   ].join('');
   const strips = SEGMENT_FNS.map((_, i) => `
-			<Instance module_index="1" patch="${9 + i}" locked="true" />`).join('');
+			<Instance module_index="1" patch="${11 + i}" locked="true" />`).join('');
   return `<?xml version="1.0" encoding="utf-8"?>
 <MA xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.malighting.de/grandma2/xml/MA http://schemas.malighting.de/grandma2/xml/2.8.123/MA.xsd" major_vers="2" minor_vers="8" stream_vers="123" xmlns="http://schemas.malighting.de/grandma2/xml/MA">
-	<FixtureType name="Visuals" mode="16ch">
+	<FixtureType name="Visuals" mode="18ch">
 		<short_name>Visuals</short_name>
 		<manufacturer>backdrop</manufacturer>
 		<short_manufacturer>backdrop</short_manufacturer>
@@ -77,7 +79,7 @@ function dot2Fixture(slots) {
 `;
 }
 
-function createVisualsLab({ config, mpv, takeScreen, exitToCues, broadcast }) {
+function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
   const userDir = path.resolve(config.uploadsDir, 'visuals');
   const cacheDir = path.resolve(config.uploadsDir, '.visuals');
   const settingsPath = config.visualsSettingsPath;
@@ -149,15 +151,17 @@ function createVisualsLab({ config, mpv, takeScreen, exitToCues, broadcast }) {
 
   // --- the wall ---
 
+  // True while backdrop's Visuals cue is live: only then does the desk act
+  let active = false;
+
   async function play(id, values) {
     const v = find(id);
     if (!v) throw new Error('Visual not found');
-    takeScreen();
+    // A test from the lab outside the cue: it takes the wall from the cues
+    if (!active) takeScreen();
     const shaderPath = visuals.writeShader(v.file, cacheDir, v.id, config.visualSize);
     const vals = visuals.paramValues(v.params, values ?? settings.values[v.id]);
     const clock = { clock_t0: 0, clock_ta: 0 };
-    // Entering visuals mode: faders only count once they move again
-    if (!onAir) resetEngaged();
     onAir = { id: v.id, values: vals, clock };
     if (settings.last !== v.id) {
       settings.last = v.id;
@@ -174,33 +178,39 @@ function createVisualsLab({ config, mpv, takeScreen, exitToCues, broadcast }) {
     }
   }
 
-  // A cue (or stop) took the screen back
-  function release() {
-    if (!onAir) return;
-    onAir = null;
-    broadcast();
-  }
-
-  // Visuals mode from backdrop's switch: the last visual played, else the first
-  function enter() {
-    if (onAir) return Promise.resolve();
+  // The Visuals cue went live: the last visual played (else the first) starts,
+  // and desk faders count again once they move
+  function enterCue() {
+    active = true;
+    resetEngaged();
     const all = list();
     const v = all.find((x) => x.id === settings.last) ?? all[0];
     if (!v) return Promise.reject(new Error('No visuals'));
     return play(v.id);
   }
 
+  // Ends a test from the lab (the Visuals cue ends with the next cue instead)
   function stop() {
-    if (!onAir) return;
+    if (!onAir || active) return;
+    active = false;
     onAir = null;
     mpv.stop().catch(() => {});
     broadcast();
   }
 
+  // Another cue (or stop) took the wall
+  function release() {
+    if (!active && !onAir) return;
+    active = false;
+    onAir = null;
+    broadcast();
+  }
+
+  // cue: the Visuals cue is live (else it's a test from the lab)
   function status() {
-    if (!onAir) return null;
+    if (!onAir) return active ? { id: null, name: null, values: {}, cue: true } : null;
     const v = find(onAir.id);
-    return { id: onAir.id, name: v?.name ?? onAir.id, values: onAir.values };
+    return { id: onAir.id, name: v?.name ?? onAir.id, values: onAir.values, cue: active };
   }
 
   // Live slider moves on the wall (nothing saved). While one update runs,
@@ -269,8 +279,9 @@ function createVisualsLab({ config, mpv, takeScreen, exitToCues, broadcast }) {
   // values/prev: { visual, dimmer, ..., seg8 } 0-255 or null for unused.
   // Select plays a visual; dimmer, colour, strobe and the 8 strips lie over
   // it; speed and control move its sliders. Each follows only once it moved.
-  // Select 10+ switches the wall to visuals, back to 0-9 returns it to backdrop.
+  // Only while the Visuals cue is live.
   function applyDmx(values, prev) {
+    if (!active) return;
     for (const fn of DMX_FUNCTIONS) {
       if (values[fn] !== null && values[fn] !== prev[fn]) engaged.add(fn);
     }
@@ -278,10 +289,8 @@ function createVisualsLab({ config, mpv, takeScreen, exitToCues, broadcast }) {
     const level = (fn) => values[fn] / 255;
 
     if (on('visual') && Math.floor(values.visual / DMX_SLOT) !== Math.floor((prev.visual ?? 0) / DMX_SLOT)) {
-      const slot = Math.floor(values.visual / DMX_SLOT);
-      const v = list()[slot - 1];
+      const v = list()[Math.floor(values.visual / DMX_SLOT) - 1];
       if (v && onAir?.id !== v.id) play(v.id).catch((err) => console.warn('DMX visual:', err.message));
-      else if (slot === 0 && onAir) exitToCues();
     }
 
     const nextFx = { ...visuals.FX_NEUTRAL };
@@ -409,9 +418,8 @@ function createVisualsLab({ config, mpv, takeScreen, exitToCues, broadcast }) {
     }
   });
 
-  // Back to backdrop (resumes the cue that was playing)
   router.post('/stop', (req, res) => {
-    exitToCues();
+    stop();
     res.status(204).send();
   });
 
@@ -453,7 +461,7 @@ function createVisualsLab({ config, mpv, takeScreen, exitToCues, broadcast }) {
     const v = find(req.params.id);
     if (!v) return res.status(404).json({ error: 'Not found' });
     if (v.builtin) return res.status(403).json({ error: 'Built-in visuals can\'t be deleted' });
-    if (onAir?.id === v.id) stop();
+    if (onAir?.id === v.id) return res.status(409).json({ error: 'It\'s on the wall: pick another visual first' });
     fs.rmSync(v.file, { force: true });
     delete settings.values[v.id];
     saveSettings();
@@ -469,8 +477,7 @@ function createVisualsLab({ config, mpv, takeScreen, exitToCues, broadcast }) {
     release,
     status,
     slots,
-    enter,
-    stop,
+    enterCue,
     isOnAir: () => !!onAir,
   };
 }

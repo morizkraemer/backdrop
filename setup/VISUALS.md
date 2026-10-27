@@ -1,22 +1,15 @@
 # Live visuals
 
-Generative visuals for the LED wall, rendered by mpv itself on the box's Intel GPU. A visual is a GLSL shader with sliders. They live in the **Visuals lab** (`/visuals`, linked as "Visuals" in backdrop's header), apart from the cue list, so backdrop stays simple for everyday shows. A 16-channel DMX fixture (setup/DMX.md) picks visuals and adds dimmer, colour, strobe, speed and 8 strips for desk chases.
+Generative visuals for the LED wall, rendered by mpv itself on the box's Intel GPU. A visual is a GLSL shader with sliders. They live in the **Visuals lab** (`/visuals`, linked as "Visuals" in backdrop's header), so backdrop stays simple for everyday shows. A 16-channel DMX fixture (setup/DMX.md) picks visuals and adds dimmer, colour, strobe, speed and 8 strips for desk chases.
 
-## Backdrop or Visuals
+## The Visuals cue
 
-The wall is in one of two modes: **Backdrop** (the cue list) or **Visuals** (a visual playing). Whoever acted last wins:
-
-- backdrop's header switch **Backdrop | Visuals** (Visuals starts the last visual played);
-- the desk's Visual select channel: 10 and up switches to Visuals with that visual, back to 0-9 returns to Backdrop (setup/DMX.md);
-- GO, BACK or playing a cue in backdrop returns to Backdrop;
-- **Send to wall** / **Back to backdrop** in the lab.
-
-Going back to Backdrop replays the cue that was on the wall before the visuals, if there was one; otherwise the wall stays dark until the next GO.
+Visuals reach the wall only through the **Visuals** item in backdrop's library: put it in the cue list like any clip. While that cue is live, the wall shows the last visual played (the first one the very first time) and the desk's fixture and the Visuals lab pick and drive it. GO, BACK or any other cue moves on as usual and ends the visuals; when the Visuals cue isn't live, the fixture channels do nothing. Like a still, the cue holds until GO or auto-advances after its seconds.
 
 ## The Visuals lab
 
 - **Preview**: the selected visual runs in the browser (WebGL2) with the same code, so you can try sliders and edits without touching the wall.
-- **Send to wall** plays it on the LED wall. While it's on the wall, the sliders move it live. **Back to backdrop** returns the wall to the cues.
+- **Send to wall** puts it on the LED wall and the sliders then move it live. While the Visuals cue is live this just switches visuals; otherwise it's a test outside the cue list, which **Stop**, GO or any cue ends.
 - **Save as default** stores the sliders as the values DMX and Send to wall start with (`visuals.json`, `VISUALS_SETTINGS`).
 - **Shader code**: edit and **Run preview** (Ctrl/Cmd+Enter); compile errors show over the preview with line numbers of the file. Built-ins are read-only: **Save as copy** makes your own, stored in `uploads/visuals/`. **New** starts from a template.
 - **DMX fixture**: channel of each fixture function and live fader values. The select value of each visual is shown in the list (DMX 10, 20, ...).

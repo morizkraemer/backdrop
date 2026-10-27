@@ -277,15 +277,18 @@ $('btnPlay').addEventListener('click', async () => {
   }
 });
 
+// state.visual: the visual on the wall (id), and whether backdrop's Visuals cue is live (cue)
 $('btnStopWall').addEventListener('click', () => {
   api('POST', '/visuals/stop').catch(() => {});
 });
 
 function renderAir() {
   const v = state.visual;
-  $('airText').textContent = v ? `Visuals mode: ${v.name}` : 'Wall: backdrop cues';
+  $('airText').textContent = !v ? 'Wall: backdrop cues'
+    : v.cue ? `Visuals cue live${v.name ? `: ${v.name}` : ''}`
+    : `Testing on the wall: ${v.name}`;
   $('airText').classList.toggle('live', !!v);
-  $('btnStopWall').hidden = !v;
+  $('btnStopWall').hidden = !v?.id || v.cue;
   render();
   renderList();
 }

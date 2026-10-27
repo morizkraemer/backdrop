@@ -22,6 +22,9 @@ const ALLOWED_EXT = [
 ];
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
 const TRANSITION_TIMEOUT_MS = 2000;
+// The library item of the Visuals cue (visuals-lab.js)
+const VISUALS_ID = 'visuals';
+const VISUALS_TYPE = 'visuals';
 
 const app = express();
 const state = createStateManager(config.statePath);
@@ -39,35 +42,18 @@ let hdmi = {
   sources: config.hdmiSources.map((name) => ({ name, signal: null })),
   current: null, // input number feeding config.hdmiOutput
 };
-// Live shader visuals, run from their own page (/visuals). Playing one takes
-// the screen from the cues; a cue taking it back calls lab.release().
-// The cue that was playing when a visual took over; going back to backdrop resumes it.
-let resumeCueId = null;
+// Live shader visuals (setup/VISUALS.md): the "Visuals" cue hands the wall to
+// the Visuals lab and the desk; any other cue or stop takes it back (lab.release()).
+// The lab can also test a visual on the wall outside the cue list (takeScreen).
 const lab = createVisualsLab({
   config,
   mpv,
   takeScreen: () => {
     clearDurationTimer();
-    const s = state.getState();
-    if (s.currentCueIndex !== -1) {
-      resumeCueId = s.playlist[s.currentCueIndex]?.id ?? null;
-      state.updateState({ currentCueIndex: -1 });
-    } else if (!lab.isOnAir()) {
-      resumeCueId = null;
-    }
+    if (state.getState().currentCueIndex !== -1) state.updateState({ currentCueIndex: -1 });
   },
-  exitToCues: () => backToCues(),
   broadcast: () => broadcastState(),
 });
-
-function backToCues() {
-  if (!lab.isOnAir()) return;
-  const idx = state.getState().playlist.findIndex((c) => c.id === resumeCueId);
-  resumeCueId = null;
-  if (idx !== -1) playCue(idx);
-  else lab.stop();
-  broadcastState();
-}
 // DMX functions in display order; each maps to one channel of the universe (0 = unused).
 // After the show controls come the 16 channels of the visuals fixture.
 const DMX_FUNCTIONS = ['brightness', 'go', 'back', ...lab.DMX_FUNCTIONS];
@@ -232,8 +218,9 @@ function playCue(index) {
     return;
   }
 
-  const filePath = path.resolve(config.uploadsDir, media.filename);
-  if (!fs.existsSync(filePath)) {
+  const isVisuals = media.type === VISUALS_TYPE;
+  const filePath = path.resolve(config.uploadsDir, media.filename || '');
+  if (!isVisuals && !fs.existsSync(filePath)) {
     advance();
     return;
   }
@@ -243,14 +230,15 @@ function playCue(index) {
 
   const duration = cue.settings?.duration ?? null;
 
-  mpv.loadFile(filePath, getCuePlaybackOptions(cue, media))
+  (isVisuals ? lab.enterCue() : mpv.loadFile(filePath, getCuePlaybackOptions(cue, media)))
     .then(() => {
       state.updateState({ currentCueIndex: index });
       clearTransitionLock();
 
-      const isImage = media.type === 'image';
+      // Stills and visuals never end by themselves: advance after their duration
+      const holds = media.type !== 'video';
       const sec = duration != null && duration > 0 ? Number(duration) : null;
-      if (isImage && sec) {
+      if (holds && sec) {
         durationTimer = setTimeout(advance, sec * 1000);
       }
     })
@@ -307,7 +295,7 @@ function handleFileEnded() {
   const cue = s.playlist[s.currentCueIndex];
   if (!cue) return;
   const media = s.library.find((m) => m.id === cue.mediaId);
-  if (!media || media.type === 'image') return;
+  if (!media || media.type !== 'video') return;
   const loop = cue.settings?.loop ?? false;
   if (loop) return;
   const freeze = cue.settings?.freeze ?? false;
@@ -340,10 +328,29 @@ fs.mkdirSync(config.uploadsDir, { recursive: true });
   }
 }
 
+// The Visuals cue's library item: always there, can't be deleted
+{
+  const s = state.getState();
+  const item = {
+    id: VISUALS_ID,
+    type: VISUALS_TYPE,
+    builtin: true,
+    originalName: 'Visuals',
+    filename: '',
+    size: 0,
+    addedAt: new Date(0).toISOString(),
+    folderId: null,
+    thumbUrl: '/visuals/thumbs/blackhole.jpg',
+  };
+  const existing = s.library.find((m) => m.id === VISUALS_ID);
+  if (!existing) state.updateState({ library: [item, ...s.library] });
+  else state.updateState({ library: s.library.map((m) => (m.id === VISUALS_ID ? { ...item, originalName: m.originalName, folderId: m.folderId } : m)) });
+}
+
 // Backfill thumbnails for media uploaded before thumbnails existed, one at a time
 (async () => {
   for (const item of state.getState().library) {
-    if (!item.thumb) await enrichMedia(item);
+    if (!item.thumb && item.type !== VISUALS_TYPE) await enrichMedia(item);
   }
 })();
 
@@ -442,7 +449,9 @@ app.get('/api/library', (req, res) => {
 // Deletes media files (and their thumbnails), drops their cues, and keeps playback sane
 function removeMedia(ids, extra = {}) {
   const s = state.getState();
-  const gone = new Set(ids);
+  // Built-in items (the Visuals cue) stay; a deleted folder drops them at the top
+  const kept = new Set(s.library.filter((m) => m.builtin).map((m) => m.id));
+  const gone = new Set(ids.filter((id) => !kept.has(id)));
   for (const item of s.library) {
     if (!gone.has(item.id)) continue;
     const filePath = path.join(config.uploadsDir, item.filename);
@@ -454,7 +463,8 @@ function removeMedia(ids, extra = {}) {
     removeThumbnail(config.uploadsDir, item);
   }
 
-  const library = s.library.filter((m) => !gone.has(m.id));
+  const library = s.library.filter((m) => !gone.has(m.id))
+    .map((m) => (m.builtin && ids.includes(m.id) ? { ...m, folderId: null } : m));
   const playlist = s.playlist.filter((c) => !gone.has(c.mediaId));
   const current = s.playlist[s.currentCueIndex];
   const wasPlayingDeleted = current && gone.has(current.mediaId);
@@ -479,7 +489,9 @@ function removeMedia(ids, extra = {}) {
 app.delete('/api/library/:id', (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
   const s = state.getState();
-  if (!s.library.some((m) => m.id === req.params.id)) return res.status(404).json({ error: 'Not found' });
+  const item = s.library.find((m) => m.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  if (item.builtin) return res.status(403).json({ error: 'The Visuals cue can\'t be deleted' });
   removeMedia([req.params.id]);
   res.status(204).send();
 });
@@ -733,7 +745,11 @@ app.put('/api/playlist/:cueId', (req, res) => {
   // Only the framing changed: move the picture in place instead of reloading
   const needsReload = ['loop', 'freeze', 'displayMode', 'duration']
     .some((k) => (cue.settings[k] ?? null) !== (before[k] ?? null));
-  if (idx === s.currentCueIndex && !needsReload) {
+  // The Visuals cue has nothing to reframe or reload
+  const isVisuals = s.library.find((m) => m.id === cue.mediaId)?.type === VISUALS_TYPE;
+  if (isVisuals) {
+    // nothing
+  } else if (idx === s.currentCueIndex && !needsReload) {
     mpv.setFraming(getCueFraming(cue.settings)).catch(console.error);
   } else if (idx === s.currentCueIndex) {
     const media = s.library.find((m) => m.id === cue.mediaId);
@@ -851,22 +867,6 @@ app.post('/api/go/:cueId', (req, res) => {
   playCue(idx);
   broadcastState();
   res.status(204).send();
-});
-
-// The wall's mode: 'cues' (backdrop) or 'visuals' (the last visual from the lab)
-app.post('/api/wall', async (req, res) => {
-  const mode = req.body?.mode;
-  if (mode === 'cues') {
-    backToCues();
-    return res.status(204).send();
-  }
-  if (mode !== 'visuals') return res.status(400).json({ error: "mode must be 'cues' or 'visuals'" });
-  try {
-    await lab.enter();
-    res.status(204).send();
-  } catch (err) {
-    res.status(502).json({ error: err.message });
-  }
 });
 
 app.post('/api/stop', (req, res) => {

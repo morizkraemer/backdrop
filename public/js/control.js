@@ -135,6 +135,7 @@ function getMedia(mediaId) {
 // until the thumbnail exists, which is heavy: photos can be 20+ megapixels.
 function thumbSrc(media) {
   if (!media) return null;
+  if (media.thumbUrl) return media.thumbUrl;
   const v = encodeURIComponent(media.addedAt || '');
   if (media.thumb) return `/uploads/${media.thumb.split('/').map(encodeURIComponent).join('/')}?t=${v}`;
   if (media.type === 'image') return `/uploads/${encodeURIComponent(media.filename)}?t=${v}`;
@@ -156,6 +157,7 @@ function thumbHtml(media, src = thumbSrc(media)) {
 
 function mediaMeta(media) {
   if (!media) return 'Missing file';
+  if (isVisuals(media)) return 'Live visuals: the Visuals lab and the desk pick and drive them';
   const parts = [media.type === 'video' ? 'Video' : 'Image'];
   if (media.type === 'video' && media.duration != null) parts.push(formatDuration(media.duration));
   parts.push(formatBytes(media.size));
@@ -174,7 +176,17 @@ function endLong(cue, media) {
   return st.duration > 0 ? `advances after ${st.duration} s` : 'holds until GO';
 }
 
+// The Visuals cue hands the wall to the Visuals lab and the desk (DMX)
+function isVisuals(media) {
+  return media?.type === 'visuals';
+}
+
+function cueMode(cue, media) {
+  return isVisuals(media) ? 'Visuals' : DISPLAY_LABELS[cue.settings?.displayMode ?? 'fill'];
+}
+
 function cueSummary(cue, media) {
+  if (isVisuals(media)) return `Live visuals · ${endLong(cue, media)}`;
   return `${DISPLAY_LABELS[cue.settings?.displayMode ?? 'fill']} · ${endLong(cue, media)}`;
 }
 
@@ -341,14 +353,17 @@ function renderMonitor(root, index, isNow) {
   const cue = state.playlist[index];
   const media = cue && getMedia(cue.mediaId);
   const screen = root.querySelector('.screen');
-  // A visual from the Visuals lab (or DMX) on the wall instead of a cue
-  const visual = isNow && !cue ? state.visual : null;
+  // The visual on the wall: from the Visuals cue, or a test from the Visuals lab
+  const visual = isNow && (isVisuals(media) || !cue) ? state.visual : null;
+  const labTest = !cue && !!visual?.id;
   root.querySelector('.cue-num').textContent = cue ? `Q${index + 1}` : '';
   root.querySelector('.monitor-name').textContent = cue
-    ? media?.originalName ?? '?'
-    : visual ? `Visual: ${visual.name}`
+    ? (visual?.name ? `Visuals: ${visual.name}` : media?.originalName ?? '?')
+    : labTest ? `Visuals lab test: ${visual.name}`
     : isNow ? (state.isTransitioning ? 'Loading…' : 'Nothing playing') : (state.playlist.length ? 'End of list' : '—');
-  root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : visual ? 'Visuals mode · GO or Backdrop returns to the cues' : '';
+  root.querySelector('.monitor-meta').textContent = cue
+    ? (isVisuals(media) ? `The desk and the Visuals lab run the wall · ${endLong(cue, media)}` : cueSummary(cue, media))
+    : labTest ? 'GO returns to the cues' : '';
   if (isNow && previewCollapsed()) {
     // Phones keep the live preview behind a tap, so don't stream video nobody sees
     stopPreview();
@@ -385,7 +400,7 @@ function renderMonitor(root, index, isNow) {
       else img.addEventListener('load', place, { once: true });
     }
   }
-  const onAir = !!(cue || visual);
+  const onAir = !!cue || labTest;
   if (isNow && !previewCollapsed()) updatePanelShot(screen, onAir);
   if (isNow) {
     root.classList.toggle('playing', onAir);
@@ -607,7 +622,7 @@ function renderCues() {
           <span class="cue-summary">${escapeHtml(cueSummary(cue, media))}</span>
         </span>
         ${tag}
-        <span class="cue-mode">${DISPLAY_LABELS[cue.settings?.displayMode ?? 'fill']}</span>
+        <span class="cue-mode">${cueMode(cue, media)}</span>
         <span class="cue-end">${endShort(cue, media)}</span>
         <button type="button" class="btn-icon more" data-cue-id="${cue.id}" aria-label="Cue settings">${ICONS.more}</button>
       </div>
@@ -676,6 +691,8 @@ function renderInspector() {
   $('inspMeta').textContent = mediaMeta(media);
   renderStage(cue, media);
   setSegment(segDisplay, st.displayMode ?? 'fill');
+  $('displayField').hidden = isVisuals(media);
+  if (isVisuals(media)) $('framingField').hidden = true;
 
   const endOptions = isVideo
     ? [['end', 'Next cue'], ['freeze', 'Freeze frame'], ['loop', 'Loop']]
@@ -699,26 +716,8 @@ function renderInspector() {
     : saveStatus || 'Changes save automatically';
 }
 
-// --- LED wall mode: backdrop's cues or live visuals (Visuals lab, desk over DMX) ---
-
-function renderWallMode() {
-  const visuals = !!state.visual;
-  $('wallCues').setAttribute('aria-checked', String(!visuals));
-  $('wallVisuals').setAttribute('aria-checked', String(visuals));
-}
-
-document.querySelector('.wall-mode').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-mode]');
-  if (!b || b.getAttribute('aria-checked') === 'true') return;
-  b.disabled = true;
-  api('POST', '/wall', { mode: b.dataset.mode })
-    .catch(() => {})
-    .finally(() => { b.disabled = false; });
-});
-
 function render() {
   renderHeader();
-  renderWallMode();
   renderLed();
   renderHdmi();
   renderDmx();

@@ -204,73 +204,6 @@ a.btn-led:hover {
   color: var(--text);
 }
 
-/* LED wall mode: backdrop cues or live visuals */
-
-.wall-mode {
-  height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 999px;
-  border: 1px solid #2e3036;
-}
-
-.wall-mode button {
-  height: 26px;
-  padding: 0 12px;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.wall-mode button svg {
-  width: 13px;
-  height: 13px;
-}
-
-.wall-mode button:hover {
-  color: var(--text);
-}
-
-.wall-mode button[aria-checked="true"] {
-  background: var(--bg-selected);
-  color: var(--text);
-  font-weight: 600;
-}
-
-.wall-mode button[data-mode="visuals"][aria-checked="true"] {
-  background: var(--live-bg);
-  color: var(--live);
-}
-
-.wall-mode .wall-lab {
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-dim);
-}
-
-.wall-mode .wall-lab:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.wall-mode .wall-lab svg {
-  width: 14px;
-  height: 14px;
-}
-
 .dmx-fixture {
   font-size: 12px;
   color: var(--text-dim);
@@ -2356,15 +2289,4 @@ button.crumb:hover {
 .qr-hint {
   font-size: 12px;
   color: var(--text-dim);
-}
-
-@media (max-width: 480px) {
-  .wall-mode button {
-    padding: 0 9px;
-  }
-
-  .wall-mode .wall-lab,
-  .wall-mode button svg {
-    display: none;
-  }
 }
