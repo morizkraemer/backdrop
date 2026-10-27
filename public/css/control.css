@@ -2076,6 +2076,41 @@ button.crumb:hover {
   }
 }
 
+/* Phones: the cue header is hidden, so the add buttons sit under the list */
+.cue-add-bar {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .cue-add-bar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .cue-add-bar button {
+    height: 44px;
+    justify-content: center;
+  }
+
+  .media-actions .add {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* Keep upload progress and toasts off the GO bar */
+  .uploads {
+    top: 72px;
+    bottom: auto;
+  }
+}
+
+.toast {
+  font-size: 13px;
+  pointer-events: none;
+}
+
 /* Wide layout: the cue list takes the space; on narrow it shows a compact summary */
 @media (min-width: 901px) {
   .cue-row .cue-text {
