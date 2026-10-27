@@ -219,6 +219,52 @@ function renderLivePreview(screen, cue, media) {
   previewTimer = setInterval(() => syncPreview(video), PREVIEW_SYNC_MS);
 }
 
+// Small inset with a real snapshot of the panel, refreshed about once a
+// second while something is live, so a frozen or black panel shows up even
+// though the big preview is a mirror.
+const PANEL_SHOT_MS = 1000;
+const panelShot = document.createElement('img');
+panelShot.className = 'panel-shot';
+panelShot.alt = 'Panel output';
+panelShot.title = 'Actual panel output (1 fps)';
+panelShot.hidden = true;
+let panelShotTimer = null;
+let panelShotUrl = null;
+
+async function refreshPanelShot() {
+  if (document.hidden) return;
+  try {
+    const res = await fetch(`${API}/screenshot`, { cache: 'no-store' });
+    if (res.status !== 200) {
+      panelShot.hidden = true;
+      return;
+    }
+    const url = URL.createObjectURL(await res.blob());
+    panelShot.onload = () => {
+      if (panelShotUrl) URL.revokeObjectURL(panelShotUrl);
+      panelShotUrl = url;
+      panelShot.hidden = false;
+    };
+    panelShot.src = url;
+  } catch {
+    panelShot.hidden = true;
+  }
+}
+
+function updatePanelShot(screen, live) {
+  if (!live) {
+    clearInterval(panelShotTimer);
+    panelShotTimer = null;
+    panelShot.hidden = true;
+    return;
+  }
+  if (panelShot.parentNode !== screen) screen.appendChild(panelShot);
+  if (!panelShotTimer) {
+    refreshPanelShot();
+    panelShotTimer = setInterval(refreshPanelShot, PANEL_SHOT_MS);
+  }
+}
+
 function renderMonitor(root, index, isNow) {
   const cue = state.playlist[index];
   const media = cue && getMedia(cue.mediaId);
@@ -237,6 +283,7 @@ function renderMonitor(root, index, isNow) {
     }
     screen.innerHTML = cue ? thumbHtml(media) : '';
   }
+  if (isNow) updatePanelShot(screen, !!cue);
   if (isNow) {
     root.classList.toggle('playing', !!cue);
     const tag = $('nowTag');

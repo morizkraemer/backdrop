@@ -216,6 +216,10 @@ class MpvController extends EventEmitter {
     }
   }
 
+  screenshotToFile(file) {
+    return this._command('screenshot-to-file', [file, 'video']);
+  }
+
   stop() {
     return this._command('stop');
   }
