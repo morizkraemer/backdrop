@@ -92,8 +92,12 @@
           </div>
           <div class="monitor-meta" id="nowMeta"></div>
         </div>
+        <button type="button" class="btn-icon preview-toggle" id="btnPreview" aria-label="Show live preview" aria-expanded="false" aria-controls="nowScreen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
         <div class="screen" id="nowScreen"></div>
       </div>
+      <div class="preview-backdrop" id="previewBackdrop" hidden></div>
     </section>
 
     <nav class="tabs" aria-label="Sections">

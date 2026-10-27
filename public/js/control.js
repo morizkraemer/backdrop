@@ -329,7 +329,14 @@ function renderMonitor(root, index, isNow) {
     ? media?.originalName ?? '?'
     : isNow ? (state.isTransitioning ? 'Loading…' : 'Nothing playing') : (state.playlist.length ? 'End of list' : '—');
   root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : '';
-  if (isNow && cue && media?.type === 'video') {
+  if (isNow && previewCollapsed()) {
+    // Phones keep the live preview behind a tap, so don't stream video nobody sees
+    stopPreview();
+    delete screen.dataset.preview;
+    delete screen.dataset.shown;
+    screen.innerHTML = '';
+    updatePanelShot(screen, false);
+  } else if (isNow && cue && media?.type === 'video') {
     renderLivePreview(screen, cue, media);
     delete screen.dataset.shown;
     screen.classList.toggle('letterbox', cue.settings?.displayMode !== 'fill');
@@ -358,7 +365,7 @@ function renderMonitor(root, index, isNow) {
       else img.addEventListener('load', place, { once: true });
     }
   }
-  if (isNow) updatePanelShot(screen, !!cue);
+  if (isNow && !previewCollapsed()) updatePanelShot(screen, !!cue);
   if (isNow) {
     root.classList.toggle('playing', !!cue);
     const tag = $('nowTag');
@@ -366,6 +373,33 @@ function renderMonitor(root, index, isNow) {
     tag.className = `tag ${cue ? 'tag-live' : 'tag-idle'}`;
   }
 }
+
+// --- live preview on phones: hidden until tapped, then shown in a popup ---
+
+const phoneLayout = window.matchMedia('(max-width: 900px)');
+const btnPreview = $('btnPreview');
+const previewBackdrop = $('previewBackdrop');
+
+function previewCollapsed() {
+  return phoneLayout.matches && !monitorNow.classList.contains('preview-open');
+}
+
+function setPreviewOpen(open) {
+  monitorNow.classList.toggle('preview-open', open);
+  previewBackdrop.hidden = !open;
+  btnPreview.setAttribute('aria-expanded', String(open));
+  renderTransport();
+}
+
+btnPreview.addEventListener('click', () => setPreviewOpen(true));
+previewBackdrop.addEventListener('click', () => setPreviewOpen(false));
+$('nowScreen').addEventListener('click', () => {
+  if (phoneLayout.matches) setPreviewOpen(false);
+});
+phoneLayout.addEventListener('change', () => setPreviewOpen(false));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && monitorNow.classList.contains('preview-open')) setPreviewOpen(false);
+});
 
 function renderTransport() {
   renderMonitor(monitorNow, state.currentCueIndex, true);
