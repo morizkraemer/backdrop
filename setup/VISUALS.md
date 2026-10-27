@@ -1,0 +1,74 @@
+# Live visuals
+
+Generative visuals for the LED wall, rendered by mpv itself on the box's Intel GPU. A visual is a GLSL shader: it sits in the library like any clip, plays as a cue (GO, BACK, auto-advance, loop list all work), and has sliders that change it live, from the cue settings or from DMX (setup/DMX.md).
+
+There is no second display process: mpv plays a tiny generated source and the shader draws the picture at the panel's size (`VISUAL_SIZE`, default `2304x768`), which then goes through the same Fill/Centered/Stretch handling as a 2304×768 clip.
+
+## Built-in visuals
+
+Shipped in `visuals/` and added to a **Visuals** folder in the library on start. Thumbnails are in `visuals/thumbs/`. Deleting one from the library only lasts until the next restart.
+
+| Visual | What it is |
+|---|---|
+| Plasma | Soft colour clouds drifting across the wall |
+| Scanner | Light bars sweeping back and forth |
+| Smoke | Slow flowing noise, like haze in a beam |
+| Tunnel | Rings pulsing out from the centre |
+| Dots | A grid of LED-style dots lit by a travelling wave |
+| Wash | One colour over the whole wall, optionally breathing |
+| Stars | A starfield flying towards the audience |
+
+## Writing a visual
+
+Upload a `.glsl` file like any other media (or add it to `visuals/` with a 576×192 thumbnail). The file holds:
+
+1. A first comment line with the name: `// Plasma: soft colour clouds`.
+2. One libplacebo `//!PARAM` block per slider. Use `DYNAMIC float` so moving the slider doesn't recompile the shader. `DESC` is the slider's label, `MINIMUM`/`MAXIMUM` its range, and the line after the block its default.
+3. A function `vec3 visual(vec2 uv, float t)` returning the colour (0-1) at `uv` (0-1, top left is 0,0) at time `t` in seconds.
+
+```glsl
+// Pulse: the whole wall breathing in one colour
+
+//!PARAM speed
+//!DESC Speed
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 4.0
+1.0
+
+//!PARAM hue
+//!DESC Colour
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 1.0
+0.6
+
+vec3 visual(vec2 uv, float t) {
+    return hsv2rgb(vec3(hue, 1.0, 0.5 + 0.5 * sin(t * 2.0)));
+}
+```
+
+Available helpers: `RES` (panel size in pixels), `ASPECT` (width / height, 3 for the wall), `PI`, `hsv2rgb(vec3)`, `hash21(vec2)`, `noise(vec2)` and `fbm(vec2)`.
+
+A param named `speed` is special: `t` already runs at that speed, and the server keeps the animation continuous when it changes, so a DMX fader on speed never makes the picture jump.
+
+Shadertoy code ports easily: `fragCoord / iResolution.xy` becomes `uv` (with y flipped), `iTime` becomes `t`, and `mainImage` becomes `visual`.
+
+## How it works
+
+mpv user shaders get no playback time, so the source is `lavfi nullsrc` at 16×16 and 60 fps whose pixel colour encodes its own frame number; the wrapper reads it back as seconds. `visuals.js` turns a visual file into a full mpv shader (the params, a hidden clock, a `MAIN` hook at panel size and the helpers) in `uploads/.visuals/`, and the cue loads it with per-file `glsl-shaders` / `glsl-shader-opts` options so the next clip plays without it. Slider moves set `glsl-shader-opts` on the running file.
+
+The Live monitor's panel inset uses a `window` screenshot for visuals, because the `video` screenshot would be the 16×16 source.
+
+## Requirements on the box
+
+Shaders need mpv's GPU output. `--vo=drm` (software scaling) can't run them, so `screenview-mpv.service` uses `--vo=gpu-next --gpu-context=drm`. That also lets `--hwdec=vaapi` actually decode on the GPU.
+
+The mpv user needs the GPU's render node. In the LXC container `/dev/dri/renderD128` belongs to group `kvm` (the host's render GID doesn't map to the container's `render` group), so once:
+
+```bash
+usermod -aG kvm screenview
+systemctl restart screenview-mpv
+```
+
+Check with `journalctl -u screenview-mpv -n 50`: there should be no "Failed initializing" lines, and a clip should still play. To go back to the old output, put `--vo=drm` back in the unit and restart it.

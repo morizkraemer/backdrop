@@ -216,6 +216,7 @@ class MpvController extends EventEmitter {
       displayMode = 'fill',
       isImage = false,
       framing,
+      shader, // { path, opts }: a live visual's mpv user shader and its params
     } = opts;
     const mode = DISPLAY_MODES[displayMode] || DISPLAY_MODES.fill;
 
@@ -231,8 +232,15 @@ class MpvController extends EventEmitter {
       'panscan': String(mode.panscan),
       ...framingProps(framing),
     };
+    // Per-file, so mpv drops the shader again when the next file starts
+    if (shader) {
+      options['glsl-shaders'] = shader.path;
+      options['glsl-shader-opts'] = Object.entries(shader.opts).map(([k, v]) => `${k}=${v}`).join(',');
+    }
     if (isImage) options['image-display-duration'] = 'inf';
-    const optionString = Object.entries(options).map(([k, v]) => `${k}=${v}`).join(',');
+    // %length% quotes each value, so paths and lists may contain commas
+    const optionString = Object.entries(options)
+      .map(([k, v]) => `${k}=%${Buffer.byteLength(v)}%${v}`).join(',');
 
     try {
       // mpv 0.38+: loadfile <url> <flags> <index> <options>
@@ -240,6 +248,7 @@ class MpvController extends EventEmitter {
     } catch (_) {
       // Older mpv has no index argument ("invalid parameter"): set the options
       // as globals instead. A file that really fails to load fails here again.
+      if (!shader) await this._command('change-list', ['glsl-shaders', 'clr', '']);
       for (const [name, value] of Object.entries(options)) {
         await this.setProperty(name, value);
       }
@@ -261,8 +270,15 @@ class MpvController extends EventEmitter {
     }
   }
 
-  screenshotToFile(file) {
-    return this._command('screenshot-to-file', [file, 'video']);
+  // 'video' is the picture at its own size; a visual's source is 16x16, so
+  // visuals use 'window' (the rendered output)
+  screenshotToFile(file, mode = 'video') {
+    return this._command('screenshot-to-file', [file, mode]);
+  }
+
+  // Slider values of the live visual: { name: value }, applied without a reload
+  setShaderOpts(opts) {
+    return this.setProperty('glsl-shader-opts', opts);
   }
 
   stop() {

@@ -1,0 +1,202 @@
+/**
+ * Live visuals (setup/VISUALS.md): GLSL shaders that mpv renders itself, so
+ * generative content plays as an ordinary cue without a second display process.
+ *
+ * A visual file holds libplacebo //!PARAM blocks (the sliders) and GLSL code
+ * defining `vec3 visual(vec2 uv, float t)`. This module wraps that in an mpv
+ * user shader: a hook on the main picture that renders at panel size, plus the
+ * clock and helpers every visual shares.
+ *
+ * mpv shaders get no playback time, so the source is a tiny lavfi picture whose
+ * pixel encodes its own frame number; the shader reads it back as seconds. The
+ * hidden clock_t0/clock_ta params let the server change `speed` without the
+ * animation jumping (see clockAfterSpeedChange).
+ */
+const fs = require('fs');
+const path = require('path');
+
+const BUILTIN_DIR = path.join(__dirname, 'visuals');
+const FPS = 60;
+const CLOCK_PARAMS = ['clock_t0', 'clock_ta'];
+
+// 16x16 frame whose colour is the frame number: r + 256 g + 65536 b
+const SOURCE = `av://lavfi:nullsrc=s=16x16:r=${FPS},format=gbrp,`
+  + "geq=r='mod(N,256)':g='mod(floor(N/256),256)':b='mod(floor(N/65536),256)'";
+
+/**
+ * Splits a visual file into { name, params, body }. params are the numeric
+ * //!PARAM blocks: { name, desc, min, max, default, int }. name is the first
+ * comment line, e.g. "// Plasma: soft colour clouds" -> "Plasma".
+ */
+function parseVisual(text) {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const params = [];
+  const body = [];
+  let name = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = /^\/\/!PARAM\s+(\w+)/.exec(line);
+    if (!m) {
+      if (name === null && /^\/\/\s*\S/.test(line) && !line.startsWith('//!')) {
+        name = line.replace(/^\/\/\s*/, '').split(':')[0].trim();
+      }
+      body.push(line);
+      continue;
+    }
+    // A PARAM block is its //! lines followed by one line holding the default
+    const p = { name: m[1], desc: null, min: null, max: null, default: 0, int: false, raw: [line] };
+    for (i++; i < lines.length && lines[i].startsWith('//!'); i++) {
+      const [key, ...rest] = lines[i].slice(3).trim().split(/\s+/);
+      const val = rest.join(' ');
+      if (key === 'DESC') p.desc = val;
+      else if (key === 'MINIMUM') p.min = Number(val);
+      else if (key === 'MAXIMUM') p.max = Number(val);
+      else if (key === 'TYPE') p.int = /\b(int|uint)\b/.test(val);
+      p.raw.push(lines[i]);
+    }
+    p.default = Number(lines[i]);
+    p.raw.push(lines[i] ?? '0');
+    if (!Number.isFinite(p.default)) p.default = 0;
+    params.push(p);
+  }
+  return { name, params, body: body.join('\n') };
+}
+
+// The params a client sees and can set (the clock stays internal)
+function publicParams(params) {
+  return params
+    .filter((p) => !CLOCK_PARAMS.includes(p.name))
+    .map(({ raw, ...p }) => ({ ...p, min: p.min ?? 0, max: p.max ?? 1 }));
+}
+
+const PRELUDE = `
+#define RES vec2(float(VISUAL_W), float(VISUAL_H))
+#define ASPECT (RES.x / RES.y)
+#define PI 3.14159265359
+
+vec3 hsv2rgb(vec3 c) {
+    vec3 p = abs(fract(c.xxx + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+}
+
+float hash21(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+
+float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+               mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+
+float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++) {
+        v += a * noise(p);
+        p = p * 2.03 + vec2(17.0, 9.0);
+        a *= 0.5;
+    }
+    return v;
+}
+`;
+
+/** Builds the mpv user shader for a parsed visual at width x height. */
+function buildShader(visual, width, height) {
+  const params = visual.params.filter((p) => !CLOCK_PARAMS.includes(p.name));
+  const hasSpeed = params.some((p) => p.name === 'speed');
+  const clock = CLOCK_PARAMS.map((name) => `//!PARAM ${name}\n//!TYPE DYNAMIC float\n0.0`);
+  const time = hasSpeed ? 'clock_t0 + (src_t - clock_ta) * speed' : 'src_t';
+  return [
+    ...params.map((p) => p.raw.join('\n')),
+    ...clock,
+    '',
+    '//!HOOK MAIN',
+    '//!BIND HOOKED',
+    `//!WIDTH ${width}`,
+    `//!HEIGHT ${height}`,
+    `//!DESC backdrop visual: ${(visual.name || 'visual').replace(/\n/g, ' ')}`,
+    `#define VISUAL_W ${width}`,
+    `#define VISUAL_H ${height}`,
+    PRELUDE,
+    '#line 1',
+    visual.body,
+    '',
+    'vec4 hook() {',
+    '    vec3 c = floor(HOOKED_tex(vec2(0.5)).rgb * 255.0 + 0.5);',
+    `    float src_t = (c.r + c.g * 256.0 + c.b * 65536.0) / ${FPS.toFixed(1)};`,
+    `    float t = ${time};`,
+    '    return vec4(clamp(visual(HOOKED_pos, t), 0.0, 1.0), 1.0);',
+    '}',
+    '',
+  ].join('\n');
+}
+
+function readVisual(filePath) {
+  return parseVisual(fs.readFileSync(filePath, 'utf8'));
+}
+
+/** Built-in visuals shipped in visuals/: [{ file, name, params }] */
+function listBuiltins() {
+  let files = [];
+  try {
+    files = fs.readdirSync(BUILTIN_DIR).filter((f) => f.endsWith('.glsl')).sort();
+  } catch (_) {}
+  return files.map((file) => {
+    const v = readVisual(path.join(BUILTIN_DIR, file));
+    return { file, name: v.name || path.basename(file, '.glsl'), params: publicParams(v.params) };
+  });
+}
+
+/** Writes the mpv shader for a visual file into cacheDir and returns its path. */
+function writeShader(filePath, cacheDir, id, { width, height }) {
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const out = path.join(cacheDir, `${id}.glsl`);
+  fs.writeFileSync(out, buildShader(readVisual(filePath), width, height));
+  return out;
+}
+
+/** Values for every public param: saved cue values over the visual's defaults, clamped. */
+function paramValues(params = [], saved = {}) {
+  const values = {};
+  for (const p of params) {
+    let v = Number(saved[p.name] ?? p.default);
+    if (!Number.isFinite(v)) v = p.default;
+    v = Math.min(p.max, Math.max(p.min, v));
+    values[p.name] = p.int ? Math.round(v) : v;
+  }
+  return values;
+}
+
+/**
+ * Keeps the animation continuous when speed changes at source time `now`:
+ * the phase reached so far becomes the new starting point.
+ */
+function clockAfterSpeedChange(clock, oldSpeed, now) {
+  return { clock_t0: clock.clock_t0 + (now - clock.clock_ta) * oldSpeed, clock_ta: now };
+}
+
+// mpv's glsl-shader-opts as a map of strings
+function shaderOpts(values, clock) {
+  const opts = {};
+  for (const [k, v] of Object.entries({ ...values, ...clock })) opts[k] = String(v);
+  return opts;
+}
+
+module.exports = {
+  BUILTIN_DIR,
+  SOURCE,
+  parseVisual,
+  publicParams,
+  buildShader,
+  readVisual,
+  listBuiltins,
+  writeShader,
+  paramValues,
+  clockAfterSpeedChange,
+  shaderOpts,
+};

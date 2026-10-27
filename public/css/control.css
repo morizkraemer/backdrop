@@ -1566,6 +1566,43 @@ button.crumb:hover {
   accent-color: var(--live);
 }
 
+.param-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.param-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.param-row > span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.param-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.param-row input[type="range"] {
+  width: 140px;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--live);
+}
+
 .framing-value {
   min-width: 44px;
   font-family: var(--mono);

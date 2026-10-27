@@ -140,7 +140,7 @@
             Upload
           </button>
         </div>
-        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v" hidden>
+        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v,.glsl" hidden>
         <label class="search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
           <input type="search" id="librarySearch" placeholder="Search media" aria-label="Search media library">
@@ -160,7 +160,7 @@
             Add file
           </button>
         </div>
-        <input type="file" id="cueFileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v" hidden>
+        <input type="file" id="cueFileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v,.glsl" hidden>
         <div class="cue-list" id="cueList"></div>
         <div class="cue-drop" id="cueDrop">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
@@ -202,6 +202,15 @@
               <span><input type="range" id="inspScale" min="10" max="200" step="1" aria-labelledby="lblFraming"><output class="framing-value" id="inspScaleValue"></output></span>
             </label>
             <span class="field-hint">Drag the picture above to move it. Live cues follow on the panel.</span>
+          </div>
+
+          <div class="field" id="visualField" hidden>
+            <div class="field-row">
+              <span class="field-label">Look</span>
+              <button type="button" class="btn-link" id="visualReset">Reset</button>
+            </div>
+            <div class="param-list" id="visualParams"></div>
+            <span class="field-hint">Live cues follow on the panel. DMX visual sliders 1-4 move the first four.</span>
           </div>
 
           <div class="field">

@@ -83,6 +83,8 @@ systemctl daemon-reload
 systemctl enable --now screenview-mpv screenview
 ```
 
+mpv renders with the GPU (`--vo=gpu-next`, needed for live visuals). In an LXC container the render node usually belongs to `kvm`, so also run `usermod -aG kvm screenview`; see [VISUALS.md](VISUALS.md).
+
 ## 8. Audio (Snapcast to Raspberry Pi)
 
 Route audio from mpv through PulseAudio → Snapcast → a Raspberry Pi with speakers.

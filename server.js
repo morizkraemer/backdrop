@@ -13,12 +13,17 @@ const { analyzeMedia, removeThumbnail } = require('./media-info');
 const { createMatrix } = require('./hdmi-matrix');
 const { listenArtNet } = require('./artnet');
 const { createRemoteUpload } = require('./remote-upload');
+const visuals = require('./visuals');
 
 const ALLOWED_EXT = [
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
   'mp4', 'webm', 'mkv', 'avi', 'mov', 'm4v',
+  'glsl',
 ];
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+const VISUAL_EXT = ['glsl'];
+// Built shaders for live visuals (visuals.js), next to the media so mpv can read them
+const VISUAL_CACHE = path.join(config.uploadsDir, '.visuals');
 const TRANSITION_TIMEOUT_MS = 2000;
 
 const app = express();
@@ -37,13 +42,24 @@ let hdmi = {
   sources: config.hdmiSources.map((name) => ({ name, signal: null })),
   current: null, // input number feeding config.hdmiOutput
 };
-// DMX functions in display order; each maps to one channel of the universe (0 = unused)
-const DMX_FUNCTIONS = ['brightness', 'go', 'back'];
+// DMX functions in display order; each maps to one channel of the universe (0 = unused).
+// visual1-4 drive the first four sliders of the live visual.
+const DMX_VISUAL = ['visual1', 'visual2', 'visual3', 'visual4'];
+const DMX_FUNCTIONS = ['brightness', 'go', 'back', ...DMX_VISUAL];
 let dmx = {
   configured: config.dmxUniverse !== null,
   receiving: false,
-  values: null, // { brightness, go, back }: 0-255, null for unused functions
+  values: null, // { brightness, go, back, visual1-4 }: 0-255, null for unused functions
 };
+// The visual on screen: its cue, the slider values it shows (saved values plus
+// live moves from the UI or DMX) and its clock (see visuals.clockAfterSpeedChange)
+let liveVisual = null;
+
+// liveVisual while its cue is still the one on screen (stop leaves it behind)
+function currentVisual() {
+  const s = state.getState();
+  return liveVisual && s.playlist[s.currentCueIndex]?.id === liveVisual.cueId ? liveVisual : null;
+}
 
 function getDiskFree() {
   try {
@@ -64,6 +80,7 @@ function broadcastState() {
     led,
     hdmi,
     dmx: { ...dmx, ...getDmxConfig() },
+    liveVisual: currentVisual() && { cueId: liveVisual.cueId, values: liveVisual.values },
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -72,21 +89,69 @@ function broadcastState() {
   }
 }
 
-// Adds a small thumbnail (and a video's duration) in the background, then pushes the update
+function patchLibraryItem(id, patch) {
+  state.updateState((s) => ({
+    ...s,
+    library: s.library.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+  }));
+  broadcastState();
+}
+
+// Adds a small thumbnail (and a video's duration) in the background, then pushes
+// the update. Visuals get their sliders read from the shader instead.
 function enrichMedia(item) {
+  if (item.type === 'visual') {
+    try {
+      const v = visuals.readVisual(mediaPath(item));
+      patchLibraryItem(item.id, { params: visuals.publicParams(v.params) });
+    } catch (e) {
+      console.warn(`Could not read visual ${item.originalName}:`, e.message);
+    }
+    return Promise.resolve();
+  }
   return analyzeMedia(config.uploadsDir, item).then(({ thumb, duration }) => {
     if (!thumb && duration == null) return;
-    const patch = item.type === 'video' ? { thumb, duration } : { thumb };
-    state.updateState((s) => ({
-      ...s,
-      library: s.library.map((m) => (m.id === item.id ? { ...m, ...patch } : m)),
-    }));
-    broadcastState();
+    patchLibraryItem(item.id, item.type === 'video' ? { thumb, duration } : { thumb });
   });
+}
+
+// Built-in visuals live in visuals/, everything else in uploads/
+function mediaPath(media) {
+  return media.builtin
+    ? path.join(visuals.BUILTIN_DIR, media.filename)
+    : path.resolve(config.uploadsDir, media.filename);
+}
+
+// Puts the built-in visuals into the library (in a "Visuals" folder on first
+// run) and keeps their sliders in step with the shader files. Deleted ones
+// come back on the next start.
+function seedBuiltinVisuals() {
+  const builtins = visuals.listBuiltins();
+  if (!builtins.length) return;
+  const s = state.getState();
+  let folder = s.folders.find((f) => !f.parentId && f.name === 'Visuals');
+  const folders = folder ? s.folders : [...s.folders, folder = { id: 'f-visuals', name: 'Visuals', parentId: null }];
+  const ids = new Set(builtins.map((b) => `vis-${path.basename(b.file, '.glsl')}`));
+  const library = s.library.filter((m) => !m.builtin || ids.has(m.id) || s.playlist.some((c) => c.mediaId === m.id));
+  for (const b of builtins) {
+    const id = `vis-${path.basename(b.file, '.glsl')}`;
+    const fields = {
+      filename: b.file,
+      type: 'visual',
+      builtin: true,
+      params: b.params,
+      thumbUrl: `/visuals/thumbs/${path.basename(b.file, '.glsl')}.jpg`,
+    };
+    const i = library.findIndex((m) => m.id === id);
+    if (i >= 0) library[i] = { ...library[i], ...fields };
+    else library.push({ id, originalName: b.name, size: 0, addedAt: new Date(0).toISOString(), folderId: folder.id, ...fields });
+  }
+  state.updateState({ folders, library });
 }
 
 function getMediaType(filename) {
   const ext = path.extname(filename).slice(1).toLowerCase();
+  if (VISUAL_EXT.includes(ext)) return 'visual';
   return IMAGE_EXT.includes(ext) ? 'image' : 'video';
 }
 
@@ -139,6 +204,21 @@ function getCueFraming(settings = {}) {
   };
 }
 
+// Validates a visual's slider values ({ name: number }); returns { params } or { error }.
+// Ranges are clamped when the visual plays.
+function parseParams(body) {
+  if (body === undefined) return {};
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'params must be an object' };
+  const params = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (!/^\w{1,64}$/.test(k) || k.startsWith('clock_')) return { error: `Invalid param ${k}` };
+    const n = Number(v);
+    if (!Number.isFinite(n)) return { error: `Invalid value for ${k}` };
+    params[k] = n;
+  }
+  return { params };
+}
+
 // Validates offsetX/offsetY/scale in body; returns { framing } or { error }
 function parseFraming(body) {
   const framing = {};
@@ -159,12 +239,63 @@ function parseFraming(body) {
 function getCuePlaybackOptions(cue, media) {
   const settings = cue.settings || {};
   return {
-    loop: settings.loop ?? false,
+    loop: media.type === 'visual' || (settings.loop ?? false),
     displayMode: settings.displayMode ?? 'fill',
     isImage: media.type === 'image',
     freeze: settings.freeze ?? false,
     framing: getCueFraming(settings),
   };
+}
+
+// Loads a cue's media into mpv. A visual is a tiny generated source plus its
+// shader, and its clock starts from zero.
+async function loadCue(cue, media) {
+  const opts = getCuePlaybackOptions(cue, media);
+  if (media.type !== 'visual') {
+    liveVisual = null;
+    return mpv.loadFile(mediaPath(media), opts);
+  }
+  const shaderPath = visuals.writeShader(mediaPath(media), VISUAL_CACHE, media.id, config.visualSize);
+  const values = visuals.paramValues(media.params, cue.settings?.params);
+  const clock = { clock_t0: 0, clock_ta: 0 };
+  liveVisual = { cueId: cue.id, values, clock };
+  return mpv.loadFile(visuals.SOURCE, { ...opts, shader: { path: shaderPath, opts: visuals.shaderOpts(values, clock) } });
+}
+
+// Moves sliders of the visual on screen without reloading it (nothing is saved).
+// Calls run one after another so a burst of DMX frames can't interleave.
+let visualQueue = Promise.resolve();
+let visualUiTimer = null;
+
+// Clients see slider moves (e.g. from DMX) at most every 200 ms
+function scheduleVisualBroadcast() {
+  if (visualUiTimer) return;
+  visualUiTimer = setTimeout(() => {
+    visualUiTimer = null;
+    broadcastState();
+  }, 200);
+}
+
+function setLiveVisualParams(cueId, patch) {
+  visualQueue = visualQueue.then(async () => {
+    const s = state.getState();
+    const cue = s.playlist[s.currentCueIndex];
+    if (!currentVisual() || cue?.id !== cueId) return false;
+    const media = s.library.find((m) => m.id === cue.mediaId);
+    const values = visuals.paramValues(media?.params, { ...liveVisual.values, ...patch });
+    if ('speed' in values && values.speed !== liveVisual.values.speed) {
+      const now = await mpv.getProperty('time-pos').catch(() => null);
+      if (typeof now === 'number') liveVisual.clock = visuals.clockAfterSpeedChange(liveVisual.clock, liveVisual.values.speed, now);
+    }
+    liveVisual.values = values;
+    await mpv.setShaderOpts(visuals.shaderOpts(values, liveVisual.clock));
+    scheduleVisualBroadcast();
+    return true;
+  }).catch((err) => {
+    console.warn('Visual params:', err.message);
+    return false;
+  });
+  return visualQueue;
 }
 
 function clearDurationTimer() {
@@ -198,8 +329,7 @@ function playCue(index) {
     return;
   }
 
-  const filePath = path.resolve(config.uploadsDir, media.filename);
-  if (!fs.existsSync(filePath)) {
+  if (!fs.existsSync(mediaPath(media))) {
     advance();
     return;
   }
@@ -209,14 +339,15 @@ function playCue(index) {
 
   const duration = cue.settings?.duration ?? null;
 
-  mpv.loadFile(filePath, getCuePlaybackOptions(cue, media))
+  loadCue(cue, media)
     .then(() => {
       state.updateState({ currentCueIndex: index });
       clearTransitionLock();
 
-      const isImage = media.type === 'image';
+      // Stills and visuals never end by themselves: advance after their duration
+      const holds = media.type !== 'video';
       const sec = duration != null && duration > 0 ? Number(duration) : null;
-      if (isImage && sec) {
+      if (holds && sec) {
         durationTimer = setTimeout(advance, sec * 1000);
       }
     })
@@ -273,7 +404,7 @@ function handleFileEnded() {
   const cue = s.playlist[s.currentCueIndex];
   if (!cue) return;
   const media = s.library.find((m) => m.id === cue.mediaId);
-  if (!media || media.type === 'image') return;
+  if (!media || media.type !== 'video') return;
   const loop = cue.settings?.loop ?? false;
   if (loop) return;
   const freeze = cue.settings?.freeze ?? false;
@@ -293,10 +424,12 @@ mpv.onReconnect(() => {
 // Ensure uploads dir exists
 fs.mkdirSync(config.uploadsDir, { recursive: true });
 
+seedBuiltinVisuals();
+
 // Backfill thumbnails for media uploaded before thumbnails existed, one at a time
 (async () => {
   for (const item of state.getState().library) {
-    if (!item.thumb) await enrichMedia(item);
+    if (!item.thumb && !item.builtin) await enrichMedia(item);
   }
 })();
 
@@ -333,6 +466,7 @@ const remoteUpload = config.remoteUploadPort
 if (remoteUpload) app.use('/api/remote-upload', remoteUpload.controlRouter);
 else app.get('/api/remote-upload', (req, res) => res.json({ disabled: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/visuals/thumbs', express.static(path.join(visuals.BUILTIN_DIR, 'thumbs')));
 app.get(/^\/uploads\/.+/, (req, res) => {
   const requested = req.path.replace(/^\/uploads\/?/, '') || '';
   const filePath = path.join(config.uploadsDir, requested);
@@ -394,7 +528,7 @@ function removeMedia(ids, extra = {}) {
   const s = state.getState();
   const gone = new Set(ids);
   for (const item of s.library) {
-    if (!gone.has(item.id)) continue;
+    if (!gone.has(item.id) || item.builtin) continue;
     const filePath = path.join(config.uploadsDir, item.filename);
     try {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
@@ -553,7 +687,7 @@ let screenshot = { at: 0, pending: null };
 function takeScreenshot() {
   if (Date.now() - screenshot.at < SCREENSHOT_MAX_AGE_MS) return Promise.resolve(true);
   if (!screenshot.pending) {
-    screenshot.pending = mpv.screenshotToFile(SCREENSHOT_PATH)
+    screenshot.pending = mpv.screenshotToFile(SCREENSHOT_PATH, currentVisual() ? 'window' : 'video')
       .then(() => { screenshot.at = Date.now(); return true; })
       .catch(() => false)
       .finally(() => { screenshot.pending = null; });
@@ -661,9 +795,12 @@ app.put('/api/playlist/:cueId', (req, res) => {
   const { loop, displayMode, duration, freeze } = req.body;
   const { framing, error } = parseFraming(req.body);
   if (error) return res.status(400).json({ error });
+  const { params, error: paramsError } = parseParams(req.body.params);
+  if (paramsError) return res.status(400).json({ error: paramsError });
   const cue = { ...s.playlist[idx] };
   const before = cue.settings || {};
   cue.settings = { ...before, ...framing };
+  if (params) cue.settings.params = { ...before.params, ...params };
   if (loop !== undefined) cue.settings.loop = !!loop;
   if (freeze !== undefined) cue.settings.freeze = !!freeze;
   if (displayMode !== undefined) {
@@ -684,14 +821,10 @@ app.put('/api/playlist/:cueId', (req, res) => {
     .some((k) => (cue.settings[k] ?? null) !== (before[k] ?? null));
   if (idx === s.currentCueIndex && !needsReload) {
     mpv.setFraming(getCueFraming(cue.settings)).catch(console.error);
+    if (params) setLiveVisualParams(cue.id, params);
   } else if (idx === s.currentCueIndex) {
     const media = s.library.find((m) => m.id === cue.mediaId);
-    if (media) {
-      const filePath = path.resolve(config.uploadsDir, media.filename);
-      if (fs.existsSync(filePath)) {
-        mpv.loadFile(filePath, getCuePlaybackOptions(cue, media)).catch(console.error);
-      }
-    }
+    if (media && fs.existsSync(mediaPath(media))) loadCue(cue, media).catch(console.error);
   }
   broadcastState();
   res.json(cue);
@@ -710,6 +843,15 @@ app.post('/api/playlist/:cueId/framing', (req, res) => {
   mpv.setFraming(getCueFraming({ ...cue.settings, ...framing }))
     .then(() => res.json({ live: true }))
     .catch((err) => res.status(502).json({ error: err.message }));
+});
+
+// Live preview while moving a visual's slider: changes the panel without
+// saving. The final value is saved with PUT /api/playlist/:cueId.
+app.post('/api/playlist/:cueId/params', async (req, res) => {
+  if (!isValidId(req.params.cueId)) return res.status(400).json({ error: 'Invalid cue ID' });
+  const { params, error } = parseParams(req.body.params);
+  if (error || !params) return res.status(400).json({ error: error || 'params required' });
+  res.json({ live: await setLiveVisualParams(req.params.cueId, params) });
 });
 
 app.delete('/api/playlist/:cueId', (req, res) => {
@@ -1012,7 +1154,8 @@ if (matrix) {
 
 // DMX control over Art-Net (see setup/DMX.md). The universe comes from .env; the channel
 // of each function is set in the UI (state.dmxConfig, defaults from .env):
-// brightness = LED brightness (0-255 -> 0-100 %), go = next cue, back = previous cue.
+// brightness = LED brightness (0-255 -> 0-100 %), go = next cue, back = previous cue,
+// visual1-4 = the live visual's first four sliders (0-255 across each slider's range).
 // GO and BACK fire once when their channel rises past half; brightness follows the
 // fader only when it moves, so the UI can still set it while the fader rests.
 const DMX_ON = 128;
@@ -1024,7 +1167,9 @@ let dmxUiTimer = null;
 
 function getDmxConfig() {
   const a = config.dmxAddress;
-  const channels = state.getState().dmxConfig?.channels ?? { brightness: a, go: a + 1, back: a + 2 };
+  const saved = state.getState().dmxConfig?.channels ?? { brightness: a, go: a + 1, back: a + 2 };
+  const channels = { ...saved };
+  for (const fn of DMX_VISUAL) channels[fn] ??= 0;
   return { universe: config.dmxUniverse ?? 0, channels };
 }
 
@@ -1056,6 +1201,22 @@ function handleDmxFrame(universe, data) {
   }
   if (values.go >= DMX_ON && !(prev.go >= DMX_ON)) goNext();
   if (values.back >= DMX_ON && !(prev.back >= DMX_ON)) goBack();
+  applyDmxVisual(values, prev);
+}
+
+// Faders for the live visual follow only when they move, like brightness
+function applyDmxVisual(values, prev) {
+  if (!currentVisual()) return;
+  const s = state.getState();
+  const cue = s.playlist[s.currentCueIndex];
+  const params = s.library.find((m) => m.id === cue?.mediaId)?.params ?? [];
+  const patch = {};
+  DMX_VISUAL.forEach((fn, i) => {
+    const p = params[i];
+    if (!p || values[fn] === null || values[fn] === prev[fn]) return;
+    patch[p.name] = p.min + ((p.max - p.min) * values[fn]) / 255;
+  });
+  if (Object.keys(patch).length) setLiveVisualParams(cue.id, patch);
 }
 
 if (dmx.configured) {
@@ -1111,6 +1272,7 @@ wss.on('connection', (ws) => {
     led,
     hdmi,
     dmx: { ...dmx, ...getDmxConfig() },
+    liveVisual: currentVisual() && { cueId: liveVisual.cueId, values: liveVisual.values },
   }));
   pollLed();
   pollHdmi();
@@ -1149,7 +1311,7 @@ function spawnMpvProcess() {
       args.push('--vo=null', '--no-terminal', '--really-quiet');
     }
   } else {
-    args.push('--vo=drm', '--hwdec=vaapi', '--fs', '--no-terminal', '--really-quiet');
+    args.push('--vo=gpu-next', '--gpu-context=drm', '--hwdec=vaapi', '--fs', '--no-terminal', '--really-quiet');
   }
   console.log('Spawning mpv, socket:', config.mpvSocket);
   mpvProcess = spawn(mpvBin, args, { stdio: ['ignore', 'ignore', 'pipe'] });

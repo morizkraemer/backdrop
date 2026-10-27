@@ -7,6 +7,7 @@ backdrop listens for Art-Net on UDP port 6454. The channel of each function is s
 | 1 | LED brightness | 0-255 maps to 0-100 % on the NovaStar controller. Applied only when the fader moves, so the web UI can still change brightness while the fader rests. |
 | 2 | GO | Plays the next cue when the value rises past 50 % (128). Bring it back below 50 % to arm it again. |
 | 3 | BACK | Plays the previous cue, same trigger as GO. From the first cue it wraps to the last one when the playlist loops; when stopped it goes to the last cue. |
+| off | Visual 1-4 | Move the first four sliders of the live visual on screen (setup/VISUALS.md), 0-255 across each slider's range. Like brightness, a fader only takes over when it moves; the moves are not saved to the cue. |
 
 The first packet after the server starts (or after the DMX settings change) only records the current values, so a fader that is already up does not fire.
 
@@ -21,7 +22,7 @@ The first packet after the server starts (or after the DMX settings change) only
 | Variable | Default | |
 |---|---|---|
 | `DMX_UNIVERSE` | `0` | Art-Net universe, matching the node's Universe IN (15-bit port address: Net × 256 + Sub-Net × 16 + Universe). Empty disables DMX entirely. |
-| `DMX_ADDRESS` | `1` | Default first channel (brightness; GO and BACK follow) until changed in the UI. |
+| `DMX_ADDRESS` | `1` | Default first channel (brightness; GO and BACK follow) until changed in the UI. The visual sliders start unused. |
 
 ## Electroconcept "Node 2 Univers" (Art-Net / sACN)
 

@@ -136,6 +136,7 @@ function getMedia(mediaId) {
 function thumbSrc(media) {
   if (!media) return null;
   const v = encodeURIComponent(media.addedAt || '');
+  if (media.thumbUrl) return media.thumbUrl;
   if (media.thumb) return `/uploads/${media.thumb.split('/').map(encodeURIComponent).join('/')}?t=${v}`;
   if (media.type === 'image') return `/uploads/${encodeURIComponent(media.filename)}?t=${v}`;
   return null;
@@ -156,6 +157,7 @@ function thumbHtml(media, src = thumbSrc(media)) {
 
 function mediaMeta(media) {
   if (!media) return 'Missing file';
+  if (media.type === 'visual') return ['Live visual', media.builtin ? 'built in' : formatBytes(media.size)].join(' · ');
   const parts = [media.type === 'video' ? 'Video' : 'Image'];
   if (media.type === 'video' && media.duration != null) parts.push(formatDuration(media.duration));
   parts.push(formatBytes(media.size));
@@ -528,8 +530,9 @@ function renderLibrary() {
     all: visible.length,
     image: visible.filter((m) => m.type === 'image').length,
     video: visible.filter((m) => m.type === 'video').length,
+    visual: visible.filter((m) => m.type === 'visual').length,
   };
-  setHtml(libraryFilters, [['all', 'All'], ['image', 'Images'], ['video', 'Videos']]
+  setHtml(libraryFilters, [['all', 'All'], ['image', 'Images'], ['video', 'Videos'], ['visual', 'Visuals']]
     .map(([key, label]) => `<button type="button" class="chip" data-filter="${key}" aria-pressed="${libraryFilter === key}">${label} ${counts[key]}</button>`)
     .join(''));
   $('tabLibrary').textContent = `Library · ${counts.all}`;
@@ -557,7 +560,7 @@ function renderLibrary() {
   folders.sort((a, b) => byName(a.name, b.name));
 
   if (!folders.length && !items.length) {
-    let msg = 'Drop images or videos here, or use Upload';
+    let msg = 'Drop images, videos or .glsl visuals here, or use Upload';
     if (q) msg = 'No matches';
     else if (currentFolderId) msg = 'Empty folder. Drop files here to upload into it.';
     else if (visible.length) msg = 'No matches';
@@ -687,12 +690,75 @@ function renderInspector() {
   setSegment(segEnd, endValue);
   $('secondsRow').hidden = endValue !== 'auto';
   if (document.activeElement !== inspSeconds) inspSeconds.value = st.duration > 0 ? st.duration : '';
+  renderVisualParams(cue, media);
 
   const saved = $('inspSaved');
   saved.classList.toggle('error', !!saveStatus && !['saving', 'saved'].includes(saveStatus));
   saved.textContent = saveStatus === 'saving' ? 'Saving…'
     : saveStatus === 'saved' ? 'Saved'
     : saveStatus || 'Changes save automatically';
+}
+
+// --- live visual sliders (shader params; see setup/VISUALS.md) ---
+
+let paramDrag = null; // { cueId, name, value } while a slider is held
+let paramInFlight = false;
+let paramQueued = false;
+
+// What the slider shows: the panel's live value for the cue on air (DMX moves
+// it too), else the saved value, else the shader's default
+function paramValue(cue, p) {
+  if (paramDrag?.cueId === cue.id && paramDrag.name === p.name) return paramDrag.value;
+  const live = state.liveVisual?.cueId === cue.id ? state.liveVisual.values?.[p.name] : undefined;
+  return live ?? cue.settings?.params?.[p.name] ?? p.default;
+}
+
+function formatParam(p, v) {
+  if (p.int) return String(Math.round(v));
+  return Math.abs(p.max - p.min) > 10 ? v.toFixed(1) : v.toFixed(2);
+}
+
+function renderVisualParams(cue, media) {
+  const field = $('visualField');
+  const params = media?.type === 'visual' ? media.params || [] : [];
+  field.hidden = !params.length;
+  if (!params.length) return;
+  const list = $('visualParams');
+  const key = `${cue.id}:${params.map((p) => p.name).join(',')}`;
+  if (list.dataset.key !== key) {
+    list.dataset.key = key;
+    list.innerHTML = params.map((p) => `
+      <label class="param-row">
+        <span class="param-name">${escapeHtml(p.desc || p.name)}</span>
+        <span><input type="range" data-param="${escapeHtml(p.name)}" min="${p.min}" max="${p.max}" step="${p.int ? 1 : (p.max - p.min) / 200}"><output class="framing-value"></output></span>
+      </label>`).join('');
+  }
+  params.forEach((p) => {
+    const input = list.querySelector(`input[data-param="${CSS.escape(p.name)}"]`);
+    const v = Number(paramValue(cue, p));
+    if (document.activeElement !== input || !paramDrag) input.value = v;
+    input.nextElementSibling.textContent = formatParam(p, v);
+  });
+}
+
+// One live request in flight at a time, always with the newest value
+function sendLiveParam() {
+  if (!paramDrag) return;
+  if (paramInFlight) {
+    paramQueued = true;
+    return;
+  }
+  paramInFlight = true;
+  const { cueId, name, value } = paramDrag;
+  api('POST', `/playlist/${cueId}/params`, { params: { [name]: value } })
+    .catch(() => {})
+    .finally(() => {
+      paramInFlight = false;
+      if (paramQueued) {
+        paramQueued = false;
+        sendLiveParam();
+      }
+    });
 }
 
 function render() {
@@ -1213,6 +1279,31 @@ segEnd.addEventListener('click', (e) => {
   else if (v === 'hold') updateCue({ duration: null });
   else updateCue({ duration: Number(inspSeconds.value) > 0 ? Number(inspSeconds.value) : 10 });
 });
+$('visualParams').addEventListener('input', (e) => {
+  const input = e.target.closest('input[data-param]');
+  if (!input || !selectedCueId) return;
+  paramDrag = { cueId: selectedCueId, name: input.dataset.param, value: Number(input.value) };
+  renderInspector();
+  sendLiveParam();
+});
+$('visualParams').addEventListener('change', (e) => {
+  const input = e.target.closest('input[data-param]');
+  const cue = state.playlist.find((c) => c.id === selectedCueId);
+  if (!input || !cue) return;
+  paramDrag = null;
+  const value = Number(input.value);
+  // Keep the on-air value in step until the server's next update arrives
+  if (state.liveVisual?.cueId === cue.id) {
+    state.liveVisual = { ...state.liveVisual, values: { ...state.liveVisual.values, [input.dataset.param]: value } };
+  }
+  updateCue({ params: { ...cue.settings?.params, [input.dataset.param]: value } });
+});
+$('visualReset').addEventListener('click', () => {
+  const cue = state.playlist.find((c) => c.id === selectedCueId);
+  const media = cue && getMedia(cue.mediaId);
+  if (!media?.params) return;
+  updateCue({ params: Object.fromEntries(media.params.map((p) => [p.name, p.default])) });
+});
 inspSeconds.addEventListener('change', () => {
   const n = Number(inspSeconds.value);
   if (n > 0) updateCue({ duration: n });
@@ -1519,6 +1610,7 @@ const DMX_FUNCTIONS = [
   { key: 'brightness', name: 'Brightness', show: (v) => `${Math.round((v * 100) / 255)}%` },
   { key: 'go', name: 'GO', show: (v) => (v >= 128 ? 'On' : 'Off') },
   { key: 'back', name: 'BACK', show: (v) => (v >= 128 ? 'On' : 'Off') },
+  ...[1, 2, 3, 4].map((n) => ({ key: `visual${n}`, name: `Visual ${n}`, show: (v) => `${Math.round((v * 100) / 255)}%` })),
 ];
 let dmxError = null;
 
