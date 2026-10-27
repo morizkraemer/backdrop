@@ -26,7 +26,6 @@ const diskSpace = $('diskSpace');
 const connStatus = $('connStatus');
 const connText = $('connText');
 const monitorNow = $('monitorNow');
-const monitorNext = $('monitorNext');
 const btnGo = $('btnGo');
 const btnStop = $('btnStop');
 const btnLoop = $('btnLoop');
@@ -360,7 +359,6 @@ function renderMonitor(root, index, isNow) {
 function renderTransport() {
   renderMonitor(monitorNow, state.currentCueIndex, true);
   const next = nextCueIndex();
-  renderMonitor(monitorNext, next, false);
 
   const nextCue = state.playlist[next];
   $('goSub').textContent = nextCue ? `to Q${next + 1} · Space` : (state.currentCueIndex >= 0 ? 'ends · Space' : 'Space');
