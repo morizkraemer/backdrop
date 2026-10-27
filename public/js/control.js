@@ -101,6 +101,15 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
+// Skips the rebuild when nothing changed, so state pushes (LED, HDMI, other
+// clients) don't re-create every row and its thumbnail
+const lastHtml = new WeakMap();
+function setHtml(el, html) {
+  if (lastHtml.get(el) === html) return;
+  lastHtml.set(el, html);
+  el.innerHTML = html;
+}
+
 function formatBytes(n) {
   if (n >= 1e9) return (n / 1e9).toFixed(1) + ' GB';
   if (n >= 1e6) return (n / 1e6).toFixed(1) + ' MB';
@@ -121,16 +130,23 @@ function getMedia(mediaId) {
   return state.library.find((m) => m.id === mediaId);
 }
 
+// Small server-made thumbnail for list rows. Images fall back to the original
+// until the thumbnail exists, which is heavy: photos can be 20+ megapixels.
 function thumbSrc(media) {
   if (!media) return null;
   const v = encodeURIComponent(media.addedAt || '');
-  if (media.type === 'image') return `/uploads/${encodeURIComponent(media.filename)}?t=${v}`;
   if (media.thumb) return `/uploads/${media.thumb.split('/').map(encodeURIComponent).join('/')}?t=${v}`;
+  if (media.type === 'image') return `/uploads/${encodeURIComponent(media.filename)}?t=${v}`;
   return null;
 }
 
-function thumbHtml(media) {
-  const src = thumbSrc(media);
+// Full picture for the big screens (live monitor, inspector), so they stay sharp
+function pictureSrc(media) {
+  if (media?.type !== 'image') return thumbSrc(media);
+  return `/uploads/${encodeURIComponent(media.filename)}?t=${encodeURIComponent(media.addedAt || '')}`;
+}
+
+function thumbHtml(media, src = thumbSrc(media)) {
   const img = src
     ? `<img src="${src}" alt="" loading="lazy" onerror="this.remove()">`
     : '';
@@ -348,10 +364,10 @@ function renderMonitor(root, index, isNow) {
       delete screen.dataset.preview;
     }
     // Rebuild only when the picture changes, so dragging a live image doesn't flicker
-    const key = cue ? `${cue.id}:${thumbSrc(media)}` : '';
+    const key = cue ? `${cue.id}:${pictureSrc(media)}` : '';
     if (screen.dataset.shown !== key || !cue) {
       screen.dataset.shown = key;
-      screen.innerHTML = cue ? thumbHtml(media) : '';
+      screen.innerHTML = cue ? thumbHtml(media, pictureSrc(media)) : '';
     }
     const img = isNow && media?.type === 'image' && screen.querySelector('img:not(.panel-shot)');
     screen.classList.toggle('letterbox', !!img && cue.settings?.displayMode !== 'fill');
@@ -511,19 +527,19 @@ function renderLibrary() {
     image: visible.filter((m) => m.type === 'image').length,
     video: visible.filter((m) => m.type === 'video').length,
   };
-  libraryFilters.innerHTML = [['all', 'All'], ['image', 'Images'], ['video', 'Videos']]
+  setHtml(libraryFilters, [['all', 'All'], ['image', 'Images'], ['video', 'Videos']]
     .map(([key, label]) => `<button type="button" class="chip" data-filter="${key}" aria-pressed="${libraryFilter === key}">${label} ${counts[key]}</button>`)
-    .join('');
+    .join(''));
   $('tabLibrary').textContent = `Library · ${counts.all}`;
 
   const q = librarySearch.value.trim().toLowerCase();
   const crumbs = [{ id: '', name: 'Library' }, ...folderPath(currentFolderId)];
-  libraryCrumbs.innerHTML = q
+  setHtml(libraryCrumbs, q
     ? '<span class="crumb-note">Searching all folders</span>'
     : `<button type="button" class="crumb crumb-back" data-folder-id="${crumbs.length > 1 ? crumbs[crumbs.length - 2].id : ''}" aria-label="Back" title="Back" ${crumbs.length > 1 ? '' : 'disabled'}>${ICONS.chevron}</button>`
       + crumbs.map((c, i) => (i === crumbs.length - 1
       ? `<span class="crumb current" data-folder-id="${c.id}" aria-current="page">${escapeHtml(c.name)}</span>`
-      : `<button type="button" class="crumb" data-folder-id="${c.id}">${escapeHtml(c.name)}</button>${ICONS.chevron}`)).join('');
+      : `<button type="button" class="crumb" data-folder-id="${c.id}">${escapeHtml(c.name)}</button>${ICONS.chevron}`)).join(''));
 
   const typeOk = (m) => libraryFilter === 'all' || m.type === libraryFilter;
   let folders;
@@ -543,10 +559,10 @@ function renderLibrary() {
     if (q) msg = 'No matches';
     else if (currentFolderId) msg = 'Empty folder. Drop files here to upload into it.';
     else if (visible.length) msg = 'No matches';
-    libraryList.innerHTML = `<div class="empty">${msg}</div>`;
+    setHtml(libraryList, `<div class="empty">${msg}</div>`);
   } else {
-    libraryList.innerHTML = folders.map((f) => folderRowHtml(f, !!q)).join('')
-      + items.map((m) => mediaRowHtml(m, !!q)).join('');
+    setHtml(libraryList, folders.map((f) => folderRowHtml(f, !!q)).join('')
+      + items.map((m) => mediaRowHtml(m, !!q)).join(''));
   }
 
   const input = libraryList.querySelector('input.rename');
@@ -564,10 +580,10 @@ function renderCues() {
   const next = nextCueIndex();
 
   if (!state.playlist.length) {
-    cueList.innerHTML = '<div class="empty">No cues yet. Add media from the library.</div>';
+    setHtml(cueList, '<div class="empty">No cues yet. Add media from the library.</div>');
     return;
   }
-  cueList.innerHTML = state.playlist.map((cue, i) => {
+  setHtml(cueList, state.playlist.map((cue, i) => {
     const media = getMedia(cue.mediaId);
     const live = i === state.currentCueIndex;
     const isNext = i === next && !live;
@@ -590,7 +606,7 @@ function renderCues() {
         <button type="button" class="btn-icon more" data-cue-id="${cue.id}" aria-label="Cue settings">${ICONS.more}</button>
       </div>
     `;
-  }).join('');
+  }).join(''));
 }
 
 function setSegment(seg, value) {
@@ -602,7 +618,7 @@ function setSegment(seg, value) {
 function renderStage(cue, media) {
   const screen = inspScreen;
   const mode = cue.settings?.displayMode ?? 'fill';
-  const src = thumbSrc(media);
+  const src = pictureSrc(media);
   const key = `${media?.id}:${src}`;
   if (screen.dataset.media !== key) {
     screen.dataset.media = key;
