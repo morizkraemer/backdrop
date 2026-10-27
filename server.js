@@ -164,7 +164,9 @@ function advance() {
   const s = state.getState();
   const next = s.currentCueIndex + 1;
   if (next >= s.playlist.length) {
-    if (s.playlistLoop && s.playlist.length > 0) {
+    if (s.playlistLoop && s.playlist.length === 1 && isCurrentCueVideo(s)) {
+      restartCurrentCue();
+    } else if (s.playlistLoop && s.playlist.length > 0) {
       playCue(0);
     } else {
       mpv.stop();
@@ -175,6 +177,21 @@ function advance() {
     return;
   }
   playCue(next);
+}
+
+function isCurrentCueVideo(s) {
+  const cue = s.playlist[s.currentCueIndex];
+  return s.library.find((m) => m.id === cue?.mediaId)?.type === 'video';
+}
+
+// A one-cue playlist on loop: rewind the file mpv already has open (held on
+// its last frame by keep-open) instead of reloading it, so there is no gap.
+function restartCurrentCue() {
+  const index = state.getState().currentCueIndex;
+  mpv.restart().catch((err) => {
+    console.error('mpv restart error:', err);
+    playCue(index);
+  });
 }
 
 function handleFileEnded() {

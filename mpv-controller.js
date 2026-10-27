@@ -71,6 +71,8 @@ class MpvController extends EventEmitter {
         console.log('mpv connected');
         this.emit('connected');
         this._flushQueue();
+        // With keep-open=yes mpv sends no end-file at EOF, so watch eof-reached
+        this._command('observe_property', [1, 'eof-reached']).catch(() => {});
         if (this.reconnectCallback) this.reconnectCallback();
         resolve();
       });
@@ -121,6 +123,9 @@ class MpvController extends EventEmitter {
         } else if (msg.event) {
           if (msg.event === 'end-file') this.emit('file-ended', msg);
           else if (msg.event === 'start-file') this.emit('file-loaded', msg);
+          else if (msg.event === 'property-change' && msg.name === 'eof-reached') {
+            if (msg.data === true) this.emit('file-ended', { event: 'end-file', reason: 'eof' });
+          }
           else this.emit('event', msg);
         }
       } catch (_) {
@@ -200,20 +205,41 @@ class MpvController extends EventEmitter {
       loop = false,
       displayMode = 'fill',
       isImage = false,
-      freeze = false,
     } = opts;
     const mode = DISPLAY_MODES[displayMode] || DISPLAY_MODES.fill;
 
-    await this.setProperty('keep-open', 'no');
-    await this.setProperty('pause', 'no');
-    await this._command('loadfile', [path, 'replace']);
-    await this.setProperty('loop-file', loop ? 'inf' : 'no');
-    await this.setProperty('keep-open', freeze && !loop ? 'yes' : 'no');
-    await this.setProperty('keepaspect', mode.keepaspect);
-    await this.setProperty('panscan', mode.panscan);
-    if (isImage) {
-      await this.setProperty('image-display-duration', 'inf');
+    // Options go with the loadfile command so they apply as the new file starts
+    // and never reframe the old one. keep-open=yes holds the last frame on
+    // screen at EOF instead of dropping to a black idle screen while the next
+    // cue loads; eof-reached tells the server when to move on.
+    const options = {
+      'pause': 'no',
+      'loop-file': loop ? 'inf' : 'no',
+      'keep-open': isImage ? 'no' : 'yes',
+      'keepaspect': mode.keepaspect ? 'yes' : 'no',
+      'panscan': String(mode.panscan),
+    };
+    if (isImage) options['image-display-duration'] = 'inf';
+    const optionString = Object.entries(options).map(([k, v]) => `${k}=${v}`).join(',');
+
+    try {
+      // mpv 0.38+: loadfile <url> <flags> <index> <options>
+      await this._command('loadfile', [path, 'replace', -1, optionString]);
+    } catch (_) {
+      // Older mpv has no index argument ("invalid parameter"): set the options
+      // as globals instead. A file that really fails to load fails here again.
+      for (const [name, value] of Object.entries(options)) {
+        await this.setProperty(name, value);
+      }
+      await this._command('loadfile', [path, 'replace']);
     }
+  }
+
+  // Play the loaded file again from the start, e.g. a one-cue playlist on loop,
+  // without unloading it (which would flash black)
+  async restart() {
+    await this._command('seek', [0, 'absolute', 'exact']);
+    await this.setProperty('pause', false);
   }
 
   screenshotToFile(file) {
