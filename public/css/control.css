@@ -169,6 +169,119 @@ svg {
   color: #8fb6ff;
 }
 
+/* LED brightness */
+
+.led {
+  position: relative;
+}
+
+.btn-led {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #2e3036;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.btn-led svg {
+  width: 14px;
+  height: 14px;
+}
+
+.btn-led:hover,
+.btn-led[aria-expanded="true"] {
+  background: var(--bg-hover);
+}
+
+.btn-led.offline {
+  color: var(--text-dim);
+}
+
+.led-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: 260px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.led-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.led-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.led-popover input[type="range"] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--live);
+}
+
+.led-presets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #1c1d21;
+}
+
+.led-presets button {
+  min-height: 32px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.led-presets button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.led-presets button.active {
+  background: var(--bg-selected);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.led-status {
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.led-status:empty {
+  display: none;
+}
+
+.led-status.error {
+  color: var(--danger);
+}
+
 .conn {
   display: flex;
   align-items: center;
@@ -1158,6 +1271,14 @@ svg {
     display: none;
   }
 
+  .header-right {
+    gap: 10px;
+  }
+
+  .btn-led {
+    padding: 0 10px;
+  }
+
   .transport {
     display: contents;
   }
@@ -1386,5 +1507,11 @@ svg {
 
   .cues {
     overflow: hidden;
+  }
+}
+
+@media (max-width: 480px) {
+  #connText {
+    display: none;
   }
 }

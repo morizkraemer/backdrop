@@ -325,6 +325,7 @@ function renderInspector() {
 
 function render() {
   renderHeader();
+  renderLed();
   renderTransport();
   renderLibrary();
   renderCues();
@@ -664,6 +665,92 @@ btnBluetooth.addEventListener('click', () => {
       renderBluetooth(true);
     })
     .catch(() => {});
+});
+
+// --- LED panel brightness (NovaStar controller, proxied by the server) ---
+
+const ledEl = $('led');
+const btnLed = $('btnLed');
+const ledPopover = $('ledPopover');
+const ledSlider = $('ledSlider');
+let ledDragging = false;
+let ledPending = null; // value sent but not yet confirmed
+let ledError = null;
+let ledSendTimer = null;
+
+function renderLed() {
+  const led = state.led || {};
+  ledEl.hidden = !led.configured;
+  const online = !!led.available;
+  const shown = ledDragging || ledPending !== null ? Number(ledSlider.value) : led.brightness;
+  btnLed.classList.toggle('offline', !online);
+  $('ledText').textContent = online && shown != null ? `${shown}%` : 'LED offline';
+  $('ledValue').textContent = shown != null ? `${shown}%` : '—';
+  if (!ledDragging && ledPending === null && led.brightness != null) ledSlider.value = led.brightness;
+  ledSlider.disabled = !online;
+  $('ledPresets').querySelectorAll('button').forEach((b) => {
+    b.disabled = !online;
+    b.classList.toggle('active', Number(b.dataset.value) === shown);
+  });
+  const status = $('ledStatus');
+  status.classList.toggle('error', !!ledError || !online);
+  status.textContent = !online ? 'Controller unreachable'
+    : ledError ? ledError
+    : ledPending !== null ? 'Applying…'
+    : '';
+}
+
+function sendLed(value) {
+  ledPending = value;
+  ledError = null;
+  renderLed();
+  api('PUT', '/led/brightness', { brightness: value })
+    .then(async (r) => {
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not set brightness');
+    })
+    .catch((err) => { ledError = err.message; })
+    .finally(() => {
+      if (ledPending === value) ledPending = null;
+      renderLed();
+    });
+}
+
+function setLedOpen(open) {
+  ledPopover.hidden = !open;
+  btnLed.setAttribute('aria-expanded', String(open));
+  if (open) renderLed();
+}
+
+btnLed.addEventListener('click', () => setLedOpen(ledPopover.hidden));
+document.addEventListener('click', (e) => {
+  if (!ledPopover.hidden && !ledEl.contains(e.target)) setLedOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !ledPopover.hidden) setLedOpen(false);
+});
+
+// Sends while dragging (throttled) so the panel follows the slider
+ledSlider.addEventListener('input', () => {
+  ledDragging = true;
+  renderLed();
+  if (!ledSendTimer) {
+    ledSendTimer = setTimeout(() => {
+      ledSendTimer = null;
+      if (ledDragging) sendLed(Number(ledSlider.value));
+    }, 250);
+  }
+});
+ledSlider.addEventListener('change', () => {
+  ledDragging = false;
+  clearTimeout(ledSendTimer);
+  ledSendTimer = null;
+  sendLed(Number(ledSlider.value));
+});
+$('ledPresets').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-value]');
+  if (!b) return;
+  ledSlider.value = b.dataset.value;
+  sendLed(Number(b.dataset.value));
 });
 
 connectWs();
