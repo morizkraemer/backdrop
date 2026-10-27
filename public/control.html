@@ -163,6 +163,16 @@
         </div>
         <input type="file" id="cueFileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v,.glsl" hidden>
         <div class="cue-list" id="cueList"></div>
+        <div class="cue-add-bar">
+          <button type="button" class="btn-secondary" id="btnCueFromLibrary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            From library
+          </button>
+          <button type="button" class="btn-secondary" id="btnCueUpload" title="Upload a file straight into the cue list (not kept in the library)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
+            Upload file
+          </button>
+        </div>
         <div class="cue-drop" id="cueDrop">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
           Drop files or library items here to add cues
