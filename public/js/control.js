@@ -1,6 +1,8 @@
 const API = '/api';
 const WS_PROTO = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_URL = `${WS_PROTO}//${location.host}/ws`;
+const MEDIA_MIME = 'application/x-screenview-media';
+const CUE_MIME = 'application/x-screenview-cue';
 
 let state = {
   library: [],
@@ -11,459 +13,615 @@ let state = {
   mpvConnected: false,
   playlistLoop: false,
 };
-let openPopupCueId = null;
-let ws = null;
+let wsConnected = false;
+let selectedCueId = null;
+let libraryFilter = 'all';
+let saveStatus = null; // null | 'saving' | 'saved' | error message
 
-const fileInput = document.getElementById('fileInput');
-const btnAddLibrary = document.getElementById('btnAddLibrary');
-const libraryDropZone = document.getElementById('libraryDropZone');
-const playlistFileInput = document.getElementById('playlistFileInput');
-const btnAddPlaylist = document.getElementById('btnAddPlaylist');
-const cueDropZone = document.getElementById('cueDropZone');
-const btnCollapseLibrary = document.getElementById('btnCollapseLibrary');
-const mainEl = document.querySelector('.main');
-const uploadProgress = document.getElementById('uploadProgress');
-const librarySearch = document.getElementById('librarySearch');
-const libraryList = document.getElementById('libraryList');
-const diskSpace = document.getElementById('diskSpace');
-const cueList = document.getElementById('cueList');
-const btnGo = document.getElementById('btnGo');
-const btnStop = document.getElementById('btnStop');
-const btnLoop = document.getElementById('btnLoop');
-const status = document.getElementById('status');
-const mpvStatus = document.getElementById('mpvStatus');
-const cuePopupBackdrop = document.getElementById('cuePopupBackdrop');
-const cuePopup = document.getElementById('cuePopup');
-const popupLoop = document.getElementById('popupLoop');
-const popupDisplayMode = document.getElementById('popupDisplayMode');
-const popupDuration = document.getElementById('popupDuration');
-const popupHold = document.getElementById('popupHold');
-const popupCancel = document.getElementById('popupCancel');
-const popupSave = document.getElementById('popupSave');
+const $ = (id) => document.getElementById(id);
+const appEl = $('app');
+const playerPill = $('playerPill');
+const playerText = $('playerText');
+const diskSpace = $('diskSpace');
+const connStatus = $('connStatus');
+const connText = $('connText');
+const monitorNow = $('monitorNow');
+const monitorNext = $('monitorNext');
+const btnGo = $('btnGo');
+const btnStop = $('btnStop');
+const btnLoop = $('btnLoop');
+const libraryPane = $('libraryPane');
+const libraryList = $('libraryList');
+const libraryFilters = $('libraryFilters');
+const librarySearch = $('librarySearch');
+const fileInput = $('fileInput');
+const cuesPane = $('cuesPane');
+const cueList = $('cueList');
+const cueFileInput = $('cueFileInput');
+const inspector = $('inspector');
+const segDisplay = $('segDisplay');
+const segEnd = $('segEnd');
+const inspSeconds = $('inspSeconds');
+const uploadsEl = $('uploads');
+
+const ICONS = {
+  play: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>',
+  grip: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>',
+  more: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>',
+};
+
+const DISPLAY_LABELS = { fill: 'Fill', centered: 'Centered', stretch: 'Stretch' };
+
+// --- helpers ---
 
 function connectWs() {
-  ws = new WebSocket(WS_URL);
+  const ws = new WebSocket(WS_URL);
   ws.onmessage = (e) => {
-    const data = JSON.parse(e.data);
-    state = { ...state, ...data };
+    state = { ...state, ...JSON.parse(e.data) };
+    if (selectedCueId && !state.playlist.some((c) => c.id === selectedCueId)) selectedCueId = null;
+    render();
+  };
+  ws.onopen = () => {
+    wsConnected = true;
     render();
   };
   ws.onclose = () => {
-    status.textContent = 'Disconnected';
+    wsConnected = false;
+    render();
     setTimeout(connectWs, 2000);
   };
-  ws.onopen = () => {
-    status.textContent = 'Connected';
-  };
-}
-
-function formatBytes(n) {
-  if (n >= 1e9) return (n / 1e9).toFixed(1) + ' GB';
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + ' MB';
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + ' KB';
-  return n + ' B';
 }
 
 function api(method, path, body) {
   const opts = { method };
-  if (body) {
+  if (body !== undefined) {
     opts.headers = { 'Content-Type': 'application/json' };
     opts.body = JSON.stringify(body);
   }
   return fetch(`${API}${path}`, opts);
 }
 
-function thumbUrl(item) {
-  if (!item) return null;
-  return item.type === 'image'
-    ? `/uploads/${encodeURIComponent(item.filename)}?t=${encodeURIComponent(item.addedAt || '')}`
-    : null;
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s ?? '';
+  return div.innerHTML;
 }
 
-function renderLibrary() {
-  const visibleLibrary = state.library.filter((item) => !item.playlistOnly);
-  const query = (librarySearch?.value || '').trim().toLowerCase();
-  const items = query
-    ? visibleLibrary.filter((item) =>
-        (item.originalName || '').toLowerCase().includes(query) ||
-        (item.type || '').toLowerCase().includes(query)
-      )
-    : visibleLibrary;
-
-  libraryList.innerHTML = items.map((item) => {
-    const thumb = item.type === 'image'
-      ? `<img class="thumb" src="${thumbUrl(item)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">`
-      : '';
-    const placeholder = item.type === 'image'
-      ? '<div class="thumb-placeholder" style="display:none">?</div>'
-      : '<div class="thumb-placeholder">▶</div>';
-    return `
-      <div class="library-item" data-id="${item.id}">
-        <div class="thumb-wrap">${thumb}${placeholder}</div>
-        <span class="name">${escapeHtml(item.originalName)}</span>
-        <span class="meta">
-          <span class="badge">${item.type}</span>
-          ${formatBytes(item.size)}
-        </span>
-        <div class="actions">
-          <button class="add" data-id="${item.id}">+</button>
-          <button class="delete" data-id="${item.id}">×</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  libraryList.querySelectorAll('.add').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      api('POST', '/playlist', { mediaId: btn.dataset.id }).then(() => {});
-    });
-  });
-  libraryList.querySelectorAll('.delete').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (confirm('Delete this file?')) api('DELETE', `/library/${btn.dataset.id}`).then(() => {});
-    });
-  });
+function formatBytes(n) {
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + ' GB';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + ' MB';
+  if (n >= 1e3) return Math.round(n / 1e3) + ' KB';
+  return n + ' B';
 }
 
-function renderPlaylist() {
-  const getMedia = (mediaId) => state.library.find((x) => x.id === mediaId);
+function formatDuration(sec) {
+  if (sec == null) return '';
+  const s = Math.round(sec);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${r}` : `${m}:${r}`;
+}
 
-  cueList.innerHTML = state.playlist.map((cue, i) => {
-    const active = i === state.currentCueIndex;
-    const media = getMedia(cue.mediaId);
-    const mediaName = media ? media.originalName : '?';
-    const cueThumb = media?.type === 'image'
-      ? `<img class="cue-thumb" src="${thumbUrl(media)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">`
-      : '';
-    const cuePlaceholder = media?.type === 'image'
-      ? '<span class="cue-thumb-placeholder" style="display:none">▶</span>'
-      : '<span class="cue-thumb-placeholder">▶</span>';
-    const editing = openPopupCueId === cue.id;
-    return `
-      <div class="cue-row ${active ? 'active' : ''} ${editing ? 'editing' : ''}" data-cue-id="${cue.id}" data-index="${i}" draggable="true">
-        <span class="handle">⋮⋮</span>
-        <span class="cue-thumb-wrap">${cueThumb}${cuePlaceholder}</span>
-        <span class="num">Q${i + 1}</span>
-        <span class="name">${escapeHtml(mediaName)}</span>
-        <button class="cue-edit-btn" data-cue-id="${cue.id}" title="Edit settings">✎ Edit</button>
-        <button class="cue-delete-btn" data-cue-id="${cue.id}" title="Remove from playlist">×</button>
-      </div>
-    `;
-  }).join('');
+function getMedia(mediaId) {
+  return state.library.find((m) => m.id === mediaId);
+}
 
-  cueList.querySelectorAll('.cue-row').forEach((row) => {
-    row.addEventListener('dblclick', () => {
-      api('POST', `/go/${row.dataset.cueId}`).then(() => {});
-    });
-    row.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/plain', row.dataset.cueId);
-      row.classList.add('dragging');
-    });
-    row.addEventListener('dragend', () => row.classList.remove('dragging'));
-    row.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      const over = e.currentTarget;
-      if (over.classList.contains('dragging')) return;
-      over.classList.add('drag-over');
-    });
-    row.addEventListener('dragleave', (e) => e.currentTarget.classList.remove('drag-over'));
-    row.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.currentTarget.classList.remove('drag-over');
-      const fromId = e.dataTransfer.getData('text/plain');
-      const toId = e.currentTarget.dataset.cueId;
-      if (fromId === toId) return;
-      const ids = state.playlist.map((c) => c.id);
-      const fromIdx = ids.indexOf(fromId);
-      const toIdx = ids.indexOf(toId);
-      if (fromIdx === -1 || toIdx === -1) return;
-      ids.splice(fromIdx, 1);
-      ids.splice(toIdx, 0, fromId);
-      api('PUT', '/playlist/reorder', ids).then(() => {});
-    });
-  });
+function thumbSrc(media) {
+  if (!media) return null;
+  const v = encodeURIComponent(media.addedAt || '');
+  if (media.type === 'image') return `/uploads/${encodeURIComponent(media.filename)}?t=${v}`;
+  if (media.thumb) return `/uploads/${media.thumb.split('/').map(encodeURIComponent).join('/')}?t=${v}`;
+  return null;
+}
 
-  cueList.querySelectorAll('.cue-edit-btn').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openCuePopup(btn.dataset.cueId);
-    });
-  });
-  cueList.querySelectorAll('.cue-delete-btn').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      api('DELETE', `/playlist/${btn.dataset.cueId}`).then(() => {});
-    });
-  });
+function thumbHtml(media) {
+  const src = thumbSrc(media);
+  const img = src
+    ? `<img src="${src}" alt="" loading="lazy" onerror="this.remove()">`
+    : '';
+  return `${ICONS.play}${img}`;
+}
 
-  btnGo.disabled = state.isTransitioning;
-  btnStop.disabled = false;
+function mediaMeta(media) {
+  if (!media) return 'Missing file';
+  const parts = [media.type === 'video' ? 'Video' : 'Image'];
+  if (media.type === 'video' && media.duration != null) parts.push(formatDuration(media.duration));
+  parts.push(formatBytes(media.size));
+  return parts.join(' · ');
+}
+
+function endShort(cue, media) {
+  const st = cue.settings || {};
+  if (media?.type === 'video') return st.loop ? 'Loop' : 'To end';
+  return st.duration > 0 ? `${st.duration} s` : 'Hold';
+}
+
+function endLong(cue, media) {
+  const st = cue.settings || {};
+  if (media?.type === 'video') return st.loop ? 'loops until GO' : 'plays to the end';
+  return st.duration > 0 ? `advances after ${st.duration} s` : 'holds until GO';
+}
+
+function cueSummary(cue, media) {
+  return `${DISPLAY_LABELS[cue.settings?.displayMode ?? 'fill']} · ${endLong(cue, media)}`;
+}
+
+function nextCueIndex() {
+  const len = state.playlist.length;
+  if (!len) return -1;
+  const n = state.currentCueIndex + 1;
+  if (n < len) return n;
+  return state.playlistLoop ? 0 : -1;
+}
+
+function isTyping(el) {
+  return el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(el.tagName));
+}
+
+// --- render ---
+
+function renderHeader() {
+  const online = state.mpvConnected !== false;
+  playerPill.classList.toggle('offline', !online);
+  playerPill.querySelector('.dot').className = `dot ${online ? 'on' : 'off'}`;
+  playerText.textContent = online ? 'LED panel · 2304×768 · player online' : 'Player offline';
+  diskSpace.textContent = `${formatBytes(state.diskFree)} free`;
+  connStatus.querySelector('.dot').className = `dot ${wsConnected ? 'on' : 'off'}`;
+  connText.textContent = wsConnected ? 'Connected' : 'Reconnecting…';
+}
+
+function renderMonitor(root, index, isNow) {
+  const cue = state.playlist[index];
+  const media = cue && getMedia(cue.mediaId);
+  const screen = root.querySelector('.screen');
+  root.querySelector('.cue-num').textContent = cue ? `Q${index + 1}` : '';
+  root.querySelector('.monitor-name').textContent = cue
+    ? media?.originalName ?? '?'
+    : isNow ? (state.isTransitioning ? 'Loading…' : 'Nothing playing') : (state.playlist.length ? 'End of list' : '—');
+  root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : '';
+  screen.innerHTML = cue ? thumbHtml(media) : '';
+  if (isNow) {
+    root.classList.toggle('playing', !!cue);
+    const tag = $('nowTag');
+    tag.textContent = cue ? 'LIVE' : 'IDLE';
+    tag.className = `tag ${cue ? 'tag-live' : 'tag-idle'}`;
+  }
+}
+
+function renderTransport() {
+  renderMonitor(monitorNow, state.currentCueIndex, true);
+  const next = nextCueIndex();
+  renderMonitor(monitorNext, next, false);
+
+  const nextCue = state.playlist[next];
+  $('goSub').textContent = nextCue ? `to Q${next + 1} · Space` : (state.currentCueIndex >= 0 ? 'ends · Space' : 'Space');
+  const nextName = nextCue ? getMedia(nextCue.mediaId)?.originalName ?? '?' : '';
+  $('controlsNext').innerHTML = nextCue
+    ? `<span>Next: <strong>Q${next + 1}</strong> ${escapeHtml(nextName)}</span>`
+    : '<span>Next: end of list</span>';
+
+  btnGo.disabled = state.isTransitioning || !state.playlist.length;
   btnLoop.classList.toggle('active', state.playlistLoop);
   btnLoop.setAttribute('aria-pressed', String(state.playlistLoop));
 }
 
-function openCuePopup(cueId) {
-  const cue = state.playlist.find((c) => c.id === cueId);
+function renderLibrary() {
+  const visible = state.library.filter((m) => !m.playlistOnly);
+  const counts = {
+    all: visible.length,
+    image: visible.filter((m) => m.type === 'image').length,
+    video: visible.filter((m) => m.type === 'video').length,
+  };
+  libraryFilters.innerHTML = [['all', 'All'], ['image', 'Images'], ['video', 'Videos']]
+    .map(([key, label]) => `<button type="button" class="chip" data-filter="${key}" aria-pressed="${libraryFilter === key}">${label} ${counts[key]}</button>`)
+    .join('');
+  $('tabLibrary').textContent = `Library · ${counts.all}`;
+
+  const q = librarySearch.value.trim().toLowerCase();
+  const items = visible.filter((m) =>
+    (libraryFilter === 'all' || m.type === libraryFilter) &&
+    (!q || (m.originalName || '').toLowerCase().includes(q))
+  );
+
+  if (!items.length) {
+    libraryList.innerHTML = `<div class="empty">${visible.length ? 'No matches' : 'Drop images or videos here, or use Upload'}</div>`;
+    return;
+  }
+  libraryList.innerHTML = items.map((m) => `
+    <div class="media-item" draggable="true" data-id="${m.id}">
+      <div class="thumb">${thumbHtml(m)}</div>
+      <div class="media-text">
+        <span class="media-name" title="${escapeHtml(m.originalName)}">${escapeHtml(m.originalName)}</span>
+        <span class="media-meta">${mediaMeta(m)}</span>
+      </div>
+      <div class="media-actions">
+        <button type="button" class="delete" data-id="${m.id}" aria-label="Delete ${escapeHtml(m.originalName)}">${ICONS.trash}</button>
+        <button type="button" class="add" data-id="${m.id}" aria-label="Add ${escapeHtml(m.originalName)} to cues">${ICONS.plus}</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderCues() {
+  $('cueCount').textContent = state.playlist.length || '';
+  $('tabCues').textContent = `Cues · ${state.playlist.length}`;
+  const next = nextCueIndex();
+
+  if (!state.playlist.length) {
+    cueList.innerHTML = '<div class="empty">No cues yet. Add media from the library.</div>';
+    return;
+  }
+  cueList.innerHTML = state.playlist.map((cue, i) => {
+    const media = getMedia(cue.mediaId);
+    const live = i === state.currentCueIndex;
+    const isNext = i === next && !live;
+    const classes = ['cue-row', live && 'live', cue.id === selectedCueId && 'selected'].filter(Boolean).join(' ');
+    const tag = live
+      ? '<span class="tag tag-live">LIVE</span>'
+      : isNext ? '<span class="tag tag-next">NEXT</span>' : '';
+    return `
+      <div class="${classes}" data-cue-id="${cue.id}" draggable="true">
+        <span class="handle">${ICONS.grip}</span>
+        <span class="num">Q${i + 1}</span>
+        <span class="thumb">${thumbHtml(media)}</span>
+        <span class="cue-text">
+          <span class="cue-name">${escapeHtml(media?.originalName ?? '?')}</span>
+          <span class="cue-summary">${escapeHtml(cueSummary(cue, media))}</span>
+        </span>
+        ${tag}
+        <span class="cue-mode">${DISPLAY_LABELS[cue.settings?.displayMode ?? 'fill']}</span>
+        <span class="cue-end">${endShort(cue, media)}</span>
+        <button type="button" class="btn-icon more" data-cue-id="${cue.id}" aria-label="Cue settings">${ICONS.more}</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function setSegment(seg, value) {
+  seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === value)));
+}
+
+function renderInspector() {
+  const idx = state.playlist.findIndex((c) => c.id === selectedCueId);
+  const cue = state.playlist[idx];
+  $('inspectorEmpty').hidden = !!cue;
+  $('inspectorBody').hidden = !cue;
+  inspector.classList.toggle('open', !!cue);
   if (!cue) return;
 
-  openPopupCueId = cueId;
-  const media = state.library.find((m) => m.id === cue.mediaId);
+  const media = getMedia(cue.mediaId);
+  const st = cue.settings || {};
   const isVideo = media?.type === 'video';
+  $('inspCue').textContent = `CUE Q${idx + 1}`;
+  $('inspName').textContent = media?.originalName ?? '?';
+  $('inspMeta').textContent = mediaMeta(media);
+  $('inspScreen').innerHTML = thumbHtml(media);
+  setSegment(segDisplay, st.displayMode ?? 'fill');
 
-  popupLoop.checked = cue.settings?.loop ?? false;
-  popupLoop.disabled = !isVideo;
-  popupDisplayMode.value = cue.settings?.displayMode ?? 'fill';
-  const dur = cue.settings?.duration;
-  popupDuration.value = dur != null ? dur : '';
-  popupHold.checked = dur == null || dur === '';
+  const endOptions = isVideo
+    ? [['end', 'Play to end'], ['loop', 'Loop until GO']]
+    : [['hold', 'Hold until GO'], ['auto', 'Auto-advance']];
+  const endValue = isVideo ? (st.loop ? 'loop' : 'end') : (st.duration > 0 ? 'auto' : 'hold');
+  if (segEnd.dataset.kind !== (isVideo ? 'video' : 'image')) {
+    segEnd.dataset.kind = isVideo ? 'video' : 'image';
+    segEnd.innerHTML = endOptions.map(([v, l]) => `<button type="button" role="radio" data-value="${v}">${l}</button>`).join('');
+  }
+  setSegment(segEnd, endValue);
+  $('secondsRow').hidden = endValue !== 'auto';
+  if (document.activeElement !== inspSeconds) inspSeconds.value = st.duration > 0 ? st.duration : '';
 
-  cuePopupBackdrop.hidden = false;
-  cuePopupBackdrop.setAttribute('aria-hidden', 'false');
-  cuePopup.focus();
-
-  render();
+  const saved = $('inspSaved');
+  saved.classList.toggle('error', !!saveStatus && !['saving', 'saved'].includes(saveStatus));
+  saved.textContent = saveStatus === 'saving' ? 'Saving…'
+    : saveStatus === 'saved' ? 'Saved'
+    : saveStatus || 'Changes save automatically';
 }
-
-function closeCuePopup() {
-  cuePopupBackdrop.hidden = true;
-  cuePopupBackdrop.setAttribute('aria-hidden', 'true');
-  openPopupCueId = null;
-  render();
-}
-
-popupCancel.addEventListener('click', () => closeCuePopup());
-
-popupSave.addEventListener('click', () => {
-  if (!openPopupCueId) return;
-  const duration = popupHold.checked ? null : (popupDuration.value ? Number(popupDuration.value) : null);
-  api('PUT', `/playlist/${openPopupCueId}`, {
-    loop: popupLoop.checked,
-    displayMode: popupDisplayMode.value,
-    duration,
-  }).then((r) => {
-    if (r.ok) {
-      closeCuePopup();
-    } else {
-      r.json().catch(() => ({})).then((body) => {
-        alert(body?.error || 'Failed to save settings');
-      });
-    }
-  });
-});
-
-popupDuration.oninput = () => { popupHold.checked = popupDuration.value === ''; };
-popupHold.onchange = () => {
-  if (popupHold.checked) popupDuration.value = '';
-};
-
-cuePopupBackdrop.addEventListener('click', (e) => {
-  if (e.target === cuePopupBackdrop) closeCuePopup();
-});
-cuePopup.addEventListener('click', (e) => e.stopPropagation());
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && openPopupCueId) closeCuePopup();
-});
 
 function render() {
+  renderHeader();
+  renderTransport();
   renderLibrary();
-  renderPlaylist();
-
-  diskSpace.textContent = `Free: ${formatBytes(state.diskFree)}`;
-
-  if (state.mpvConnected === false) {
-    mpvStatus.hidden = false;
-    mpvStatus.textContent = 'mpv disconnected';
-  } else {
-    mpvStatus.hidden = true;
-  }
-
-  const idx = state.currentCueIndex;
-  if (idx >= 0 && idx < state.playlist.length) {
-    const cue = state.playlist[idx];
-    const name = state.library.find((m) => m.id === cue.mediaId)?.originalName ?? '?';
-    status.textContent = `Playing Q${idx + 1}: ${name}`;
-  } else {
-    status.textContent = state.isTransitioning ? 'Transitioning…' : 'Stopped';
-  }
+  renderCues();
+  renderInspector();
 }
 
-function escapeHtml(s) {
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
+// --- actions ---
+
+function selectCue(cueId) {
+  if (selectedCueId !== cueId) saveStatus = null;
+  selectedCueId = cueId;
+  render();
 }
 
-librarySearch?.addEventListener('input', () => render());
-
-const LIBRARY_COLLAPSED_KEY = 'screenview-library-collapsed';
-function loadLibraryCollapsed() {
-  const saved = localStorage.getItem(LIBRARY_COLLAPSED_KEY);
-  return saved === 'false' ? false : true;
+function updateCue(patch) {
+  const cue = state.playlist.find((c) => c.id === selectedCueId);
+  if (!cue) return;
+  const cueId = cue.id;
+  state = {
+    ...state,
+    playlist: state.playlist.map((c) => (c.id === cueId ? { ...c, settings: { ...c.settings, ...patch } } : c)),
+  };
+  saveStatus = 'saving';
+  render();
+  api('PUT', `/playlist/${cueId}`, patch)
+    .then(async (r) => {
+      if (selectedCueId !== cueId) return;
+      if (r.ok) {
+        saveStatus = 'saved';
+      } else {
+        const body = await r.json().catch(() => ({}));
+        saveStatus = body.error || 'Could not save';
+      }
+      render();
+    })
+    .catch(() => {
+      saveStatus = 'Could not save (offline)';
+      render();
+    });
 }
-const LIBRARY_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>';
-const COLLAPSE_ARROW_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
-function setLibraryCollapsed(collapsed) {
-  localStorage.setItem(LIBRARY_COLLAPSED_KEY, String(collapsed));
-  mainEl?.classList.toggle('library-collapsed', collapsed);
-  if (btnCollapseLibrary) {
-    btnCollapseLibrary.innerHTML = collapsed ? LIBRARY_ICON_SVG : COLLAPSE_ARROW_SVG;
-    btnCollapseLibrary.setAttribute('aria-expanded', String(!collapsed));
-    btnCollapseLibrary.title = collapsed ? 'Expand library' : 'Collapse library';
-  }
+
+function addToCues(mediaId) {
+  api('POST', '/playlist', { mediaId });
 }
-setLibraryCollapsed(loadLibraryCollapsed());
-btnCollapseLibrary?.addEventListener('click', () => setLibraryCollapsed(!loadLibraryCollapsed()));
 
-btnAddLibrary?.addEventListener('click', () => fileInput.click());
-libraryDropZone?.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  libraryDropZone.classList.add('dragover');
-});
-libraryDropZone?.addEventListener('dragleave', (e) => {
-  if (!libraryDropZone.contains(e.relatedTarget)) {
-    libraryDropZone.classList.remove('dragover');
-  }
-});
-libraryDropZone?.addEventListener('drop', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  libraryDropZone.classList.remove('dragover');
-  if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
-});
-fileInput.addEventListener('change', () => {
-  if (fileInput.files.length) uploadFiles(fileInput.files);
-  fileInput.value = '';
-});
+function reorderCue(fromId, toId, after) {
+  if (fromId === toId) return;
+  const ids = state.playlist.map((c) => c.id).filter((id) => id !== fromId);
+  let to = ids.indexOf(toId);
+  if (to === -1) return;
+  if (after) to += 1;
+  ids.splice(to, 0, fromId);
+  api('PUT', '/playlist/reorder', ids);
+}
 
-btnAddPlaylist?.addEventListener('click', () => playlistFileInput?.click());
-cueDropZone?.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  cueDropZone.classList.add('dragover');
-});
-cueDropZone?.addEventListener('dragleave', (e) => {
-  if (!cueDropZone.contains(e.relatedTarget)) {
-    cueDropZone.classList.remove('dragover');
-  }
-});
-cueDropZone?.addEventListener('drop', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  cueDropZone.classList.remove('dragover');
-  if (e.dataTransfer.files.length) uploadFilesToPlaylist(e.dataTransfer.files);
-});
-playlistFileInput?.addEventListener('change', () => {
-  if (playlistFileInput.files?.length) {
-    uploadFilesToPlaylist(playlistFileInput.files);
-    playlistFileInput.value = '';
-  }
-});
-
-function uploadFilesToPlaylist(files) {
+function uploadFiles(files, url) {
   for (const file of files) {
+    const el = document.createElement('div');
+    el.className = 'upload';
+    el.innerHTML = `
+      <div class="upload-top"><span class="upload-name">${escapeHtml(file.name)}</span><span class="upload-pct">0%</span></div>
+      <div class="upload-bar"><div></div></div>`;
+    uploadsEl.appendChild(el);
+    const pct = el.querySelector('.upload-pct');
+    const bar = el.querySelector('.upload-bar div');
+
+    const fail = (msg) => {
+      el.classList.add('error');
+      pct.textContent = msg;
+      el.querySelector('.upload-bar').remove();
+      const actions = document.createElement('div');
+      actions.className = 'upload-top';
+      actions.innerHTML = '<button type="button" class="retry">Retry</button><button type="button" class="dismiss">Dismiss</button>';
+      el.appendChild(actions);
+      actions.querySelector('.retry').onclick = () => { el.remove(); uploadFiles([file], url); };
+      actions.querySelector('.dismiss').onclick = () => el.remove();
+    };
+
     const xhr = new XMLHttpRequest();
     const fd = new FormData();
     fd.append('file', file);
-
-    const div = document.createElement('div');
-    div.className = 'item';
-    div.innerHTML = `<span>${escapeHtml(file.name)}</span> <progress value="0" max="100">0%</progress>`;
-    uploadProgress.appendChild(div);
-    const prog = div.querySelector('progress');
-
     xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) prog.value = (e.loaded / e.total) * 100;
+      if (!e.lengthComputable) return;
+      const p = Math.round((e.loaded / e.total) * 100);
+      pct.textContent = `${p}%`;
+      bar.style.width = `${p}%`;
     };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        div.remove();
-        render();
-      } else {
-        let err = 'Upload failed';
-        try {
-          const body = JSON.parse(xhr.responseText);
-          err = body.error || err;
-        } catch (_) {}
-        div.innerHTML = `<span class="upload-error">${escapeHtml(err)}</span> <button class="retry">Retry</button>`;
-        div.classList.add('error');
-        div.querySelector('.retry').onclick = () => { div.remove(); uploadFilesToPlaylist([file]); };
+        el.remove();
+        return;
       }
+      let err = 'Upload failed';
+      try { err = JSON.parse(xhr.responseText).error || err; } catch (_) {}
+      fail(err);
     };
-    xhr.onerror = () => {
-      div.innerHTML = `<span class="upload-error">Network error</span> <button class="retry">Retry</button>`;
-      div.classList.add('error');
-      div.querySelector('.retry').onclick = () => { div.remove(); uploadFilesToPlaylist([file]); };
-    };
-    xhr.open('POST', `${API}/playlist/upload`);
+    xhr.onerror = () => fail('Network error');
+    xhr.open('POST', `${API}${url}`);
     xhr.send(fd);
   }
 }
 
-function uploadFiles(files) {
-  for (const file of files) {
-    const xhr = new XMLHttpRequest();
-    const fd = new FormData();
-    fd.append('file', file);
+// --- events: transport ---
 
-    const div = document.createElement('div');
-    div.className = 'item';
-    div.innerHTML = `<span>${escapeHtml(file.name)}</span> <progress value="0" max="100">0%</progress>`;
-    uploadProgress.appendChild(div);
-    const prog = div.querySelector('progress');
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) prog.value = (e.loaded / e.total) * 100;
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        div.remove();
-        render();
-      } else {
-        let err = 'Upload failed';
-        try {
-          const body = JSON.parse(xhr.responseText);
-          err = body.error || err;
-        } catch (_) {}
-        div.innerHTML = `<span class="upload-error">${escapeHtml(err)}</span> <button class="retry">Retry</button>`;
-        div.classList.add('error');
-        div.querySelector('.retry').onclick = () => { div.remove(); uploadFiles([file]); };
-      }
-    };
-    xhr.onerror = () => {
-      div.innerHTML = `<span class="upload-error">Network error</span> <button class="retry">Retry</button>`;
-      div.classList.add('error');
-      div.querySelector('.retry').onclick = () => { div.remove(); uploadFiles([file]); };
-    };
-    xhr.open('POST', `${API}/upload`);
-    xhr.send(fd);
-  }
-}
-
-btnGo.addEventListener('click', () => api('POST', '/go').then(() => {}));
-btnStop.addEventListener('click', () => api('POST', '/stop').then(() => {}));
+btnGo.addEventListener('click', () => api('POST', '/go'));
+btnStop.addEventListener('click', () => api('POST', '/stop'));
 btnLoop.addEventListener('click', () => {
   const next = !state.playlistLoop;
   state = { ...state, playlistLoop: next };
   render();
   api('PUT', '/settings', { playlistLoop: next })
-    .then((r) => (r.ok ? r.json() : null))
+    .then((r) => (r.ok ? r.json() : Promise.reject()))
     .then((data) => {
-      if (data) {
-        state = { ...state, ...data };
-        render();
-      } else {
-        state = { ...state, playlistLoop: !next };
-        render();
-      }
+      state = { ...state, ...data };
+      render();
     })
     .catch(() => {
       state = { ...state, playlistLoop: !next };
       render();
     });
 });
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === ' ' && !isTyping(e.target) && !e.repeat) {
+    e.preventDefault();
+    if (!btnGo.disabled) btnGo.click();
+  } else if (e.key === 'Escape' && selectedCueId) {
+    selectCue(null);
+  }
+});
+
+// --- events: tabs (narrow screens) ---
+
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => { appEl.dataset.tab = tab.dataset.tab; });
+});
+
+// --- events: library ---
+
+$('btnUpload').addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) uploadFiles(fileInput.files, '/upload');
+  fileInput.value = '';
+});
+librarySearch.addEventListener('input', renderLibrary);
+libraryFilters.addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-filter]');
+  if (!chip) return;
+  libraryFilter = chip.dataset.filter;
+  renderLibrary();
+});
+
+libraryList.addEventListener('click', (e) => {
+  const add = e.target.closest('.add');
+  const del = e.target.closest('.delete');
+  if (add) addToCues(add.dataset.id);
+  if (del) {
+    const name = getMedia(del.dataset.id)?.originalName ?? 'this file';
+    const used = state.playlist.some((c) => c.mediaId === del.dataset.id);
+    if (confirm(`Delete ${name}?${used ? ' It will also be removed from the cue list.' : ''}`)) {
+      api('DELETE', `/library/${del.dataset.id}`);
+    }
+  }
+});
+libraryList.addEventListener('dblclick', (e) => {
+  const item = e.target.closest('.media-item');
+  if (item && !e.target.closest('button')) addToCues(item.dataset.id);
+});
+libraryList.addEventListener('dragstart', (e) => {
+  const item = e.target.closest('.media-item');
+  if (!item) return;
+  e.dataTransfer.setData(MEDIA_MIME, item.dataset.id);
+  e.dataTransfer.effectAllowed = 'copy';
+});
+
+function hasType(e, type) {
+  return Array.from(e.dataTransfer.types).includes(type);
+}
+
+libraryPane.addEventListener('dragover', (e) => {
+  if (!hasType(e, 'Files')) return;
+  e.preventDefault();
+  libraryPane.classList.add('dragover');
+});
+libraryPane.addEventListener('dragleave', (e) => {
+  if (!libraryPane.contains(e.relatedTarget)) libraryPane.classList.remove('dragover');
+});
+libraryPane.addEventListener('drop', (e) => {
+  if (!hasType(e, 'Files')) return;
+  e.preventDefault();
+  libraryPane.classList.remove('dragover');
+  uploadFiles(e.dataTransfer.files, '/upload');
+});
+
+// --- events: cues ---
+
+$('btnAddCueFile').addEventListener('click', () => cueFileInput.click());
+cueFileInput.addEventListener('change', () => {
+  if (cueFileInput.files.length) uploadFiles(cueFileInput.files, '/playlist/upload');
+  cueFileInput.value = '';
+});
+
+cueList.addEventListener('click', (e) => {
+  const row = e.target.closest('.cue-row');
+  if (row) selectCue(row.dataset.cueId);
+});
+cueList.addEventListener('dblclick', (e) => {
+  const row = e.target.closest('.cue-row');
+  if (row && !e.target.closest('button')) api('POST', `/go/${row.dataset.cueId}`);
+});
+
+let draggingCueId = null;
+
+function clearDropMarks() {
+  cueList.querySelectorAll('.drop-before, .drop-after').forEach((r) => r.classList.remove('drop-before', 'drop-after'));
+}
+
+cueList.addEventListener('dragstart', (e) => {
+  const row = e.target.closest('.cue-row');
+  if (!row) return;
+  draggingCueId = row.dataset.cueId;
+  e.dataTransfer.setData(CUE_MIME, draggingCueId);
+  e.dataTransfer.effectAllowed = 'move';
+  row.classList.add('dragging');
+});
+cueList.addEventListener('dragend', () => {
+  draggingCueId = null;
+  clearDropMarks();
+  cueList.querySelectorAll('.dragging').forEach((r) => r.classList.remove('dragging'));
+});
+
+cuesPane.addEventListener('dragover', (e) => {
+  const isCue = hasType(e, CUE_MIME);
+  if (!isCue && !hasType(e, MEDIA_MIME) && !hasType(e, 'Files')) return;
+  e.preventDefault();
+  if (!isCue) {
+    cuesPane.classList.add('dragover');
+    return;
+  }
+  clearDropMarks();
+  const row = e.target.closest('.cue-row');
+  if (row && row.dataset.cueId !== draggingCueId) {
+    const r = row.getBoundingClientRect();
+    row.classList.add(e.clientY > r.top + r.height / 2 ? 'drop-after' : 'drop-before');
+  }
+});
+cuesPane.addEventListener('dragleave', (e) => {
+  if (!cuesPane.contains(e.relatedTarget)) {
+    cuesPane.classList.remove('dragover');
+    clearDropMarks();
+  }
+});
+cuesPane.addEventListener('drop', (e) => {
+  e.preventDefault();
+  cuesPane.classList.remove('dragover');
+  const cueId = e.dataTransfer.getData(CUE_MIME);
+  const mediaId = e.dataTransfer.getData(MEDIA_MIME);
+  if (cueId) {
+    const row = e.target.closest('.cue-row');
+    if (row) {
+      const r = row.getBoundingClientRect();
+      reorderCue(cueId, row.dataset.cueId, e.clientY > r.top + r.height / 2);
+    }
+  } else if (mediaId) {
+    addToCues(mediaId);
+  } else if (e.dataTransfer.files.length) {
+    uploadFiles(e.dataTransfer.files, '/playlist/upload');
+  }
+  clearDropMarks();
+});
+
+// --- events: inspector ---
+
+segDisplay.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-value]');
+  if (b) updateCue({ displayMode: b.dataset.value });
+});
+segEnd.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-value]');
+  if (!b) return;
+  const v = b.dataset.value;
+  if (v === 'loop' || v === 'end') updateCue({ loop: v === 'loop' });
+  else if (v === 'hold') updateCue({ duration: null });
+  else updateCue({ duration: Number(inspSeconds.value) > 0 ? Number(inspSeconds.value) : 10 });
+});
+inspSeconds.addEventListener('change', () => {
+  const n = Number(inspSeconds.value);
+  if (n > 0) updateCue({ duration: n });
+  else render();
+});
+$('inspPlay').addEventListener('click', () => {
+  if (selectedCueId) api('POST', `/go/${selectedCueId}`);
+});
+$('inspRemove').addEventListener('click', () => {
+  if (!selectedCueId) return;
+  const id = selectedCueId;
+  selectCue(null);
+  api('DELETE', `/playlist/${id}`);
+});
+$('inspClose').addEventListener('click', () => selectCue(null));
 
 connectWs();
 render();

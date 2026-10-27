@@ -8,6 +8,7 @@ const { WebSocketServer } = require('ws');
 const config = require('./config');
 const { MpvController } = require('./mpv-controller');
 const { createStateManager } = require('./state');
+const { analyzeVideo, removeThumbnail } = require('./media-info');
 
 const ALLOWED_EXT = [
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
@@ -47,6 +48,19 @@ function broadcastState() {
       if (client.readyState === 1) client.send(payload);
     });
   }
+}
+
+// Adds thumbnail + duration to a video in the background, then pushes the update
+function enrichMedia(item) {
+  if (item.type !== 'video') return Promise.resolve();
+  return analyzeVideo(config.uploadsDir, item).then(({ thumb, duration }) => {
+    if (!thumb && duration == null) return;
+    state.updateState((s) => ({
+      ...s,
+      library: s.library.map((m) => (m.id === item.id ? { ...m, thumb, duration } : m)),
+    }));
+    broadcastState();
+  });
 }
 
 function getMediaType(filename) {
@@ -177,6 +191,13 @@ mpv.onReconnect(() => {
 // Ensure uploads dir exists
 fs.mkdirSync(config.uploadsDir, { recursive: true });
 
+// Backfill thumbnails for videos uploaded before thumbnails existed, one at a time
+(async () => {
+  for (const item of state.getState().library) {
+    if (item.type === 'video' && !item.thumb) await enrichMedia(item);
+  }
+})();
+
 // Multer
 const storage = multer.diskStorage({
   destination: config.uploadsDir,
@@ -243,6 +264,7 @@ app.post('/api/upload', (req, res) => {
     }));
     broadcastState();
     res.json(item);
+    enrichMedia(item);
   });
 });
 
@@ -262,6 +284,7 @@ app.delete('/api/library/:id', (req, res) => {
   } catch (e) {
     console.error('Delete file error:', e);
   }
+  removeThumbnail(config.uploadsDir, item);
 
   const library = s.library.filter((m) => m.id !== req.params.id);
   const playlist = s.playlist.filter((c) => c.mediaId !== req.params.id);
@@ -352,7 +375,24 @@ app.post('/api/playlist/upload', (req, res) => {
     }));
     broadcastState();
     res.status(201).json({ item, cue });
+    enrichMedia(item);
   });
+});
+
+// Must be registered before /api/playlist/:cueId, or "reorder" is taken as a cue ID
+app.put('/api/playlist/reorder', (req, res) => {
+  const ids = req.body;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: 'Array of IDs required' });
+  if (ids.some((id) => !isValidId(id))) return res.status(400).json({ error: 'Invalid cue ID in reorder' });
+  const s = state.getState();
+  const byId = new Map(s.playlist.map((c) => [c.id, c]));
+  const playlist = ids.map((id) => byId.get(id)).filter(Boolean);
+  if (playlist.length !== s.playlist.length) return res.status(400).json({ error: 'Invalid reorder' });
+  const currentCue = s.playlist[s.currentCueIndex];
+  const newIdx = currentCue ? playlist.findIndex((c) => c.id === currentCue.id) : -1;
+  state.updateState({ playlist, currentCueIndex: newIdx });
+  broadcastState();
+  res.json(playlist);
 });
 
 app.put('/api/playlist/:cueId', (req, res) => {
@@ -412,6 +452,7 @@ app.delete('/api/playlist/:cueId', (req, res) => {
     } catch (e) {
       console.error('Delete playlist-only file error:', e);
     }
+    removeThumbnail(config.uploadsDir, media);
     library = s.library.filter((m) => m.id !== mediaId);
   }
 
@@ -430,21 +471,6 @@ app.delete('/api/playlist/:cueId', (req, res) => {
   state.updateState({ library, playlist, currentCueIndex });
   broadcastState();
   res.status(204).send();
-});
-
-app.put('/api/playlist/reorder', (req, res) => {
-  const ids = req.body;
-  if (!Array.isArray(ids)) return res.status(400).json({ error: 'Array of IDs required' });
-  if (ids.some((id) => !isValidId(id))) return res.status(400).json({ error: 'Invalid cue ID in reorder' });
-  const s = state.getState();
-  const byId = new Map(s.playlist.map((c) => [c.id, c]));
-  const playlist = ids.map((id) => byId.get(id)).filter(Boolean);
-  if (playlist.length !== s.playlist.length) return res.status(400).json({ error: 'Invalid reorder' });
-  const currentCue = s.playlist[s.currentCueIndex];
-  const newIdx = currentCue ? playlist.findIndex((c) => c.id === currentCue.id) : -1;
-  state.updateState({ playlist, currentCueIndex: newIdx });
-  broadcastState();
-  res.json(playlist);
 });
 
 app.post('/api/go', (req, res) => {

@@ -7,74 +7,149 @@
   <link rel="stylesheet" href="css/control.css">
 </head>
 <body>
-  <div class="app">
+  <div class="app" id="app" data-tab="cues">
     <header class="header">
-      <h1>Screenview</h1>
+      <div class="header-left">
+        <h1>Screenview</h1>
+        <div class="player-pill" id="playerPill">
+          <span class="dot"></span>
+          <span id="playerText">Connecting…</span>
+        </div>
+      </div>
       <div class="header-right">
-        <div class="mpv-status" id="mpvStatus" hidden>mpv disconnected</div>
-        <div class="status" id="status">Connecting…</div>
+        <span id="diskSpace">—</span>
+        <span class="conn" id="connStatus"><span class="dot"></span><span id="connText">Connecting…</span></span>
       </div>
     </header>
 
-    <main class="main">
-      <div class="upload-progress" id="uploadProgress"></div>
-      <section class="panel library-panel" id="libraryPanel">
-        <div class="library-header">
-          <h2>Media Library</h2>
-          <button type="button" class="btn-add" id="btnAddLibrary" title="Add media">+</button>
+    <section class="transport">
+      <div class="monitor monitor-now" id="monitorNow">
+        <div class="monitor-label">
+          <span class="tag tag-live" id="nowTag">LIVE</span>
+          <span class="cue-num" id="nowNum"></span>
+          <span class="monitor-name" id="nowName">Nothing playing</span>
         </div>
-        <button type="button" class="btn-collapse" id="btnCollapseLibrary" title="Collapse library" aria-label="Collapse media library" aria-expanded="true"></button>
-        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v" hidden>
-        <div class="library-drop-zone" id="libraryDropZone">
-          <input type="search" class="library-search" id="librarySearch" placeholder="Search media…" aria-label="Search media library">
-          <div class="library-list" id="libraryList"></div>
-        </div>
-        <div class="disk-space" id="diskSpace">—</div>
-      </section>
+        <div class="screen" id="nowScreen"></div>
+        <div class="monitor-meta" id="nowMeta"></div>
+      </div>
 
-      <section class="panel playlist-panel">
-        <div class="playlist-header">
-          <h2>Playlist</h2>
-          <button type="button" class="btn-add" id="btnAddPlaylist" title="Add file to playlist (not library)">+</button>
+      <div class="monitor monitor-next" id="monitorNext">
+        <div class="monitor-label">
+          <span class="tag tag-next">NEXT</span>
+          <span class="cue-num" id="nextNum"></span>
+          <span class="monitor-name" id="nextName">—</span>
         </div>
-        <input type="file" id="playlistFileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v" hidden>
-        <div class="playback-controls">
-          <button class="btn btn-go" id="btnGo" disabled>GO</button>
-          <button class="btn btn-stop" id="btnStop">STOP</button>
-          <button class="btn btn-loop" id="btnLoop" title="Loop playlist" aria-pressed="false">↻ Loop</button>
-        </div>
-        <div class="cue-drop-zone" id="cueDropZone">
-          <div class="cue-list" id="cueList"></div>
-        </div>
-      </section>
-    </main>
+        <div class="screen" id="nextScreen"></div>
+        <div class="monitor-meta" id="nextMeta"></div>
+      </div>
 
-    <div class="cue-popup-backdrop" id="cuePopupBackdrop" hidden aria-hidden="true">
-      <div class="cue-popup" id="cuePopup" role="dialog" aria-modal="true" aria-label="Cue settings" tabindex="-1">
-        <div class="cue-popup-inner">
-        <label>
-          <input type="checkbox" id="popupLoop"> Loop (video)
-        </label>
-        <label>
-          Display:
-          <select id="popupDisplayMode">
-            <option value="stretch">Stretch</option>
-            <option value="centered">Centered</option>
-            <option value="fill">Fill</option>
-          </select>
-        </label>
-        <label>
-          Duration (sec):
-          <input type="number" id="popupDuration" min="0" step="1" placeholder="Hold">
-          <input type="checkbox" id="popupHold"> Hold
-        </label>
-        </div>
-        <div class="cue-popup-actions">
-          <button type="button" class="btn btn-cancel" id="popupCancel">Cancel</button>
-          <button type="button" class="btn btn-save" id="popupSave">Save</button>
+      <div class="transport-spacer"></div>
+
+      <div class="controls">
+        <div class="controls-next" id="controlsNext"></div>
+        <div class="controls-row">
+          <button type="button" class="btn-stop" id="btnStop">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            STOP
+          </button>
+          <button type="button" class="btn-go" id="btnGo">
+            <span class="go-label">GO</span>
+            <span class="go-sub" id="goSub">Space</span>
+          </button>
+          <button type="button" class="btn-loop" id="btnLoop" aria-pressed="false" title="Loop the cue list">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 01-4 4H3"/></svg>
+            <span>Loop list</span>
+          </button>
         </div>
       </div>
+    </section>
+
+    <nav class="tabs" aria-label="Sections">
+      <button type="button" class="tab" data-tab="cues" id="tabCues">Cues</button>
+      <button type="button" class="tab" data-tab="library" id="tabLibrary">Library</button>
+    </nav>
+
+    <div class="workspace">
+      <aside class="pane library" id="libraryPane">
+        <div class="pane-header">
+          <h2>Library</h2>
+          <button type="button" class="btn-secondary" id="btnUpload">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 20h16"/></svg>
+            Upload
+          </button>
+        </div>
+        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v" hidden>
+        <label class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+          <input type="search" id="librarySearch" placeholder="Search media" aria-label="Search media library">
+        </label>
+        <div class="filters" id="libraryFilters" role="group" aria-label="Filter by type"></div>
+        <div class="library-list" id="libraryList"></div>
+      </aside>
+
+      <main class="pane cues" id="cuesPane">
+        <div class="pane-header">
+          <h2>Cues <span class="count" id="cueCount"></span></h2>
+          <span class="hint">Drag to reorder · double-click to play</span>
+          <button type="button" class="btn-secondary" id="btnAddCueFile" title="Upload a file straight into the cue list (not kept in the library)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            Add file
+          </button>
+        </div>
+        <input type="file" id="cueFileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v" hidden>
+        <div class="cue-list" id="cueList"></div>
+        <div class="cue-drop" id="cueDrop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          Drop files or library items here to add cues
+        </div>
+      </main>
+
+      <aside class="pane inspector" id="inspector" aria-label="Cue settings">
+        <div class="inspector-empty" id="inspectorEmpty">Select a cue to edit its settings</div>
+        <div class="inspector-body" id="inspectorBody" hidden>
+          <div class="inspector-head">
+            <div>
+              <span class="eyebrow" id="inspCue"></span>
+              <h2 id="inspName"></h2>
+              <span class="sub" id="inspMeta"></span>
+            </div>
+            <button type="button" class="btn-icon inspector-close" id="inspClose" aria-label="Close cue settings">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+            </button>
+          </div>
+          <div class="screen" id="inspScreen"></div>
+
+          <div class="field">
+            <span class="field-label" id="lblDisplay">Display</span>
+            <div class="segmented seg-3" role="radiogroup" aria-labelledby="lblDisplay" id="segDisplay">
+              <button type="button" role="radio" data-value="fill">Fill</button>
+              <button type="button" role="radio" data-value="centered">Centered</button>
+              <button type="button" role="radio" data-value="stretch">Stretch</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="field-label" id="lblEnd">When it ends</span>
+            <div class="segmented seg-2" role="radiogroup" aria-labelledby="lblEnd" id="segEnd"></div>
+            <label class="seconds-row" id="secondsRow">
+              After
+              <span><input type="number" id="inspSeconds" min="1" step="1" inputmode="numeric"> seconds</span>
+            </label>
+          </div>
+
+          <div class="inspector-spacer"></div>
+          <div class="saved" id="inspSaved">Changes save automatically</div>
+          <div class="inspector-actions">
+            <button type="button" class="btn-play" id="inspPlay">Play this cue now</button>
+            <button type="button" class="btn-icon btn-danger" id="inspRemove" aria-label="Remove cue">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>
+            </button>
+          </div>
+        </div>
+      </aside>
     </div>
+
+    <div class="uploads" id="uploads" aria-live="polite"></div>
   </div>
   <script src="js/control.js"></script>
 </body>
