@@ -83,6 +83,8 @@ npm install --production
 
 ## 7. systemd Services
 
+> The live install runs under PM2 instead of these units (see [ACCESS.md](ACCESS.md)). They are kept as an alternative.
+
 ```bash
 cp /opt/screenview/setup/screenview-mpv.service /etc/systemd/system/
 cp /opt/screenview/setup/screenview.service /etc/systemd/system/
