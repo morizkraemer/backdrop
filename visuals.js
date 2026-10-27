@@ -49,12 +49,15 @@ function parseVisual(text) {
   const body = [];
   let name = null;
   let controlParam = null;
+  let controls = null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const m = /^\/\/!PARAM\s+(\w+)/.exec(line);
     if (!m) {
       const control = /^\/\/\s*control:\s*(\w+)/.exec(line);
+      const many = /^\/\/\s*controls:\s*(.+)$/.exec(line);
       if (control) controlParam = control[1];
+      else if (many) controls = many[1].split(/[\s,]+/).filter(Boolean);
       else if (name === null && /^\/\/\s*\S/.test(line) && !line.startsWith('//!')) {
         name = line.replace(/^\/\/\s*/, '').split(':')[0].trim();
       }
@@ -79,7 +82,7 @@ function parseVisual(text) {
     if (!Number.isFinite(p.default)) p.default = 0;
     params.push(p);
   }
-  return { name, params, body: body.join('\n'), control: controlParam };
+  return { name, params, body: body.join('\n'), control: controlParam, controls };
 }
 
 // The slider the DMX "control" channel moves: named by a "// control: <param>"
@@ -88,6 +91,22 @@ function controlParam(visual) {
   const names = visual.params.map((p) => p.name);
   if (visual.control && names.includes(visual.control)) return visual.control;
   return names.find((n) => !HIDDEN(n) && !['speed', 'hue', 'saturation', 'spread'].includes(n)) ?? null;
+}
+
+// The sliders DMX Control 1-3 move by default: a "// controls: a, b, c" line,
+// else the control slider and then the next ones that aren't speed or colour
+const CONTROLS = 3;
+function controlParams(visual) {
+  const names = visual.params.filter((p) => !HIDDEN(p.name)).map((p) => p.name);
+  const picked = (visual.controls || []).filter((n) => names.includes(n));
+  const first = controlParam(visual);
+  if (!picked.length && first) picked.push(first);
+  for (const n of names) {
+    if (picked.length >= CONTROLS) break;
+    if (!picked.includes(n) && !['speed', 'hue'].includes(n)) picked.push(n);
+  }
+  while (picked.length < CONTROLS) picked.push(null);
+  return picked.slice(0, CONTROLS);
 }
 
 // The params a client sees and can set (the clock stays internal)
@@ -264,7 +283,9 @@ module.exports = {
   SOURCE,
   SEGMENTS,
   FX_NEUTRAL,
+  CONTROLS,
   controlParam,
+  controlParams,
   parseVisual,
   publicParams,
   buildShader,

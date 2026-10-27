@@ -1094,7 +1094,15 @@ let dmxUiTimer = null;
 
 function getDmxConfig() {
   const a = config.dmxAddress;
-  const saved = state.getState().dmxConfig?.channels ?? {};
+  let saved = state.getState().dmxConfig?.channels ?? {};
+  // Saved before the fixture had Colour and Control 1-3: lay the visuals channels out
+  // again from the saved select channel, in the new order
+  if ('control' in saved && !('colour' in saved)) {
+    const { control, ...rest } = saved;
+    saved = rest;
+    if (saved.visual) lab.DMX_FUNCTIONS.forEach((fn, i) => { saved[fn] = Math.min(512, saved.visual + i); });
+    else lab.DMX_FUNCTIONS.forEach((fn) => delete saved[fn]);
+  }
   const channels = {};
   // Unsaved functions default to consecutive channels from DMX_ADDRESS
   DMX_FUNCTIONS.forEach((fn, i) => { channels[fn] = saved[fn] ?? Math.min(512, a + i); });

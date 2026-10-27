@@ -173,10 +173,8 @@ function render() {
   if (!current) return;
   $('visualName').textContent = current.name;
   const i = visuals.findIndex((v) => v.id === current.id);
-  const control = current.params.find((p) => p.name === current.control);
   $('visualSub').textContent = [
     i >= 0 ? `DMX select ${(i + 1) * 10}` : null,
-    control ? `Control fader: ${control.desc || control.name}` : null,
     current.builtin ? 'built-in' : 'yours',
   ].filter(Boolean).join(' · ');
   $('previewTag').textContent = isOnAir() ? 'Preview · on the wall' : 'Preview';
@@ -187,12 +185,13 @@ function render() {
   $('btnDelete').hidden = current.builtin;
 
   renderParams();
+  renderControls();
 }
 
 // Rebuilt only when the params change, so a slider being dragged stays put
 let paramsKey = null;
 function renderParams() {
-  const key = JSON.stringify([current.id, current.control, current.params]);
+  const key = JSON.stringify([current.id, current.controls, current.params]);
   if (key === paramsKey) {
     $('params').querySelectorAll('input[data-param]').forEach((input) => {
       const p = current.params.find((x) => x.name === input.dataset.param);
@@ -205,12 +204,48 @@ function renderParams() {
   paramsKey = key;
   $('params').innerHTML = current.params.length
     ? current.params.map((p) => `<label class="lab-param">
-      <span class="lab-param-name">${esc(p.desc || p.name)}${current.control === p.name ? ' <em>DMX control</em>' : ''}${p.name === 'speed' ? ' <em>DMX speed</em>' : ''}</span>
+      <span class="lab-param-name">${esc(p.desc || p.name)}${paramTag(p.name)}</span>
       <input type="range" data-param="${esc(p.name)}" min="${p.min}" max="${p.max}" step="${p.int ? 1 : (p.max - p.min) / 500}" value="${values[p.name]}">
       <span class="lab-param-val">${fmt(p, values[p.name])}</span>
     </label>`).join('')
     : '<span class="field-hint">This visual has no sliders.</span>';
 }
+
+// Which desk fader moves a slider: speed and hue are fixed, Control 1-3 are picked per visual
+function paramTag(name) {
+  const tags = [];
+  if (name === 'speed') tags.push('DMX speed');
+  if (name === 'hue') tags.push('DMX colour');
+  current.controls.forEach((c, i) => { if (c === name) tags.push(`Control ${i + 1}`); });
+  return tags.map((t) => ` <em>${t}</em>`).join('');
+}
+
+function renderControls() {
+  const options = current.params.filter((p) => p.name !== 'speed' && p.name !== 'hue');
+  $('controls').innerHTML = current.controls.map((c, i) => `<label class="lab-control">
+    <span>Control ${i + 1}</span>
+    <select data-control="${i}">
+      <option value="">Nothing</option>
+      ${options.map((p) => `<option value="${esc(p.name)}"${p.name === c ? ' selected' : ''}>${esc(p.desc || p.name)}</option>`).join('')}
+    </select>
+  </label>`).join('');
+}
+
+$('controls').addEventListener('change', async (e) => {
+  const sel = e.target.closest('select[data-control]');
+  if (!sel) return;
+  const controls = [...current.controls];
+  controls[Number(sel.dataset.control)] = sel.value || null;
+  current.controls = controls;
+  render();
+  try {
+    const r = await api('PUT', `/visuals/${encodeURIComponent(current.id)}/controls`, { controls });
+    current.controls = r.controls;
+    render();
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+});
 
 // Slider moves reach the wall at most every 50 ms while this visual is on it
 let liveTimer = null;
@@ -318,7 +353,13 @@ async function runPreview() {
   if (!current) return;
   try {
     const r = await api('POST', '/visuals/preview', { source: $('code').value });
-    current = { ...current, params: r.params, control: r.control };
+    // Keep the picked controls that still exist; the rest fall back like on the server
+    const names = r.params.map((p) => p.name);
+    const controls = r.defaultControls.map((d, i) => {
+      const c = current.controls[i];
+      return c === null ? null : names.includes(c) ? c : d;
+    });
+    current = { ...current, params: r.params, controls };
     values = Object.fromEntries(r.params.map((p) => [p.name, values[p.name] ?? p.default]));
     const ok = compile(r.preview);
     setStatus(ok ? 'Preview updated (not saved)' : 'Shader error, see the preview', !ok);
@@ -419,9 +460,10 @@ const DMX_FUNCTIONS = [
   { key: 'red', name: 'Red', show: pct },
   { key: 'green', name: 'Green', show: pct },
   { key: 'blue', name: 'Blue', show: pct },
+  { key: 'colour', name: 'Colour', show: pct },
   { key: 'speed', name: 'Speed', show: pct },
   { key: 'strobe', name: 'Strobe', show: (v) => (v < 10 ? 'Off' : `${(1 + ((v - 10) * 19) / 245).toFixed(1)} Hz`) },
-  { key: 'control', name: 'Control', show: pct },
+  ...Array.from({ length: 3 }, (_, i) => ({ key: `control${i + 1}`, name: `Control ${i + 1}`, show: pct })),
   ...Array.from({ length: 8 }, (_, i) => ({ key: `seg${i + 1}`, name: `Strip ${i + 1}`, show: pct })),
 ];
 

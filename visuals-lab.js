@@ -18,7 +18,8 @@ const MAX_SOURCE = 256 * 1024;
 
 // DMX functions of the visuals fixture, in channel order after brightness/GO/BACK
 const SEGMENT_FNS = Array.from({ length: visuals.SEGMENTS }, (_, i) => `seg${i + 1}`);
-const DMX_FUNCTIONS = ['visual', 'dimmer', 'red', 'green', 'blue', 'speed', 'strobe', 'control', ...SEGMENT_FNS];
+const CONTROL_FNS = Array.from({ length: visuals.CONTROLS }, (_, i) => `control${i + 1}`);
+const DMX_FUNCTIONS = ['visual', 'dimmer', 'red', 'green', 'blue', 'colour', 'speed', 'strobe', ...CONTROL_FNS, ...SEGMENT_FNS];
 const DMX_SLOT = 10; // visual select: 10-19 = first visual, 20-29 = second, ...
 const DMX_MASK_HOLD_MS = 2000; // strips all at 0 this long = whole wall again
 
@@ -26,7 +27,7 @@ const xmlEsc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': 
 
 /**
  * The fixture as an MA fixture type (grandMA2 XML, which dot2 imports from
- * USB: dot2/library): GO and BACK, then the 16 visuals channels, so it
+ * USB: dot2/library): GO and BACK, then the 19 visuals channels, so it
  * patches at backdrop's GO channel. dot2 only knows its own attributes, so
  * each function sits on the nearest one (setup/DMX.md); channel sets name the
  * visuals and ranges. The 8 strips are sub-fixtures with their own dimmer, so
@@ -52,15 +53,18 @@ function dot2Fixture(slots) {
     channel(5, 'COLORRGB1', 'RGB', 'COLOR'),
     channel(6, 'COLORRGB2', 'RGB', 'COLOR'),
     channel(7, 'COLORRGB3', 'RGB', 'COLOR'),
-    channel(8, 'GOBO1_POS', 'GOBO', 'GOBO', [set('Speed slow', 0, 0), set('Speed fast', 255, 255)]),
-    channel(9, 'SHUTTER', 'SHUTTER', 'BEAM', [set('Open', 0, 9), set('Strobe 1-20 Hz', 10, 255)], [0, 20]),
-    channel(10, 'GOBO2', 'GOBO', 'GOBO', [set('Control min', 0, 0), set('Control max', 255, 255)]),
+    channel(8, 'COLOR1', 'COLOR', 'COLOR', [set('Colour', 0, 255)], [0, 255]),
+    channel(9, 'GOBO1_POS', 'GOBO', 'GOBO', [set('Speed slow', 0, 0), set('Speed fast', 255, 255)]),
+    channel(10, 'SHUTTER', 'SHUTTER', 'BEAM', [set('Open', 0, 9), set('Strobe 1-20 Hz', 10, 255)], [0, 20]),
+    channel(11, 'GOBO2', 'GOBO', 'GOBO', [set('Control 1', 0, 255)], [0, 255]),
+    channel(12, 'GOBO2_POS', 'GOBO', 'GOBO', [set('Control 2', 0, 255)], [0, 255]),
+    channel(13, 'GOBO3', 'GOBO', 'GOBO', [set('Control 3', 0, 255)], [0, 255]),
   ].join('');
   const strips = SEGMENT_FNS.map((_, i) => `
-			<Instance module_index="1" patch="${11 + i}" locked="true" />`).join('');
+			<Instance module_index="1" patch="${14 + i}" locked="true" />`).join('');
   return `<?xml version="1.0" encoding="utf-8"?>
 <MA xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.malighting.de/grandma2/xml/MA http://schemas.malighting.de/grandma2/xml/2.8.123/MA.xsd" major_vers="2" minor_vers="8" stream_vers="123" xmlns="http://schemas.malighting.de/grandma2/xml/MA">
-	<FixtureType name="Visuals" mode="18ch">
+	<FixtureType name="Visuals" mode="21ch">
 		<short_name>Visuals</short_name>
 		<manufacturer>backdrop</manufacturer>
 		<short_manufacturer>backdrop</short_manufacturer>
@@ -113,6 +117,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
         name: v.name || id,
         params: visuals.publicParams(v.params),
         control: visuals.controlParam(v),
+        defaultControls: visuals.controlParams(v),
         thumb: builtin && fs.existsSync(path.join(visuals.BUILTIN_DIR, 'thumbs', `${id}.jpg`))
           ? `/visuals/thumbs/${id}.jpg` : null,
       };
@@ -143,6 +148,17 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
 
   function slots() {
     return list().map((v, i) => ({ value: (i + 1) * DMX_SLOT, id: v.id, name: v.name }));
+  }
+
+  // The sliders Control 1-3 move for a visual: as set in the lab, else its defaults
+  function controlsFor(v) {
+    const names = v.params.map((p) => p.name);
+    const saved = settings.controls?.[v.id];
+    return v.defaultControls.map((d, i) => {
+      const c = saved?.[i];
+      if (c === null) return null;
+      return c && names.includes(c) ? c : d;
+    });
   }
 
   function savedValues(v) {
@@ -278,7 +294,8 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
 
   // values/prev: { visual, dimmer, ..., seg8 } 0-255 or null for unused.
   // Select plays a visual; dimmer, colour, strobe and the 8 strips lie over
-  // it; speed and control move its sliders. Each follows only once it moved.
+  // it; speed, colour and Control 1-3 move its sliders (controlsFor). Each
+  // follows only once it moved.
   // Only while the Visuals cue is live.
   function applyDmx(values, prev) {
     if (!active) return;
@@ -321,8 +338,12 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     const param = (name) => v?.params.find((p) => p.name === name);
     const scaled = (p, fn) => p.min + (p.max - p.min) * level(fn);
     if (on('speed') && values.speed !== prev.speed && param('speed')) patch.speed = scaled(param('speed'), 'speed');
-    if (on('control') && values.control !== prev.control && v?.control && param(v.control)) {
-      patch[v.control] = scaled(param(v.control), 'control');
+    const moved = (fn) => on(fn) && values[fn] !== prev[fn];
+    if (moved('colour') && param('hue')) patch.hue = scaled(param('hue'), 'colour');
+    if (v) {
+      controlsFor(v).forEach((name, i) => {
+        if (name && moved(CONTROL_FNS[i]) && param(name)) patch[name] = scaled(param(name), CONTROL_FNS[i]);
+      });
     }
 
     const fxChanged = Object.keys(nextFx).some((k) => nextFx[k] !== fx[k]);
@@ -356,6 +377,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
       source: fs.readFileSync(v.file, 'utf8'),
       preview: visuals.buildPreview(parsed, width, height),
       values: savedValues(v),
+      controls: controlsFor(v),
     };
   }
 
@@ -379,6 +401,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     res.json({
       params: visuals.publicParams(parsed.params),
       control: visuals.controlParam(parsed),
+      defaultControls: visuals.controlParams(parsed),
       preview: visuals.buildPreview(parsed, width, height),
     });
   });
@@ -398,6 +421,20 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     settings.values[v.id] = visuals.paramValues(v.params, values);
     saveSettings();
     res.json(settings.values[v.id]);
+  });
+
+  // Which sliders the desk's Control 1-3 faders move (null = none)
+  router.put('/:id/controls', (req, res) => {
+    const v = find(req.params.id);
+    if (!v) return res.status(404).json({ error: 'Not found' });
+    const c = req.body.controls;
+    const names = v.params.map((p) => p.name);
+    if (!Array.isArray(c) || c.length !== visuals.CONTROLS || c.some((n) => n !== null && !names.includes(n))) {
+      return res.status(400).json({ error: `controls must be ${visuals.CONTROLS} slider names or null` });
+    }
+    settings.controls = { ...settings.controls, [v.id]: c };
+    saveSettings();
+    res.json({ controls: controlsFor(v) });
   });
 
   // Move sliders on the wall without saving
