@@ -9,9 +9,10 @@ const { WebSocketServer } = require('ws');
 const config = require('./config');
 const { MpvController } = require('./mpv-controller');
 const { createStateManager } = require('./state');
-const { analyzeVideo, removeThumbnail } = require('./media-info');
+const { analyzeMedia, removeThumbnail } = require('./media-info');
 const { createMatrix } = require('./hdmi-matrix');
 const { listenArtNet } = require('./artnet');
+const { createRemoteUpload } = require('./remote-upload');
 
 const ALLOWED_EXT = [
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
@@ -71,14 +72,14 @@ function broadcastState() {
   }
 }
 
-// Adds thumbnail + duration to a video in the background, then pushes the update
+// Adds a small thumbnail (and a video's duration) in the background, then pushes the update
 function enrichMedia(item) {
-  if (item.type !== 'video') return Promise.resolve();
-  return analyzeVideo(config.uploadsDir, item).then(({ thumb, duration }) => {
+  return analyzeMedia(config.uploadsDir, item).then(({ thumb, duration }) => {
     if (!thumb && duration == null) return;
+    const patch = item.type === 'video' ? { thumb, duration } : { thumb };
     state.updateState((s) => ({
       ...s,
-      library: s.library.map((m) => (m.id === item.id ? { ...m, thumb, duration } : m)),
+      library: s.library.map((m) => (m.id === item.id ? { ...m, ...patch } : m)),
     }));
     broadcastState();
   });
@@ -92,6 +93,30 @@ function getMediaType(filename) {
 function sanitizeFilename(name) {
   const base = path.basename(name || '');
   return base.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').slice(0, 200) || 'unnamed';
+}
+
+// Adds a finished phone upload to the library, inside a root folder of that
+// name (created on first use so phone uploads don't mix into the root)
+function addRemoteUpload({ filename, originalName, size }, folderName) {
+  let folder = state.getState().folders.find((f) => !f.parentId && f.name === folderName);
+  if (!folder) {
+    folder = { id: `f-${uuidv4().slice(0, 8)}`, name: folderName, parentId: null };
+    const created = folder;
+    state.updateState((s) => ({ ...s, folders: [...s.folders, created] }));
+  }
+  const item = {
+    id: filename.slice(0, 32),
+    filename,
+    originalName,
+    type: getMediaType(filename),
+    size,
+    addedAt: new Date().toISOString(),
+    folderId: folder.id,
+  };
+  state.updateState((s) => ({ ...s, library: [...s.library, item] }));
+  broadcastState();
+  enrichMedia(item);
+  return item;
 }
 
 function isValidId(id) {
@@ -268,10 +293,10 @@ mpv.onReconnect(() => {
 // Ensure uploads dir exists
 fs.mkdirSync(config.uploadsDir, { recursive: true });
 
-// Backfill thumbnails for videos uploaded before thumbnails existed, one at a time
+// Backfill thumbnails for media uploaded before thumbnails existed, one at a time
 (async () => {
   for (const item of state.getState().library) {
-    if (item.type === 'video' && !item.thumb) await enrichMedia(item);
+    if (!item.thumb) await enrichMedia(item);
   }
 })();
 
@@ -295,6 +320,18 @@ const upload = multer({
 });
 
 app.use(express.json());
+
+const remoteUpload = config.remoteUploadPort
+  ? createRemoteUpload({
+    config,
+    allowedExt: ALLOWED_EXT,
+    getDiskFree,
+    sanitizeFilename,
+    addToLibrary: addRemoteUpload,
+  })
+  : null;
+if (remoteUpload) app.use('/api/remote-upload', remoteUpload.controlRouter);
+else app.get('/api/remote-upload', (req, res) => res.json({ disabled: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get(/^\/uploads\/.+/, (req, res) => {
   const requested = req.path.replace(/^\/uploads\/?/, '') || '';
@@ -1056,6 +1093,13 @@ app.put('/api/dmx', (req, res) => {
 const server = app.listen(config.port, () => {
   console.log(`backdrop listening on port ${config.port}`);
 });
+
+// Upload-only listener for the QR code (LAN, or a Cloudflare Tunnel); it serves nothing but the upload page
+if (remoteUpload) {
+  remoteUpload.publicApp.listen(config.remoteUploadPort, config.remoteUploadHost, () => {
+    console.log(`phone uploads listening on ${config.remoteUploadHost}:${config.remoteUploadPort}`);
+  }).on('error', (err) => console.warn('Phone upload server failed:', err.message));
+}
 
 wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws) => {

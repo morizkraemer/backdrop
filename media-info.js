@@ -1,6 +1,6 @@
 /**
- * Video thumbnails and durations via ffmpeg/ffprobe.
- * Optional: if ffmpeg is not installed, videos simply have no thumbnail.
+ * Thumbnails (videos and images) and video durations via ffmpeg/ffprobe.
+ * Optional: if ffmpeg is not installed, media simply has no thumbnail.
  */
 const { execFile } = require('child_process');
 const fs = require('fs');
@@ -28,23 +28,26 @@ async function probeDuration(filePath) {
 
 async function makeThumbnail(filePath, outPath, duration) {
   // Grab a frame a little way in, so fade-ins don't give a black thumbnail
-  const at = duration ? Math.min(duration * 0.1, 3) : 0;
+  // (stills get no -ss at all: seeking a single image yields no frame)
+  const seek = duration ? ['-ss', String(Math.min(duration * 0.1, 3))] : [];
   await run('ffmpeg', [
     '-y', '-v', 'error',
-    '-ss', String(at),
+    ...seek,
     '-i', filePath,
     '-frames:v', '1',
-    '-vf', `scale=${THUMB_WIDTH}:-2`,
+    // Never upscale small images
+    '-vf', `scale='min(${THUMB_WIDTH},iw)':-2`,
     '-q:v', '4',
     outPath,
   ]);
 }
 
 /**
- * Returns { thumb, duration } for a video library item. thumb is relative to uploadsDir.
- * Either field may be null when ffmpeg is unavailable or the file can't be read.
+ * Returns { thumb, duration } for a library item. thumb is relative to uploadsDir;
+ * duration is only probed for videos. Either field may be null when ffmpeg is
+ * unavailable or the file can't be read.
  */
-async function analyzeVideo(uploadsDir, item) {
+async function analyzeMedia(uploadsDir, item) {
   const filePath = path.resolve(uploadsDir, item.filename);
   const thumbRel = `${THUMB_DIR}/${item.id}.jpg`;
   const thumbPath = path.resolve(uploadsDir, thumbRel);
@@ -52,13 +55,17 @@ async function analyzeVideo(uploadsDir, item) {
 
   let duration = null;
   let thumb = null;
-  try {
-    duration = await probeDuration(filePath);
-  } catch (e) {
-    console.warn(`ffprobe failed for ${item.originalName}:`, e.code === 'ENOENT' ? 'ffprobe not installed' : e.message);
+  if (item.type === 'video') {
+    try {
+      duration = await probeDuration(filePath);
+    } catch (e) {
+      console.warn(`ffprobe failed for ${item.originalName}:`, e.code === 'ENOENT' ? 'ffprobe not installed' : e.message);
+    }
   }
   try {
+    fs.rmSync(thumbPath, { force: true });
     await makeThumbnail(filePath, thumbPath, duration);
+    if (!fs.existsSync(thumbPath)) throw new Error('ffmpeg wrote no frame');
     thumb = thumbRel;
   } catch (e) {
     console.warn(`Thumbnail failed for ${item.originalName}:`, e.code === 'ENOENT' ? 'ffmpeg not installed' : e.message);
@@ -73,4 +80,4 @@ function removeThumbnail(uploadsDir, item) {
   } catch (_) {}
 }
 
-module.exports = { analyzeVideo, removeThumbnail };
+module.exports = { analyzeMedia, removeThumbnail };

@@ -102,6 +102,15 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
+// Skips the rebuild when nothing changed, so state pushes (LED, HDMI, other
+// clients) don't re-create every row and its thumbnail
+const lastHtml = new WeakMap();
+function setHtml(el, html) {
+  if (lastHtml.get(el) === html) return;
+  lastHtml.set(el, html);
+  el.innerHTML = html;
+}
+
 function formatBytes(n) {
   if (n >= 1e9) return (n / 1e9).toFixed(1) + ' GB';
   if (n >= 1e6) return (n / 1e6).toFixed(1) + ' MB';
@@ -122,16 +131,23 @@ function getMedia(mediaId) {
   return state.library.find((m) => m.id === mediaId);
 }
 
+// Small server-made thumbnail for list rows. Images fall back to the original
+// until the thumbnail exists, which is heavy: photos can be 20+ megapixels.
 function thumbSrc(media) {
   if (!media) return null;
   const v = encodeURIComponent(media.addedAt || '');
-  if (media.type === 'image') return `/uploads/${encodeURIComponent(media.filename)}?t=${v}`;
   if (media.thumb) return `/uploads/${media.thumb.split('/').map(encodeURIComponent).join('/')}?t=${v}`;
+  if (media.type === 'image') return `/uploads/${encodeURIComponent(media.filename)}?t=${v}`;
   return null;
 }
 
-function thumbHtml(media) {
-  const src = thumbSrc(media);
+// Full picture for the big screens (live monitor, inspector), so they stay sharp
+function pictureSrc(media) {
+  if (media?.type !== 'image') return thumbSrc(media);
+  return `/uploads/${encodeURIComponent(media.filename)}?t=${encodeURIComponent(media.addedAt || '')}`;
+}
+
+function thumbHtml(media, src = thumbSrc(media)) {
   const img = src
     ? `<img src="${src}" alt="" loading="lazy" onerror="this.remove()">`
     : '';
@@ -330,7 +346,14 @@ function renderMonitor(root, index, isNow) {
     ? media?.originalName ?? '?'
     : isNow ? (state.isTransitioning ? 'Loading…' : 'Nothing playing') : (state.playlist.length ? 'End of list' : '—');
   root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : '';
-  if (isNow && cue && media?.type === 'video') {
+  if (isNow && previewCollapsed()) {
+    // Phones keep the live preview behind a tap, so don't stream video nobody sees
+    stopPreview();
+    delete screen.dataset.preview;
+    delete screen.dataset.shown;
+    screen.innerHTML = '';
+    updatePanelShot(screen, false);
+  } else if (isNow && cue && media?.type === 'video') {
     renderLivePreview(screen, cue, media);
     delete screen.dataset.shown;
     screen.classList.toggle('letterbox', cue.settings?.displayMode !== 'fill');
@@ -342,10 +365,10 @@ function renderMonitor(root, index, isNow) {
       delete screen.dataset.preview;
     }
     // Rebuild only when the picture changes, so dragging a live image doesn't flicker
-    const key = cue ? `${cue.id}:${thumbSrc(media)}` : '';
+    const key = cue ? `${cue.id}:${pictureSrc(media)}` : '';
     if (screen.dataset.shown !== key || !cue) {
       screen.dataset.shown = key;
-      screen.innerHTML = cue ? thumbHtml(media) : '';
+      screen.innerHTML = cue ? thumbHtml(media, pictureSrc(media)) : '';
     }
     const img = isNow && media?.type === 'image' && screen.querySelector('img:not(.panel-shot)');
     screen.classList.toggle('letterbox', !!img && cue.settings?.displayMode !== 'fill');
@@ -359,7 +382,7 @@ function renderMonitor(root, index, isNow) {
       else img.addEventListener('load', place, { once: true });
     }
   }
-  if (isNow) updatePanelShot(screen, !!cue);
+  if (isNow && !previewCollapsed()) updatePanelShot(screen, !!cue);
   if (isNow) {
     root.classList.toggle('playing', !!cue);
     const tag = $('nowTag');
@@ -367,6 +390,33 @@ function renderMonitor(root, index, isNow) {
     tag.className = `tag ${cue ? 'tag-live' : 'tag-idle'}`;
   }
 }
+
+// --- live preview on phones: hidden until tapped, then shown in a popup ---
+
+const phoneLayout = window.matchMedia('(max-width: 900px)');
+const btnPreview = $('btnPreview');
+const previewBackdrop = $('previewBackdrop');
+
+function previewCollapsed() {
+  return phoneLayout.matches && !monitorNow.classList.contains('preview-open');
+}
+
+function setPreviewOpen(open) {
+  monitorNow.classList.toggle('preview-open', open);
+  previewBackdrop.hidden = !open;
+  btnPreview.setAttribute('aria-expanded', String(open));
+  renderTransport();
+}
+
+btnPreview.addEventListener('click', () => setPreviewOpen(true));
+previewBackdrop.addEventListener('click', () => setPreviewOpen(false));
+$('nowScreen').addEventListener('click', () => {
+  if (phoneLayout.matches) setPreviewOpen(false);
+});
+phoneLayout.addEventListener('change', () => setPreviewOpen(false));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && monitorNow.classList.contains('preview-open')) setPreviewOpen(false);
+});
 
 function renderTransport() {
   renderMonitor(monitorNow, state.currentCueIndex, true);
@@ -479,19 +529,19 @@ function renderLibrary() {
     image: visible.filter((m) => m.type === 'image').length,
     video: visible.filter((m) => m.type === 'video').length,
   };
-  libraryFilters.innerHTML = [['all', 'All'], ['image', 'Images'], ['video', 'Videos']]
+  setHtml(libraryFilters, [['all', 'All'], ['image', 'Images'], ['video', 'Videos']]
     .map(([key, label]) => `<button type="button" class="chip" data-filter="${key}" aria-pressed="${libraryFilter === key}">${label} ${counts[key]}</button>`)
-    .join('');
+    .join(''));
   $('tabLibrary').textContent = `Library · ${counts.all}`;
 
   const q = librarySearch.value.trim().toLowerCase();
   const crumbs = [{ id: '', name: 'Library' }, ...folderPath(currentFolderId)];
-  libraryCrumbs.innerHTML = q
+  setHtml(libraryCrumbs, q
     ? '<span class="crumb-note">Searching all folders</span>'
     : `<button type="button" class="crumb crumb-back" data-folder-id="${crumbs.length > 1 ? crumbs[crumbs.length - 2].id : ''}" aria-label="Back" title="Back" ${crumbs.length > 1 ? '' : 'disabled'}>${ICONS.chevron}</button>`
       + crumbs.map((c, i) => (i === crumbs.length - 1
       ? `<span class="crumb current" data-folder-id="${c.id}" aria-current="page">${escapeHtml(c.name)}</span>`
-      : `<button type="button" class="crumb" data-folder-id="${c.id}">${escapeHtml(c.name)}</button>${ICONS.chevron}`)).join('');
+      : `<button type="button" class="crumb" data-folder-id="${c.id}">${escapeHtml(c.name)}</button>${ICONS.chevron}`)).join(''));
 
   const typeOk = (m) => libraryFilter === 'all' || m.type === libraryFilter;
   let folders;
@@ -511,10 +561,10 @@ function renderLibrary() {
     if (q) msg = 'No matches';
     else if (currentFolderId) msg = 'Empty folder. Drop files here to upload into it.';
     else if (visible.length) msg = 'No matches';
-    libraryList.innerHTML = `<div class="empty">${msg}</div>`;
+    setHtml(libraryList, `<div class="empty">${msg}</div>`);
   } else {
-    libraryList.innerHTML = folders.map((f) => folderRowHtml(f, !!q)).join('')
-      + items.map((m) => mediaRowHtml(m, !!q)).join('');
+    setHtml(libraryList, folders.map((f) => folderRowHtml(f, !!q)).join('')
+      + items.map((m) => mediaRowHtml(m, !!q)).join(''));
   }
 
   const input = libraryList.querySelector('input.rename');
@@ -532,10 +582,10 @@ function renderCues() {
   const next = nextCueIndex();
 
   if (!state.playlist.length) {
-    cueList.innerHTML = '<div class="empty">No cues yet. Add media from the library.</div>';
+    setHtml(cueList, '<div class="empty">No cues yet. Add media from the library.</div>');
     return;
   }
-  cueList.innerHTML = state.playlist.map((cue, i) => {
+  setHtml(cueList, state.playlist.map((cue, i) => {
     const media = getMedia(cue.mediaId);
     const live = i === state.currentCueIndex;
     const isNext = i === next && !live;
@@ -558,7 +608,7 @@ function renderCues() {
         <button type="button" class="btn-icon more" data-cue-id="${cue.id}" aria-label="Cue settings">${ICONS.more}</button>
       </div>
     `;
-  }).join('');
+  }).join(''));
 }
 
 function setSegment(seg, value) {
@@ -570,7 +620,7 @@ function setSegment(seg, value) {
 function renderStage(cue, media) {
   const screen = inspScreen;
   const mode = cue.settings?.displayMode ?? 'fill';
-  const src = thumbSrc(media);
+  const src = pictureSrc(media);
   const key = `${media?.id}:${src}`;
   if (screen.dataset.media !== key) {
     screen.dataset.media = key;
@@ -1533,6 +1583,91 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !dmxPopover.hidden) setDmxOpen(false);
+});
+
+// --- Phone uploads (QR code for the upload-only page) ---
+
+const qrBackdrop = $('qrBackdrop');
+const qrBody = $('qrBody');
+const btnRemoteUpload = $('btnRemoteUpload');
+let remoteUpload = null;
+let remoteUploadError = null;
+let remoteUploadBusy = false;
+
+function renderRemoteUpload() {
+  const r = remoteUpload;
+  if (!r) {
+    qrBody.innerHTML = `<p class="qr-note${remoteUploadError ? ' error' : ''}">${escapeHtml(remoteUploadError || 'Loading…')}</p>`;
+    return;
+  }
+  if (r.disabled) {
+    qrBody.innerHTML = '<p class="qr-note">Phone uploads are turned off on this server (REMOTE_UPLOAD_PORT=0).</p>';
+    return;
+  }
+  qrBody.innerHTML = `
+    <div class="qr-code${r.enabled ? '' : ' closed'}">${r.qr}${r.enabled ? '' : '<span>Closed</span>'}</div>
+    <div class="qr-url"><span>${escapeHtml(r.url)}</span><button type="button" class="btn-secondary" id="qrCopy">Copy</button></div>
+    ${r.localOnly ? '<p class="qr-note error">This page is open as localhost, so the code points at the phone itself. Open the control UI by its network address to get a working code.</p>' : ''}
+    <p class="qr-note">${r.public ? 'Anyone with this code can send photos and videos from anywhere.' : 'Phones on the same Wi-Fi as backdrop can send photos and videos with this code.'} They land in the “${escapeHtml(r.folderName)}” folder.</p>
+    <label class="qr-toggle">
+      <input type="checkbox" id="qrEnabled" ${r.enabled ? 'checked' : ''} ${remoteUploadBusy ? 'disabled' : ''}>
+      <span>Accept uploads</span>
+    </label>
+    <div class="qr-actions">
+      <button type="button" class="btn-secondary" id="qrRotate" ${remoteUploadBusy ? 'disabled' : ''}>New link</button>
+      <span class="qr-hint">Makes old QR codes stop working</span>
+    </div>
+    ${remoteUploadError ? `<p class="qr-note error">${escapeHtml(remoteUploadError)}</p>` : ''}`;
+}
+
+function remoteUploadCall(method, path, body) {
+  remoteUploadBusy = true;
+  remoteUploadError = null;
+  renderRemoteUpload();
+  return api(method, `/remote-upload${path}`, body)
+    .then(async (r) => {
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Request failed');
+      remoteUpload = data;
+    })
+    .catch((err) => { remoteUploadError = err.message; })
+    .finally(() => {
+      remoteUploadBusy = false;
+      renderRemoteUpload();
+    });
+}
+
+function setQrOpen(open) {
+  qrBackdrop.hidden = !open;
+  if (!open) return btnRemoteUpload.focus();
+  remoteUpload = null;
+  remoteUploadCall('GET', '');
+  $('qrClose').focus();
+}
+
+btnRemoteUpload.addEventListener('click', () => setQrOpen(true));
+$('qrClose').addEventListener('click', () => setQrOpen(false));
+qrBackdrop.addEventListener('click', (e) => {
+  if (e.target === qrBackdrop) setQrOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !qrBackdrop.hidden) setQrOpen(false);
+});
+qrBody.addEventListener('change', (e) => {
+  if (e.target.id === 'qrEnabled') remoteUploadCall('PUT', '', { enabled: e.target.checked });
+});
+qrBody.addEventListener('click', (e) => {
+  if (e.target.id === 'qrRotate' && confirm('Make a new link? The current QR code stops working, including any you printed or shared.')) {
+    remoteUploadCall('POST', '/rotate');
+  }
+  if (e.target.id === 'qrCopy' && remoteUpload?.url) {
+    // The clipboard API only exists over https; on the LAN select the link instead
+    const selectUrl = () => getSelection().selectAllChildren(qrBody.querySelector('.qr-url span'));
+    if (!navigator.clipboard) return selectUrl();
+    navigator.clipboard.writeText(remoteUpload.url)
+      .then(() => { e.target.textContent = 'Copied'; })
+      .catch(selectUrl);
+  }
 });
 
 connectWs();

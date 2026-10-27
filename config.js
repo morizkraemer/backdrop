@@ -33,4 +33,13 @@ module.exports = {
   dmxUniverse: (process.env.DMX_UNIVERSE ?? '0') === '' ? null
     : Math.max(0, parseInt(process.env.DMX_UNIVERSE ?? '0', 10) || 0),
   dmxAddress: Math.min(510, Math.max(1, parseInt(process.env.DMX_ADDRESS || '1', 10) || 1)),
+  // Upload-only server for the QR code (setup/REMOTE-UPLOAD.md), on its own port
+  // so phones never reach the control UI. REMOTE_UPLOAD_URL (a Cloudflare Tunnel
+  // address) makes the QR work from outside the LAN; without it the QR is LAN only.
+  // Set REMOTE_UPLOAD_PORT=0 to turn phone uploads off.
+  remoteUploadUrl: process.env.REMOTE_UPLOAD_URL || null,
+  remoteUploadPort: Math.max(0, parseInt(process.env.REMOTE_UPLOAD_PORT ?? '3100', 10) || 0),
+  remoteUploadHost: process.env.REMOTE_UPLOAD_HOST || '0.0.0.0',
+  remoteUploadFolder: process.env.REMOTE_UPLOAD_FOLDER || 'Phone uploads',
+  remoteUploadSettingsPath: process.env.REMOTE_UPLOAD_SETTINGS || path.join(__dirname, 'remote-upload.json'),
 };
