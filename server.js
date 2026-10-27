@@ -341,6 +341,42 @@ app.delete('/api/library/:id', (req, res) => {
 app.get('/api/playlist', (req, res) => res.json(state.getState().playlist));
 app.get('/api/state', (req, res) => res.json({ ...state.getState(), diskFree: getDiskFree() }));
 
+// Playback position of the live video, for the control page's preview to follow
+app.get('/api/position', async (req, res) => {
+  if (!mpv.connected) return res.json({ position: null });
+  try {
+    const position = await mpv.getProperty('time-pos');
+    res.json({ position: typeof position === 'number' ? position : null });
+  } catch {
+    res.json({ position: null }); // idle: mpv has no time-pos
+  }
+});
+
+// A still of what mpv is actually showing, for the Live monitor's panel inset.
+// Shared between clients and taken at most once a second.
+const SCREENSHOT_PATH = path.join(require('os').tmpdir(), 'backdrop-panel.jpg');
+const SCREENSHOT_MAX_AGE_MS = 900;
+let screenshot = { at: 0, pending: null };
+
+function takeScreenshot() {
+  if (Date.now() - screenshot.at < SCREENSHOT_MAX_AGE_MS) return Promise.resolve(true);
+  if (!screenshot.pending) {
+    screenshot.pending = mpv.screenshotToFile(SCREENSHOT_PATH)
+      .then(() => { screenshot.at = Date.now(); return true; })
+      .catch(() => false)
+      .finally(() => { screenshot.pending = null; });
+  }
+  return screenshot.pending;
+}
+
+app.get('/api/screenshot', async (req, res) => {
+  if (!mpv.connected || !(await takeScreenshot())) return res.status(204).send();
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(SCREENSHOT_PATH, (err) => {
+    if (err && !res.headersSent) res.status(204).send();
+  });
+});
+
 app.put('/api/settings', (req, res) => {
   const { playlistLoop } = req.body;
   if (typeof playlistLoop !== 'boolean') return res.status(400).json({ error: 'playlistLoop must be boolean' });
