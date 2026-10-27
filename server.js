@@ -11,6 +11,7 @@ const { MpvController } = require('./mpv-controller');
 const { createStateManager } = require('./state');
 const { analyzeMedia, removeThumbnail } = require('./media-info');
 const { createMatrix } = require('./hdmi-matrix');
+const { listenArtNet } = require('./artnet');
 const { createRemoteUpload } = require('./remote-upload');
 
 const ALLOWED_EXT = [
@@ -36,6 +37,13 @@ let hdmi = {
   sources: config.hdmiSources.map((name) => ({ name, signal: null })),
   current: null, // input number feeding config.hdmiOutput
 };
+// DMX functions in display order; each maps to one channel of the universe (0 = unused)
+const DMX_FUNCTIONS = ['brightness', 'go', 'back'];
+let dmx = {
+  configured: config.dmxUniverse !== null,
+  receiving: false,
+  values: null, // { brightness, go, back }: 0-255, null for unused functions
+};
 
 function getDiskFree() {
   try {
@@ -55,6 +63,7 @@ function broadcastState() {
     mpvConnected: mpv.connected,
     led,
     hdmi,
+    dmx: { ...dmx, ...getDmxConfig() },
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -742,7 +751,8 @@ app.delete('/api/playlist/:cueId', (req, res) => {
   res.status(204).send();
 });
 
-app.post('/api/go', (req, res) => {
+// GO: the next cue, or stop / wrap around after the last one
+function goNext() {
   const s = state.getState();
   const next = s.currentCueIndex + 1;
   if (next >= s.playlist.length) {
@@ -757,6 +767,27 @@ app.post('/api/go', (req, res) => {
     playCue(next);
   }
   broadcastState();
+}
+
+// BACK: the previous cue. From the first cue it wraps to the last one when the
+// playlist loops (otherwise restarts it); when stopped it goes to the last cue.
+function goBack() {
+  const s = state.getState();
+  if (!s.playlist.length) return;
+  const i = s.currentCueIndex;
+  if (i > 0) playCue(i - 1);
+  else if (i === 0) playCue(s.playlistLoop ? s.playlist.length - 1 : 0);
+  else playCue(s.playlist.length - 1);
+  broadcastState();
+}
+
+app.post('/api/go', (req, res) => {
+  goNext();
+  res.status(204).send();
+});
+
+app.post('/api/back', (req, res) => {
+  goBack();
   res.status(204).send();
 });
 
@@ -890,22 +921,29 @@ async function runLedWrites() {
   }
 }
 
+// Queues a brightness write; resolves once the controller has applied the latest one
+function setLedBrightness(value) {
+  ledTarget = value;
+  if (!ledJob) {
+    ledJob = runLedWrites().finally(() => { ledJob = null; });
+  }
+  return ledJob.catch((err) => {
+    ledTarget = null;
+    if (err.code) setLed(false, led.brightness); // network error: controller unreachable
+    throw err;
+  });
+}
+
 app.put('/api/led/brightness', async (req, res) => {
   if (!config.novaHost) return res.status(501).json({ error: 'NOVA_HOST not configured' });
   const value = Number(req.body?.brightness);
   if (!Number.isInteger(value) || value < 0 || value > 100) {
     return res.status(400).json({ error: 'brightness must be an integer 0-100' });
   }
-  ledTarget = value;
-  if (!ledJob) {
-    ledJob = runLedWrites().finally(() => { ledJob = null; });
-  }
   try {
-    await ledJob;
+    await setLedBrightness(value);
     res.json(led);
   } catch (err) {
-    ledTarget = null;
-    if (err.code) setLed(false, led.brightness); // network error: controller unreachable
     res.status(502).json({ error: err.message });
   }
 });
@@ -972,6 +1010,86 @@ if (matrix) {
   }, 10000);
 }
 
+// DMX control over Art-Net (see setup/DMX.md). The universe comes from .env; the channel
+// of each function is set in the UI (state.dmxConfig, defaults from .env):
+// brightness = LED brightness (0-255 -> 0-100 %), go = next cue, back = previous cue.
+// GO and BACK fire once when their channel rises past half; brightness follows the
+// fader only when it moves, so the UI can still set it while the fader rests.
+const DMX_ON = 128;
+const DMX_TIMEOUT_MS = 3000; // Art-Net senders repeat at least every 4 s, nodes usually ~40x/s
+const DMX_UI_MS = 200; // the UI follows the channels at most this often
+let dmxLastPacket = 0;
+let dmxLast = null; // previous frame's values; null primes on the next frame
+let dmxUiTimer = null;
+
+function getDmxConfig() {
+  const a = config.dmxAddress;
+  const channels = state.getState().dmxConfig?.channels ?? { brightness: a, go: a + 1, back: a + 2 };
+  return { universe: config.dmxUniverse ?? 0, channels };
+}
+
+function setDmx(patch) {
+  dmx = { ...dmx, ...patch };
+  if (dmxUiTimer) return;
+  dmxUiTimer = setTimeout(() => {
+    dmxUiTimer = null;
+    broadcastState();
+  }, DMX_UI_MS);
+}
+
+function handleDmxFrame(universe, data) {
+  const { universe: want, channels } = getDmxConfig();
+  if (universe !== want) return;
+  dmxLastPacket = Date.now();
+  const values = {};
+  for (const fn of DMX_FUNCTIONS) values[fn] = channels[fn] ? data[channels[fn] - 1] ?? 0 : null;
+  const prev = dmxLast;
+  dmxLast = values;
+  if (!dmx.receiving || DMX_FUNCTIONS.some((fn) => values[fn] !== dmx.values?.[fn])) {
+    setDmx({ receiving: true, values });
+  }
+  // The first frame (after start or a config change) only records where the faders are
+  if (!prev) return;
+  if (values.brightness !== null && values.brightness !== prev.brightness && config.novaHost) {
+    setLedBrightness(Math.round((values.brightness * 100) / 255))
+      .catch((err) => console.warn('DMX brightness:', err.message));
+  }
+  if (values.go >= DMX_ON && !(prev.go >= DMX_ON)) goNext();
+  if (values.back >= DMX_ON && !(prev.back >= DMX_ON)) goBack();
+}
+
+if (dmx.configured) {
+  listenArtNet({
+    onFrame: handleDmxFrame,
+    onError: (err) => console.warn('Art-Net:', err.message),
+  });
+  setInterval(() => {
+    if (dmx.receiving && Date.now() - dmxLastPacket > DMX_TIMEOUT_MS) setDmx({ receiving: false, values: null });
+  }, 1000);
+  const { universe, channels } = getDmxConfig();
+  console.log(`DMX: Art-Net universe ${universe}, channels`, channels);
+}
+
+// Channels 1-512, or 0 for unused
+app.put('/api/dmx', (req, res) => {
+  if (!dmx.configured) return res.status(501).json({ error: 'DMX is disabled (DMX_UNIVERSE is empty)' });
+  const cur = getDmxConfig();
+  const channels = { ...cur.channels };
+  for (const fn of DMX_FUNCTIONS) {
+    const ch = req.body?.channels?.[fn];
+    if (ch === undefined) continue;
+    if (!Number.isInteger(ch) || ch < 0 || ch > 512) {
+      return res.status(400).json({ error: `${fn} channel must be 1-512, or 0 for unused` });
+    }
+    channels[fn] = ch;
+  }
+  state.updateState({ dmxConfig: { channels } });
+  dmxLast = null;
+  dmx = { ...dmx, receiving: false, values: null };
+  broadcastState();
+  res.json(getDmxConfig());
+});
+
 const server = app.listen(config.port, () => {
   console.log(`backdrop listening on port ${config.port}`);
 });
@@ -992,6 +1110,7 @@ wss.on('connection', (ws) => {
     mpvConnected: mpv.connected,
     led,
     hdmi,
+    dmx: { ...dmx, ...getDmxConfig() },
   }));
   pollLed();
   pollHdmi();

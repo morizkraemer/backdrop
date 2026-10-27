@@ -11,6 +11,7 @@ const DEFAULT_STATE = {
   playlist: [],
   currentCueIndex: -1,
   playlistLoop: false,
+  dmxConfig: null, // { channels: { brightness, go, back } }; null = .env defaults
 };
 
 function load(statePath) {
@@ -23,6 +24,7 @@ function load(statePath) {
       playlist: parsed.playlist ?? [],
       currentCueIndex: typeof parsed.currentCueIndex === 'number' ? parsed.currentCueIndex : -1,
       playlistLoop: typeof parsed.playlistLoop === 'boolean' ? parsed.playlistLoop : false,
+      dmxConfig: parsed.dmxConfig ?? null,
     };
   } catch (err) {
     if (err.code === 'ENOENT') return { ...DEFAULT_STATE };
@@ -73,6 +75,7 @@ function createStateManager(statePath) {
         playlist: newState.playlist ?? [],
         currentCueIndex: typeof newState.currentCueIndex === 'number' ? newState.currentCueIndex : -1,
         playlistLoop: typeof newState.playlistLoop === 'boolean' ? newState.playlistLoop : false,
+        dmxConfig: newState.dmxConfig ?? null,
       };
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(persist, DEBOUNCE_MS);

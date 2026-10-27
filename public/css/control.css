@@ -282,6 +282,102 @@ svg {
   color: var(--danger);
 }
 
+/* DMX control */
+
+.dmx {
+  position: relative;
+}
+
+.dmx-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: 280px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dmx-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dmx-ch {
+  display: grid;
+  grid-template-columns: 56px 76px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.dmx-ch-head {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.dmx-ch-head span:last-child {
+  text-align: right;
+}
+
+.dmx-ch input {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  text-align: right;
+}
+
+.dmx-ch.unused .dmx-name,
+.dmx-ch.unused .dmx-val {
+  color: var(--text-dim);
+}
+
+.dmx-state {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.dmx-state.on {
+  color: var(--live);
+}
+
+.dmx-val {
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+  color: var(--text);
+}
+
+.dmx-name {
+  color: var(--text-2);
+}
+
+.dmx-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #1c1d21;
+  overflow: hidden;
+}
+
+.dmx-bar span {
+  display: block;
+  height: 100%;
+  background: var(--live);
+}
+
 /* HDMI matrix */
 
 .hdmi {
@@ -596,6 +692,35 @@ svg {
 
 .btn-stop:hover {
   background: #2a1819;
+}
+
+.btn-back {
+  width: 80px;
+  border-radius: 10px;
+  border: 1px solid #2e3036;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-back svg {
+  width: 18px;
+  height: 18px;
+}
+
+.btn-back:not(:disabled):hover {
+  background: var(--bg-hover);
+}
+
+.btn-back:disabled {
+  opacity: 0.5;
 }
 
 .btn-go {
@@ -1648,7 +1773,8 @@ button.crumb:hover {
     padding: 0 16px;
   }
 
-  .hdmi-popover {
+  .hdmi-popover,
+  .dmx-popover {
     position: fixed;
     top: 64px;
     left: 16px;
@@ -1767,6 +1893,17 @@ button.crumb:hover {
 
   .btn-stop svg {
     display: none;
+  }
+
+  .btn-back {
+    width: 64px;
+    border-radius: 12px;
+    font-size: 0;
+  }
+
+  .btn-back svg {
+    width: 22px;
+    height: 22px;
   }
 
   .btn-go {

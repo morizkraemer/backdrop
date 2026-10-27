@@ -35,6 +35,7 @@ const connText = $('connText');
 const monitorNow = $('monitorNow');
 const btnGo = $('btnGo');
 const btnStop = $('btnStop');
+const btnBack = $('btnBack');
 const btnLoop = $('btnLoop');
 const libraryPane = $('libraryPane');
 const libraryList = $('libraryList');
@@ -429,6 +430,7 @@ function renderTransport() {
     : '<span>Next: end of list</span>';
 
   btnGo.disabled = state.isTransitioning || !state.playlist.length;
+  btnBack.disabled = state.isTransitioning || !state.playlist.length;
   btnLoop.classList.toggle('active', state.playlistLoop);
   btnLoop.setAttribute('aria-pressed', String(state.playlistLoop));
 }
@@ -697,6 +699,7 @@ function render() {
   renderHeader();
   renderLed();
   renderHdmi();
+  renderDmx();
   renderTransport();
   renderLibrary();
   renderCues();
@@ -803,6 +806,7 @@ function uploadFiles(files, url) {
 
 btnGo.addEventListener('click', () => api('POST', '/go'));
 btnStop.addEventListener('click', () => api('POST', '/stop'));
+btnBack.addEventListener('click', () => api('POST', '/back'));
 btnLoop.addEventListener('click', () => {
   const next = !state.playlistLoop;
   state = { ...state, playlistLoop: next };
@@ -1503,6 +1507,82 @@ document.addEventListener('keydown', (e) => {
 hdmiSources.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-input]');
   if (b && !b.disabled) sendHdmiSource(Number(b.dataset.input));
+});
+
+// --- DMX control (Art-Net input; channels are saved on the server) ---
+
+const dmxEl = $('dmx');
+const btnDmx = $('btnDmx');
+const dmxPopover = $('dmxPopover');
+const dmxChannels = $('dmxChannels');
+const DMX_FUNCTIONS = [
+  { key: 'brightness', name: 'Brightness', show: (v) => `${Math.round((v * 100) / 255)}%` },
+  { key: 'go', name: 'GO', show: (v) => (v >= 128 ? 'On' : 'Off') },
+  { key: 'back', name: 'BACK', show: (v) => (v >= 128 ? 'On' : 'Off') },
+];
+let dmxError = null;
+
+dmxChannels.insertAdjacentHTML('beforeend', DMX_FUNCTIONS.map((fn) => `<div class="dmx-ch">
+  <input type="number" data-fn="${fn.key}" min="0" max="512" step="1" inputmode="numeric" placeholder="off" aria-label="${fn.name} channel">
+  <span class="dmx-name">${fn.name}</span>
+  <span class="dmx-bar"><span></span></span>
+  <span class="dmx-val">—</span>
+</div>`).join(''));
+
+function renderDmx() {
+  const d = state.dmx || {};
+  dmxEl.hidden = !d.configured;
+  if (!d.configured) return;
+  const on = !!d.receiving;
+  btnDmx.classList.toggle('offline', !on);
+  $('dmxSig').classList.toggle('on', on);
+  btnDmx.title = on ? 'DMX: receiving' : 'DMX: no signal';
+  $('dmxState').textContent = on ? 'Receiving' : 'No signal';
+  $('dmxState').classList.toggle('on', on);
+  DMX_FUNCTIONS.forEach((fn) => {
+    const row = dmxChannels.querySelector(`input[data-fn="${fn.key}"]`).closest('.dmx-ch');
+    const input = row.querySelector('input');
+    const ch = d.channels?.[fn.key] || 0;
+    if (document.activeElement !== input) input.value = ch || '';
+    const v = on && ch ? d.values?.[fn.key] : null;
+    row.classList.toggle('unused', !ch);
+    row.querySelector('.dmx-bar span').style.width = `${v == null ? 0 : (v * 100) / 255}%`;
+    row.querySelector('.dmx-val').textContent = v == null ? '—' : fn.show(v);
+  });
+  const status = $('dmxStatus');
+  status.classList.toggle('error', !!dmxError);
+  status.textContent = dmxError || (on ? '' : `Waiting for Art-Net on universe ${d.universe ?? 0}`);
+}
+
+function sendDmxConfig(patch) {
+  dmxError = null;
+  api('PUT', '/dmx', patch)
+    .then(async (r) => {
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not save');
+    })
+    .catch((err) => { dmxError = err.message; })
+    .finally(renderDmx);
+}
+
+dmxChannels.addEventListener('change', (e) => {
+  const input = e.target.closest('input[data-fn]');
+  if (!input) return;
+  const ch = Math.max(0, Math.round(Number(input.value) || 0));
+  sendDmxConfig({ channels: { [input.dataset.fn]: ch } });
+});
+
+function setDmxOpen(open) {
+  dmxPopover.hidden = !open;
+  btnDmx.setAttribute('aria-expanded', String(open));
+  if (open) renderDmx();
+}
+
+btnDmx.addEventListener('click', () => setDmxOpen(dmxPopover.hidden));
+document.addEventListener('click', (e) => {
+  if (!dmxPopover.hidden && !dmxEl.contains(e.target)) setDmxOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !dmxPopover.hidden) setDmxOpen(false);
 });
 
 // --- Phone uploads (QR code for the upload-only page) ---
