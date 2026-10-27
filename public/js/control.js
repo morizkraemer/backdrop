@@ -1459,16 +1459,26 @@ hdmiSources.addEventListener('click', (e) => {
   if (b && !b.disabled) sendHdmiSource(Number(b.dataset.input));
 });
 
-// --- DMX control (Art-Net input, read-only here) ---
+// --- DMX control (Art-Net input; universe and channels are saved on the server) ---
 
 const dmxEl = $('dmx');
 const btnDmx = $('btnDmx');
 const dmxPopover = $('dmxPopover');
-const DMX_CHANNELS = [
-  { name: 'Brightness', show: (v) => `${Math.round((v * 100) / 255)}%` },
-  { name: 'GO', show: (v) => (v >= 128 ? 'On' : 'Off') },
-  { name: 'BACK', show: (v) => (v >= 128 ? 'On' : 'Off') },
+const dmxUniverse = $('dmxUniverse');
+const dmxChannels = $('dmxChannels');
+const DMX_FUNCTIONS = [
+  { key: 'brightness', name: 'Brightness', show: (v) => `${Math.round((v * 100) / 255)}%` },
+  { key: 'go', name: 'GO', show: (v) => (v >= 128 ? 'On' : 'Off') },
+  { key: 'back', name: 'BACK', show: (v) => (v >= 128 ? 'On' : 'Off') },
 ];
+let dmxError = null;
+
+dmxChannels.insertAdjacentHTML('beforeend', DMX_FUNCTIONS.map((fn) => `<div class="dmx-ch">
+  <input type="number" data-fn="${fn.key}" min="0" max="512" step="1" inputmode="numeric" placeholder="off" aria-label="${fn.name} channel">
+  <span class="dmx-name">${fn.name}</span>
+  <span class="dmx-bar"><span></span></span>
+  <span class="dmx-val">—</span>
+</div>`).join(''));
 
 function renderDmx() {
   const d = state.dmx || {};
@@ -1478,21 +1488,43 @@ function renderDmx() {
   btnDmx.classList.toggle('offline', !on);
   $('dmxSig').classList.toggle('on', on);
   btnDmx.title = on ? 'DMX: receiving' : 'DMX: no signal';
-  $('dmxWhere').textContent = `U${d.universe} · ch ${d.address}–${d.address + 2}`;
-  $('dmxChannels').innerHTML = DMX_CHANNELS.map((ch, i) => {
-    const v = on && d.values ? d.values[i] : null;
-    const pct = v == null ? 0 : (v * 100) / 255;
-    return `<div class="dmx-ch">
-      <span class="dmx-num">${d.address + i}</span>
-      <span class="dmx-name">${ch.name}</span>
-      <span class="dmx-bar"><span style="width:${pct}%"></span></span>
-      <span class="dmx-val">${v == null ? '—' : ch.show(v)}</span>
-    </div>`;
-  }).join('');
+  $('dmxState').textContent = on ? 'Receiving' : 'No signal';
+  $('dmxState').classList.toggle('on', on);
+  if (document.activeElement !== dmxUniverse) dmxUniverse.value = d.universe ?? 0;
+  DMX_FUNCTIONS.forEach((fn) => {
+    const row = dmxChannels.querySelector(`input[data-fn="${fn.key}"]`).closest('.dmx-ch');
+    const input = row.querySelector('input');
+    const ch = d.channels?.[fn.key] || 0;
+    if (document.activeElement !== input) input.value = ch || '';
+    const v = on && ch ? d.values?.[fn.key] : null;
+    row.classList.toggle('unused', !ch);
+    row.querySelector('.dmx-bar span').style.width = `${v == null ? 0 : (v * 100) / 255}%`;
+    row.querySelector('.dmx-val').textContent = v == null ? '—' : fn.show(v);
+  });
   const status = $('dmxStatus');
-  status.classList.toggle('error', !on);
-  status.textContent = on ? '' : 'No Art-Net signal';
+  status.classList.toggle('error', !!dmxError);
+  status.textContent = dmxError || (on ? '' : `Waiting for Art-Net on universe ${d.universe ?? 0}`);
 }
+
+function sendDmxConfig(patch) {
+  dmxError = null;
+  api('PUT', '/dmx', patch)
+    .then(async (r) => {
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not save');
+    })
+    .catch((err) => { dmxError = err.message; })
+    .finally(renderDmx);
+}
+
+dmxUniverse.addEventListener('change', () => {
+  sendDmxConfig({ universe: Math.max(0, Math.round(Number(dmxUniverse.value) || 0)) });
+});
+dmxChannels.addEventListener('change', (e) => {
+  const input = e.target.closest('input[data-fn]');
+  if (!input) return;
+  const ch = Math.max(0, Math.round(Number(input.value) || 0));
+  sendDmxConfig({ channels: { [input.dataset.fn]: ch } });
+});
 
 function setDmxOpen(open) {
   dmxPopover.hidden = !open;

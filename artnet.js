@@ -1,6 +1,6 @@
 /**
  * Art-Net receiver (setup/DMX.md). Listens for ArtDmx packets on UDP 6454 and
- * reports the channels of one universe whenever they change.
+ * hands each frame to the caller.
  */
 const dgram = require('dgram');
 
@@ -17,24 +17,12 @@ function parseArtDmx(msg) {
   return { universe, data: msg.subarray(18, 18 + length) };
 }
 
-/**
- * Calls onChange(values, prev) with the `count` channels starting at `address`
- * (1-based) each time one of them changes. The first packet only primes the
- * values, so a fader left up when the server starts does not fire anything.
- * onPacket(values) is called for every packet on the universe.
- */
-function listenArtNet({ universe, address, count, onChange, onPacket, onError }) {
+// Calls onFrame(universe, data) for every ArtDmx packet; data[0] is channel 1
+function listenArtNet({ onFrame, onError }) {
   const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-  let last = null;
   sock.on('message', (msg) => {
     const pkt = parseArtDmx(msg);
-    if (!pkt || pkt.universe !== universe) return;
-    const values = [];
-    for (let i = 0; i < count; i++) values.push(pkt.data[address - 1 + i] ?? 0);
-    const prev = last;
-    last = values;
-    onPacket?.(values);
-    if (prev && values.some((v, i) => v !== prev[i])) onChange(values, prev);
+    if (pkt) onFrame(pkt.universe, pkt.data);
   });
   sock.on('error', (err) => onError?.(err));
   sock.bind(PORT);

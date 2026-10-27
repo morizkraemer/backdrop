@@ -29,9 +29,15 @@
           <div class="dmx-popover" id="dmxPopover" hidden>
             <div class="led-head">
               <span class="field-label">DMX control</span>
-              <span class="led-value" id="dmxWhere"></span>
+              <span class="dmx-state" id="dmxState"></span>
             </div>
-            <div class="dmx-channels" id="dmxChannels"></div>
+            <label class="dmx-universe">
+              Art-Net universe
+              <input type="number" id="dmxUniverse" min="0" max="32767" step="1" inputmode="numeric">
+            </label>
+            <div class="dmx-channels" id="dmxChannels">
+              <div class="dmx-ch dmx-ch-head"><span>Channel</span><span>Function</span><span></span><span>Value</span></div>
+            </div>
             <div class="led-status" id="dmxStatus"></div>
           </div>
         </div>

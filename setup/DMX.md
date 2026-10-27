@@ -1,18 +1,18 @@
 # DMX control (Art-Net)
 
-backdrop listens for Art-Net on UDP port 6454 and uses three DMX channels:
+backdrop listens for Art-Net on UDP port 6454. The universe and the channel of each function are set in the web UI (DMX pill in the header) and saved in state.json; a channel left empty is unused.
 
-| Channel | Function | Behaviour |
+| Default channel | Function | Behaviour |
 |---|---|---|
-| address + 0 (default 1) | LED brightness | 0-255 maps to 0-100 % on the NovaStar controller. Applied only when the fader moves, so the web UI can still change brightness while the fader rests. |
-| address + 1 (default 2) | GO | Plays the next cue when the value rises past 50 % (128). Bring it back below 50 % to arm it again. |
-| address + 2 (default 3) | BACK | Plays the previous cue, same trigger as GO. From the first cue it wraps to the last one when the playlist loops; when stopped it goes to the last cue. |
+| 1 | LED brightness | 0-255 maps to 0-100 % on the NovaStar controller. Applied only when the fader moves, so the web UI can still change brightness while the fader rests. |
+| 2 | GO | Plays the next cue when the value rises past 50 % (128). Bring it back below 50 % to arm it again. |
+| 3 | BACK | Plays the previous cue, same trigger as GO. From the first cue it wraps to the last one when the playlist loops; when stopped it goes to the last cue. |
 
-The first packet after the server starts only records the current values, so a fader that is already up does not fire.
+The first packet after the server starts (or after the DMX settings change) only records the current values, so a fader that is already up does not fire.
 
 ## In the web UI
 
-- A **DMX** pill in the header shows a green dot while Art-Net arrives on the universe (grey after 3 s without packets). Clicking it shows the universe, the three channel numbers and their live values.
+- A **DMX** pill in the header shows a green dot while Art-Net arrives on the universe (grey after 3 s without packets). Clicking it opens the settings: the Art-Net universe and the channel for each function (saved as you leave a field), with each channel's live value.
 - **BACK** sits next to GO and does the same as the BACK channel (`POST /api/back`).
 - When DMX moves the brightness, the LED brightness pill follows it.
 
@@ -20,8 +20,8 @@ The first packet after the server starts only records the current values, so a f
 
 | Variable | Default | |
 |---|---|---|
-| `DMX_UNIVERSE` | `0` | Art-Net universe (15-bit port address: Net × 256 + Sub-Net × 16 + Universe). Empty disables DMX. |
-| `DMX_ADDRESS` | `1` | First of the three channels. |
+| `DMX_UNIVERSE` | `0` | Default Art-Net universe until it is changed in the UI (15-bit port address: Net × 256 + Sub-Net × 16 + Universe). Empty disables DMX entirely. |
+| `DMX_ADDRESS` | `1` | Default first channel (brightness; GO and BACK follow) until changed in the UI. |
 
 ## Electroconcept "Node 2 Univers" (Art-Net / sACN)
 

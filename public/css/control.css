@@ -312,20 +312,65 @@ svg {
 
 .dmx-ch {
   display: grid;
-  grid-template-columns: 28px 76px 1fr 40px;
+  grid-template-columns: 56px 76px 1fr 40px;
   align-items: center;
   gap: 8px;
   font-size: 13px;
 }
 
-.dmx-num,
-.dmx-val {
+.dmx-ch-head {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.dmx-ch-head span:last-child {
+  text-align: right;
+}
+
+.dmx-ch input,
+.dmx-universe input {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
   font-family: var(--mono);
+  font-size: 13px;
+  text-align: right;
+}
+
+.dmx-ch.unused .dmx-name,
+.dmx-ch.unused .dmx-val {
+  color: var(--text-dim);
+}
+
+.dmx-universe {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.dmx-universe input {
+  width: 72px;
+}
+
+.dmx-state {
   font-size: 12px;
   color: var(--text-dim);
 }
 
+.dmx-state.on {
+  color: var(--live);
+}
+
 .dmx-val {
+  font-family: var(--mono);
+  font-size: 12px;
   text-align: right;
   color: var(--text);
 }

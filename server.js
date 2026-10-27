@@ -36,12 +36,12 @@ let hdmi = {
   sources: config.hdmiSources.map((name) => ({ name, signal: null })),
   current: null, // input number feeding config.hdmiOutput
 };
+// DMX functions in display order; each maps to one channel of the universe (0 = unused)
+const DMX_FUNCTIONS = ['brightness', 'go', 'back'];
 let dmx = {
   configured: config.dmxUniverse !== null,
-  universe: config.dmxUniverse,
-  address: config.dmxAddress,
   receiving: false,
-  values: null, // [brightness, go, back], 0-255
+  values: null, // { brightness, go, back }: 0-255, null for unused functions
 };
 
 function getDiskFree() {
@@ -62,7 +62,7 @@ function broadcastState() {
     mpvConnected: mpv.connected,
     led,
     hdmi,
-    dmx,
+    dmx: { ...dmx, ...getDmxConfig() },
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -973,15 +973,24 @@ if (matrix) {
   }, 10000);
 }
 
-// DMX control over Art-Net (see setup/DMX.md). Three channels from config.dmxAddress:
-// 1 = LED brightness (0-255 -> 0-100 %), 2 = GO (next cue), 3 = BACK (previous cue).
-// GO and BACK fire once when the channel rises past half; brightness follows the
-// fader only when it moves, so the console can still set it while the fader rests.
+// DMX control over Art-Net (see setup/DMX.md). The universe and the channel of each
+// function are set in the UI (state.dmxConfig, defaults from .env):
+// brightness = LED brightness (0-255 -> 0-100 %), go = next cue, back = previous cue.
+// GO and BACK fire once when their channel rises past half; brightness follows the
+// fader only when it moves, so the UI can still set it while the fader rests.
 const DMX_ON = 128;
 const DMX_TIMEOUT_MS = 3000; // Art-Net senders repeat at least every 4 s, nodes usually ~40x/s
 const DMX_UI_MS = 200; // the UI follows the channels at most this often
 let dmxLastPacket = 0;
+let dmxLast = null; // previous frame's values; null primes on the next frame
 let dmxUiTimer = null;
+
+function getDmxConfig() {
+  const saved = state.getState().dmxConfig;
+  if (saved) return saved;
+  const a = config.dmxAddress;
+  return { universe: config.dmxUniverse ?? 0, channels: { brightness: a, go: a + 1, back: a + 2 } };
+}
 
 function setDmx(patch) {
   dmx = { ...dmx, ...patch };
@@ -992,29 +1001,62 @@ function setDmx(patch) {
   }, DMX_UI_MS);
 }
 
-if (config.dmxUniverse !== null) {
+function handleDmxFrame(universe, data) {
+  const { universe: want, channels } = getDmxConfig();
+  if (universe !== want) return;
+  dmxLastPacket = Date.now();
+  const values = {};
+  for (const fn of DMX_FUNCTIONS) values[fn] = channels[fn] ? data[channels[fn] - 1] ?? 0 : null;
+  const prev = dmxLast;
+  dmxLast = values;
+  if (!dmx.receiving || DMX_FUNCTIONS.some((fn) => values[fn] !== dmx.values?.[fn])) {
+    setDmx({ receiving: true, values });
+  }
+  // The first frame (after start or a config change) only records where the faders are
+  if (!prev) return;
+  if (values.brightness !== null && values.brightness !== prev.brightness && config.novaHost) {
+    setLedBrightness(Math.round((values.brightness * 100) / 255))
+      .catch((err) => console.warn('DMX brightness:', err.message));
+  }
+  if (values.go >= DMX_ON && !(prev.go >= DMX_ON)) goNext();
+  if (values.back >= DMX_ON && !(prev.back >= DMX_ON)) goBack();
+}
+
+if (dmx.configured) {
   listenArtNet({
-    universe: config.dmxUniverse,
-    address: config.dmxAddress,
-    count: 3,
-    onPacket(values) {
-      dmxLastPacket = Date.now();
-      if (!dmx.receiving || values.some((v, i) => v !== dmx.values?.[i])) setDmx({ receiving: true, values });
-    },
-    onChange([dim, go, back], prev) {
-      if (dim !== prev[0] && config.novaHost) {
-        setLedBrightness(Math.round((dim * 100) / 255)).catch((err) => console.warn('DMX brightness:', err.message));
-      }
-      if (go >= DMX_ON && prev[1] < DMX_ON) goNext();
-      if (back >= DMX_ON && prev[2] < DMX_ON) goBack();
-    },
+    onFrame: handleDmxFrame,
     onError: (err) => console.warn('Art-Net:', err.message),
   });
   setInterval(() => {
-    if (dmx.receiving && Date.now() - dmxLastPacket > DMX_TIMEOUT_MS) setDmx({ receiving: false });
+    if (dmx.receiving && Date.now() - dmxLastPacket > DMX_TIMEOUT_MS) setDmx({ receiving: false, values: null });
   }, 1000);
-  console.log(`DMX: Art-Net universe ${config.dmxUniverse}, channels ${config.dmxAddress}-${config.dmxAddress + 2}`);
+  const { universe, channels } = getDmxConfig();
+  console.log(`DMX: Art-Net universe ${universe}, channels`, channels);
 }
+
+// Universe 0-32767, channels 1-512 or 0 (unused)
+app.put('/api/dmx', (req, res) => {
+  if (!dmx.configured) return res.status(501).json({ error: 'DMX is disabled (DMX_UNIVERSE is empty)' });
+  const cur = getDmxConfig();
+  const universe = req.body?.universe ?? cur.universe;
+  if (!Number.isInteger(universe) || universe < 0 || universe > 0x7fff) {
+    return res.status(400).json({ error: 'universe must be 0-32767' });
+  }
+  const channels = { ...cur.channels };
+  for (const fn of DMX_FUNCTIONS) {
+    const ch = req.body?.channels?.[fn];
+    if (ch === undefined) continue;
+    if (!Number.isInteger(ch) || ch < 0 || ch > 512) {
+      return res.status(400).json({ error: `${fn} channel must be 1-512, or 0 for unused` });
+    }
+    channels[fn] = ch;
+  }
+  state.updateState({ dmxConfig: { universe, channels } });
+  dmxLast = null;
+  dmx = { ...dmx, receiving: false, values: null };
+  broadcastState();
+  res.json(getDmxConfig());
+});
 
 const server = app.listen(config.port, () => {
   console.log(`backdrop listening on port ${config.port}`);
@@ -1029,7 +1071,7 @@ wss.on('connection', (ws) => {
     mpvConnected: mpv.connected,
     led,
     hdmi,
-    dmx,
+    dmx: { ...dmx, ...getDmxConfig() },
   }));
   pollLed();
   pollHdmi();
