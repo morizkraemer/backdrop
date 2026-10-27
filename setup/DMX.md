@@ -10,6 +10,12 @@ backdrop listens for Art-Net on UDP port 6454 and uses three DMX channels:
 
 The first packet after the server starts only records the current values, so a fader that is already up does not fire.
 
+## In the web UI
+
+- A **DMX** pill in the header shows a green dot while Art-Net arrives on the universe (grey after 3 s without packets). Clicking it shows the universe, the three channel numbers and their live values.
+- **BACK** sits next to GO and does the same as the BACK channel (`POST /api/back`).
+- When DMX moves the brightness, the LED brightness pill follows it.
+
 ## Settings (.env)
 
 | Variable | Default | |
@@ -25,6 +31,6 @@ The USB port on this node only powers it (5 V, at least 500 mA) and carries its 
 2. With the node on USB, open *dmx_tools* from https://www.electroconcept.fr/en/docs/2-universes-artnet-sacn-node/ in Chrome, click **Connect** and pick the node.
 3. **IP Setting**: DHCP (default) is fine, or set a static address on 192.168.178.0/24. Protocol: Art-Net.
 4. **DMX 1 Setting** (the XLR the console is plugged into): set *DMX* to **Input**, *Universe IN* to the same number as `DMX_UNIVERSE` (0), and *DMX IN -> IP Cast Out* to the backdrop box (192.168.178.75) or broadcast (192.168.178.255). The XLR ports are female, so the console's output needs a male-male (gender changer) cable.
-5. Apply. The **Info** tab shows the node's current IP.
+5. Apply. The **Info** tab shows the node's current IP. That IP also serves the node's own config page in any browser, with a Status page showing the DMX values passing through.
 
 To check that packets arrive on the box: `timeout 5 tcpdump -ni eth0 udp port 6454` (tcpdump is not installed in the container by default), or watch `journalctl -u screenview -f` while moving the GO fader.

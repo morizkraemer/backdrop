@@ -35,6 +35,7 @@ const connText = $('connText');
 const monitorNow = $('monitorNow');
 const btnGo = $('btnGo');
 const btnStop = $('btnStop');
+const btnBack = $('btnBack');
 const btnLoop = $('btnLoop');
 const libraryPane = $('libraryPane');
 const libraryList = $('libraryList');
@@ -379,6 +380,7 @@ function renderTransport() {
     : '<span>Next: end of list</span>';
 
   btnGo.disabled = state.isTransitioning || !state.playlist.length;
+  btnBack.disabled = state.isTransitioning || !state.playlist.length;
   btnLoop.classList.toggle('active', state.playlistLoop);
   btnLoop.setAttribute('aria-pressed', String(state.playlistLoop));
 }
@@ -647,6 +649,7 @@ function render() {
   renderHeader();
   renderLed();
   renderHdmi();
+  renderDmx();
   renderTransport();
   renderLibrary();
   renderCues();
@@ -753,6 +756,7 @@ function uploadFiles(files, url) {
 
 btnGo.addEventListener('click', () => api('POST', '/go'));
 btnStop.addEventListener('click', () => api('POST', '/stop'));
+btnBack.addEventListener('click', () => api('POST', '/back'));
 btnLoop.addEventListener('click', () => {
   const next = !state.playlistLoop;
   state = { ...state, playlistLoop: next };
@@ -1453,6 +1457,55 @@ document.addEventListener('keydown', (e) => {
 hdmiSources.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-input]');
   if (b && !b.disabled) sendHdmiSource(Number(b.dataset.input));
+});
+
+// --- DMX control (Art-Net input, read-only here) ---
+
+const dmxEl = $('dmx');
+const btnDmx = $('btnDmx');
+const dmxPopover = $('dmxPopover');
+const DMX_CHANNELS = [
+  { name: 'Brightness', show: (v) => `${Math.round((v * 100) / 255)}%` },
+  { name: 'GO', show: (v) => (v >= 128 ? 'On' : 'Off') },
+  { name: 'BACK', show: (v) => (v >= 128 ? 'On' : 'Off') },
+];
+
+function renderDmx() {
+  const d = state.dmx || {};
+  dmxEl.hidden = !d.configured;
+  if (!d.configured) return;
+  const on = !!d.receiving;
+  btnDmx.classList.toggle('offline', !on);
+  $('dmxSig').classList.toggle('on', on);
+  btnDmx.title = on ? 'DMX: receiving' : 'DMX: no signal';
+  $('dmxWhere').textContent = `U${d.universe} · ch ${d.address}–${d.address + 2}`;
+  $('dmxChannels').innerHTML = DMX_CHANNELS.map((ch, i) => {
+    const v = on && d.values ? d.values[i] : null;
+    const pct = v == null ? 0 : (v * 100) / 255;
+    return `<div class="dmx-ch">
+      <span class="dmx-num">${d.address + i}</span>
+      <span class="dmx-name">${ch.name}</span>
+      <span class="dmx-bar"><span style="width:${pct}%"></span></span>
+      <span class="dmx-val">${v == null ? '—' : ch.show(v)}</span>
+    </div>`;
+  }).join('');
+  const status = $('dmxStatus');
+  status.classList.toggle('error', !on);
+  status.textContent = on ? '' : 'No Art-Net signal';
+}
+
+function setDmxOpen(open) {
+  dmxPopover.hidden = !open;
+  btnDmx.setAttribute('aria-expanded', String(open));
+  if (open) renderDmx();
+}
+
+btnDmx.addEventListener('click', () => setDmxOpen(dmxPopover.hidden));
+document.addEventListener('click', (e) => {
+  if (!dmxPopover.hidden && !dmxEl.contains(e.target)) setDmxOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !dmxPopover.hidden) setDmxOpen(false);
 });
 
 connectWs();

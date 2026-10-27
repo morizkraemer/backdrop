@@ -36,6 +36,13 @@ let hdmi = {
   sources: config.hdmiSources.map((name) => ({ name, signal: null })),
   current: null, // input number feeding config.hdmiOutput
 };
+let dmx = {
+  configured: config.dmxUniverse !== null,
+  universe: config.dmxUniverse,
+  address: config.dmxAddress,
+  receiving: false,
+  values: null, // [brightness, go, back], 0-255
+};
 
 function getDiskFree() {
   try {
@@ -55,6 +62,7 @@ function broadcastState() {
     mpvConnected: mpv.connected,
     led,
     hdmi,
+    dmx,
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -970,11 +978,29 @@ if (matrix) {
 // GO and BACK fire once when the channel rises past half; brightness follows the
 // fader only when it moves, so the console can still set it while the fader rests.
 const DMX_ON = 128;
+const DMX_TIMEOUT_MS = 3000; // Art-Net senders repeat at least every 4 s, nodes usually ~40x/s
+const DMX_UI_MS = 200; // the UI follows the channels at most this often
+let dmxLastPacket = 0;
+let dmxUiTimer = null;
+
+function setDmx(patch) {
+  dmx = { ...dmx, ...patch };
+  if (dmxUiTimer) return;
+  dmxUiTimer = setTimeout(() => {
+    dmxUiTimer = null;
+    broadcastState();
+  }, DMX_UI_MS);
+}
+
 if (config.dmxUniverse !== null) {
   listenArtNet({
     universe: config.dmxUniverse,
     address: config.dmxAddress,
     count: 3,
+    onPacket(values) {
+      dmxLastPacket = Date.now();
+      if (!dmx.receiving || values.some((v, i) => v !== dmx.values?.[i])) setDmx({ receiving: true, values });
+    },
     onChange([dim, go, back], prev) {
       if (dim !== prev[0] && config.novaHost) {
         setLedBrightness(Math.round((dim * 100) / 255)).catch((err) => console.warn('DMX brightness:', err.message));
@@ -984,6 +1010,9 @@ if (config.dmxUniverse !== null) {
     },
     onError: (err) => console.warn('Art-Net:', err.message),
   });
+  setInterval(() => {
+    if (dmx.receiving && Date.now() - dmxLastPacket > DMX_TIMEOUT_MS) setDmx({ receiving: false });
+  }, 1000);
   console.log(`DMX: Art-Net universe ${config.dmxUniverse}, channels ${config.dmxAddress}-${config.dmxAddress + 2}`);
 }
 
@@ -1000,6 +1029,7 @@ wss.on('connection', (ws) => {
     mpvConnected: mpv.connected,
     led,
     hdmi,
+    dmx,
   }));
   pollLed();
   pollHdmi();

@@ -21,8 +21,9 @@ function parseArtDmx(msg) {
  * Calls onChange(values, prev) with the `count` channels starting at `address`
  * (1-based) each time one of them changes. The first packet only primes the
  * values, so a fader left up when the server starts does not fire anything.
+ * onPacket(values) is called for every packet on the universe.
  */
-function listenArtNet({ universe, address, count, onChange, onError }) {
+function listenArtNet({ universe, address, count, onChange, onPacket, onError }) {
   const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
   let last = null;
   sock.on('message', (msg) => {
@@ -32,6 +33,7 @@ function listenArtNet({ universe, address, count, onChange, onError }) {
     for (let i = 0; i < count; i++) values.push(pkt.data[address - 1 + i] ?? 0);
     const prev = last;
     last = values;
+    onPacket?.(values);
     if (prev && values.some((v, i) => v !== prev[i])) onChange(values, prev);
   });
   sock.on('error', (err) => onError?.(err));
