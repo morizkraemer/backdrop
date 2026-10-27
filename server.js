@@ -11,6 +11,7 @@ const { MpvController } = require('./mpv-controller');
 const { createStateManager } = require('./state');
 const { analyzeVideo, removeThumbnail } = require('./media-info');
 const { createMatrix } = require('./hdmi-matrix');
+const { listenArtNet } = require('./artnet');
 
 const ALLOWED_EXT = [
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
@@ -705,7 +706,8 @@ app.delete('/api/playlist/:cueId', (req, res) => {
   res.status(204).send();
 });
 
-app.post('/api/go', (req, res) => {
+// GO: the next cue, or stop / wrap around after the last one
+function goNext() {
   const s = state.getState();
   const next = s.currentCueIndex + 1;
   if (next >= s.playlist.length) {
@@ -720,6 +722,27 @@ app.post('/api/go', (req, res) => {
     playCue(next);
   }
   broadcastState();
+}
+
+// BACK: the previous cue. From the first cue it wraps to the last one when the
+// playlist loops (otherwise restarts it); when stopped it goes to the last cue.
+function goBack() {
+  const s = state.getState();
+  if (!s.playlist.length) return;
+  const i = s.currentCueIndex;
+  if (i > 0) playCue(i - 1);
+  else if (i === 0) playCue(s.playlistLoop ? s.playlist.length - 1 : 0);
+  else playCue(s.playlist.length - 1);
+  broadcastState();
+}
+
+app.post('/api/go', (req, res) => {
+  goNext();
+  res.status(204).send();
+});
+
+app.post('/api/back', (req, res) => {
+  goBack();
   res.status(204).send();
 });
 
@@ -853,22 +876,29 @@ async function runLedWrites() {
   }
 }
 
+// Queues a brightness write; resolves once the controller has applied the latest one
+function setLedBrightness(value) {
+  ledTarget = value;
+  if (!ledJob) {
+    ledJob = runLedWrites().finally(() => { ledJob = null; });
+  }
+  return ledJob.catch((err) => {
+    ledTarget = null;
+    if (err.code) setLed(false, led.brightness); // network error: controller unreachable
+    throw err;
+  });
+}
+
 app.put('/api/led/brightness', async (req, res) => {
   if (!config.novaHost) return res.status(501).json({ error: 'NOVA_HOST not configured' });
   const value = Number(req.body?.brightness);
   if (!Number.isInteger(value) || value < 0 || value > 100) {
     return res.status(400).json({ error: 'brightness must be an integer 0-100' });
   }
-  ledTarget = value;
-  if (!ledJob) {
-    ledJob = runLedWrites().finally(() => { ledJob = null; });
-  }
   try {
-    await ledJob;
+    await setLedBrightness(value);
     res.json(led);
   } catch (err) {
-    ledTarget = null;
-    if (err.code) setLed(false, led.brightness); // network error: controller unreachable
     res.status(502).json({ error: err.message });
   }
 });
@@ -933,6 +963,28 @@ if (matrix) {
   setInterval(() => {
     if (wss && wss.clients.size > 0) pollHdmi();
   }, 10000);
+}
+
+// DMX control over Art-Net (see setup/DMX.md). Three channels from config.dmxAddress:
+// 1 = LED brightness (0-255 -> 0-100 %), 2 = GO (next cue), 3 = BACK (previous cue).
+// GO and BACK fire once when the channel rises past half; brightness follows the
+// fader only when it moves, so the console can still set it while the fader rests.
+const DMX_ON = 128;
+if (config.dmxUniverse !== null) {
+  listenArtNet({
+    universe: config.dmxUniverse,
+    address: config.dmxAddress,
+    count: 3,
+    onChange([dim, go, back], prev) {
+      if (dim !== prev[0] && config.novaHost) {
+        setLedBrightness(Math.round((dim * 100) / 255)).catch((err) => console.warn('DMX brightness:', err.message));
+      }
+      if (go >= DMX_ON && prev[1] < DMX_ON) goNext();
+      if (back >= DMX_ON && prev[2] < DMX_ON) goBack();
+    },
+    onError: (err) => console.warn('Art-Net:', err.message),
+  });
+  console.log(`DMX: Art-Net universe ${config.dmxUniverse}, channels ${config.dmxAddress}-${config.dmxAddress + 2}`);
 }
 
 const server = app.listen(config.port, () => {

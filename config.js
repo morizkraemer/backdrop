@@ -28,4 +28,8 @@ module.exports = {
   hdmiOutput: Math.max(1, parseInt(process.env.HDMI_OUTPUT || '1', 10)),
   hdmiSources: (process.env.HDMI_SOURCES || 'Backdrop,FOH,Stage,Balkon')
     .split(',').map((n) => n.trim()).filter(Boolean),
+  // DMX control over Art-Net (setup/DMX.md). Set DMX_UNIVERSE= (empty) to disable.
+  dmxUniverse: (process.env.DMX_UNIVERSE ?? '0') === '' ? null
+    : Math.max(0, parseInt(process.env.DMX_UNIVERSE ?? '0', 10) || 0),
+  dmxAddress: Math.min(510, Math.max(1, parseInt(process.env.DMX_ADDRESS || '1', 10) || 1)),
 };
