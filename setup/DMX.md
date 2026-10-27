@@ -7,7 +7,22 @@ backdrop listens for Art-Net on UDP port 6454. The channel of each function is s
 | 1 | LED brightness | 0-255 maps to 0-100 % on the NovaStar controller. Applied only when the fader moves, so the web UI can still change brightness while the fader rests. |
 | 2 | GO | Plays the next cue when the value rises past 50 % (128). Bring it back below 50 % to arm it again. |
 | 3 | BACK | Plays the previous cue, same trigger as GO. From the first cue it wraps to the last one when the playlist loops; when stopped it goes to the last cue. |
-| off | Visual 1-4 | Move the first four sliders of the live visual on screen (setup/VISUALS.md), 0-255 across each slider's range. Like brightness, a fader only takes over when it moves; the moves are not saved to the cue. |
+
+### Visuals fixture (16 channels)
+
+By default the 16 channels after BACK (4-19 with `DMX_ADDRESS=1`). They only affect live visuals (setup/VISUALS.md), never clips or stills.
+
+| Default channel | Function | Behaviour |
+|---|---|---|
+| 4 | Visual select | 0-9 leaves the cues alone. 10-19 plays the first visual, 20-29 the second, and so on (the DMX popover lists them: built-ins by file name, then uploads oldest first). The visual plays outside the cue list; GO goes back to the cues. |
+| 5 | Dimmer | 0-100 % on the visual. |
+| 6-8 | Red, green, blue | Replaces the visual's colours with this colour, keeping its brightness pattern. |
+| 9 | Speed | Across the visual's speed range. The animation never jumps when it changes. |
+| 10 | Strobe | 0-9 off, then 1-20 flashes per second. |
+| 11 | Control | One visual-specific slider: pattern for Chase, size for Plasma and Smoke, bars, rings, dot count, density, breathing for Wash. |
+| 12-19 | Strips 1-8 | The wall split into 8 vertical strips, each with its own intensity. Patch them as 8 dimmers and run the desk's chase, wave or bounce effects over them. Once any strip is up the others mask the wall; when all eight have sat at 0 for 2 s the whole wall shows again, so a chase passing through dark doesn't flash it. |
+
+Each function only takes over once its fader moves; until then the visual looks as its cue sets it. When Art-Net stops for 3 s, the fixture goes back to neutral and the next packet only records the fader positions again.
 
 The first packet after the server starts (or after the DMX settings change) only records the current values, so a fader that is already up does not fire.
 
@@ -22,7 +37,7 @@ The first packet after the server starts (or after the DMX settings change) only
 | Variable | Default | |
 |---|---|---|
 | `DMX_UNIVERSE` | `0` | Art-Net universe, matching the node's Universe IN (15-bit port address: Net × 256 + Sub-Net × 16 + Universe). Empty disables DMX entirely. |
-| `DMX_ADDRESS` | `1` | Default first channel (brightness; GO and BACK follow) until changed in the UI. The visual sliders start unused. |
+| `DMX_ADDRESS` | `1` | Default first channel (brightness; GO, BACK and the visuals fixture follow on consecutive channels) until changed in the UI. |
 
 ## Electroconcept "Node 2 Univers" (Art-Net / sACN)
 

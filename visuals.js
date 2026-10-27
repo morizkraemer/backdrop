@@ -18,6 +18,21 @@ const path = require('path');
 const BUILTIN_DIR = path.join(__dirname, 'visuals');
 const FPS = 60;
 const CLOCK_PARAMS = ['clock_t0', 'clock_ta'];
+const SEGMENTS = 8;
+// Desk-style controls laid over every visual (DMX, setup/DMX.md), neutral by default:
+// dimmer, a colour that replaces the visual's own (tint 1), strobe in Hz (0 = off)
+// and intensities for 8 vertical strips (mask 1)
+const FX_NEUTRAL = {
+  fx_dimmer: 1,
+  fx_tint: 0,
+  fx_r: 1,
+  fx_g: 1,
+  fx_b: 1,
+  fx_strobe: 0,
+  fx_mask: 0,
+  ...Object.fromEntries(Array.from({ length: SEGMENTS }, (_, i) => [`fx_s${i}`, 1])),
+};
+const HIDDEN = (name) => CLOCK_PARAMS.includes(name) || name.startsWith('fx_');
 
 // 16x16 frame whose colour is the frame number: r + 256 g + 65536 b
 const SOURCE = `av://lavfi:nullsrc=s=16x16:r=${FPS},format=gbrp,`
@@ -33,11 +48,14 @@ function parseVisual(text) {
   const params = [];
   const body = [];
   let name = null;
+  let controlParam = null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const m = /^\/\/!PARAM\s+(\w+)/.exec(line);
     if (!m) {
-      if (name === null && /^\/\/\s*\S/.test(line) && !line.startsWith('//!')) {
+      const control = /^\/\/\s*control:\s*(\w+)/.exec(line);
+      if (control) controlParam = control[1];
+      else if (name === null && /^\/\/\s*\S/.test(line) && !line.startsWith('//!')) {
         name = line.replace(/^\/\/\s*/, '').split(':')[0].trim();
       }
       body.push(line);
@@ -59,13 +77,21 @@ function parseVisual(text) {
     if (!Number.isFinite(p.default)) p.default = 0;
     params.push(p);
   }
-  return { name, params, body: body.join('\n') };
+  return { name, params, body: body.join('\n'), control: controlParam };
+}
+
+// The slider the DMX "control" channel moves: named by a "// control: <param>"
+// line, else the first one that isn't speed or colour
+function controlParam(visual) {
+  const names = visual.params.map((p) => p.name);
+  if (visual.control && names.includes(visual.control)) return visual.control;
+  return names.find((n) => !HIDDEN(n) && !['speed', 'hue', 'saturation', 'spread'].includes(n)) ?? null;
 }
 
 // The params a client sees and can set (the clock stays internal)
 function publicParams(params) {
   return params
-    .filter((p) => !CLOCK_PARAMS.includes(p.name))
+    .filter((p) => !HIDDEN(p.name))
     .map(({ raw, ...p }) => ({ ...p, min: p.min ?? 0, max: p.max ?? 1 }));
 }
 
@@ -107,13 +133,15 @@ float fbm(vec2 p) {
 
 /** Builds the mpv user shader for a parsed visual at width x height. */
 function buildShader(visual, width, height) {
-  const params = visual.params.filter((p) => !CLOCK_PARAMS.includes(p.name));
+  const params = visual.params.filter((p) => !HIDDEN(p.name));
   const hasSpeed = params.some((p) => p.name === 'speed');
-  const clock = CLOCK_PARAMS.map((name) => `//!PARAM ${name}\n//!TYPE DYNAMIC float\n0.0`);
+  const hidden = [...CLOCK_PARAMS.map((name) => [name, 0]), ...Object.entries(FX_NEUTRAL)]
+    .map(([name, v]) => `//!PARAM ${name}\n//!TYPE DYNAMIC float\n${Number(v).toFixed(1)}`);
+  const segments = Array.from({ length: SEGMENTS }, (_, i) => `    if (i == ${i}) return fx_s${i};`).join('\n');
   const time = hasSpeed ? 'clock_t0 + (src_t - clock_ta) * speed' : 'src_t';
   return [
     ...params.map((p) => p.raw.join('\n')),
-    ...clock,
+    ...hidden,
     '',
     '//!HOOK MAIN',
     '//!BIND HOOKED',
@@ -126,11 +154,22 @@ function buildShader(visual, width, height) {
     '#line 1',
     visual.body,
     '',
+    'float fx_segment(int i) {',
+    segments,
+    '    return 1.0;',
+    '}',
+    '',
     'vec4 hook() {',
     '    vec3 c = floor(HOOKED_tex(vec2(0.5)).rgb * 255.0 + 0.5);',
     `    float src_t = (c.r + c.g * 256.0 + c.b * 65536.0) / ${FPS.toFixed(1)};`,
     `    float t = ${time};`,
-    '    return vec4(clamp(visual(HOOKED_pos, t), 0.0, 1.0), 1.0);',
+    '    vec2 uv = HOOKED_pos;',
+    '    vec3 col = clamp(visual(uv, t), 0.0, 1.0);',
+    '    // Desk colour: keep the brightness, replace the colour',
+    '    if (fx_tint > 0.5) col = max(col.r, max(col.g, col.b)) * vec3(fx_r, fx_g, fx_b);',
+    `    if (fx_mask > 0.5) col *= fx_segment(int(min(floor(uv.x * ${SEGMENTS}.0), ${SEGMENTS - 1}.0)));`,
+    '    if (fx_strobe > 0.0 && fract(src_t * fx_strobe) > 0.3) col = vec3(0.0);',
+    '    return vec4(col * fx_dimmer, 1.0);',
     '}',
     '',
   ].join('\n');
@@ -148,14 +187,15 @@ function listBuiltins() {
   } catch (_) {}
   return files.map((file) => {
     const v = readVisual(path.join(BUILTIN_DIR, file));
-    return { file, name: v.name || path.basename(file, '.glsl'), params: publicParams(v.params) };
+    return { file, name: v.name || path.basename(file, '.glsl'), params: publicParams(v.params), control: controlParam(v) };
   });
 }
 
 /** Writes the mpv shader for a visual file into cacheDir and returns its path. */
 function writeShader(filePath, cacheDir, id, { width, height }) {
   fs.mkdirSync(cacheDir, { recursive: true });
-  const out = path.join(cacheDir, `${id}.glsl`);
+  // Absolute: mpv resolves paths against its own working directory
+  const out = path.resolve(cacheDir, `${id}.glsl`);
   fs.writeFileSync(out, buildShader(readVisual(filePath), width, height));
   return out;
 }
@@ -181,15 +221,18 @@ function clockAfterSpeedChange(clock, oldSpeed, now) {
 }
 
 // mpv's glsl-shader-opts as a map of strings
-function shaderOpts(values, clock) {
+function shaderOpts(values, clock, fx = FX_NEUTRAL) {
   const opts = {};
-  for (const [k, v] of Object.entries({ ...values, ...clock })) opts[k] = String(v);
+  for (const [k, v] of Object.entries({ ...values, ...clock, ...fx })) opts[k] = String(v);
   return opts;
 }
 
 module.exports = {
   BUILTIN_DIR,
   SOURCE,
+  SEGMENTS,
+  FX_NEUTRAL,
+  controlParam,
   parseVisual,
   publicParams,
   buildShader,

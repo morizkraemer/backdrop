@@ -1,4 +1,5 @@
 // Wash: one colour over the whole wall, optionally breathing
+// control: pulse
 
 //!PARAM hue
 //!DESC Colour

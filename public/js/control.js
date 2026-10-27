@@ -343,11 +343,14 @@ function renderMonitor(root, index, isNow) {
   const cue = state.playlist[index];
   const media = cue && getMedia(cue.mediaId);
   const screen = root.querySelector('.screen');
-  root.querySelector('.cue-num').textContent = cue ? `Q${index + 1}` : '';
+  // A visual the DMX select channel put on screen, outside the cue list
+  const dmxMedia = isNow && !cue && state.liveVisual?.dmx ? getMedia(state.liveVisual.mediaId) : null;
+  root.querySelector('.cue-num').textContent = cue ? `Q${index + 1}` : dmxMedia ? 'DMX' : '';
   root.querySelector('.monitor-name').textContent = cue
     ? media?.originalName ?? '?'
+    : dmxMedia ? dmxMedia.originalName
     : isNow ? (state.isTransitioning ? 'Loading…' : 'Nothing playing') : (state.playlist.length ? 'End of list' : '—');
-  root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : '';
+  root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : dmxMedia ? 'Picked by DMX · GO returns to the cues' : '';
   if (isNow && previewCollapsed()) {
     // Phones keep the live preview behind a tap, so don't stream video nobody sees
     stopPreview();
@@ -367,10 +370,11 @@ function renderMonitor(root, index, isNow) {
       delete screen.dataset.preview;
     }
     // Rebuild only when the picture changes, so dragging a live image doesn't flicker
-    const key = cue ? `${cue.id}:${pictureSrc(media)}` : '';
-    if (screen.dataset.shown !== key || !cue) {
+    const shownMedia = cue ? media : dmxMedia;
+    const key = shownMedia ? `${cue?.id ?? 'dmx'}:${pictureSrc(shownMedia)}` : '';
+    if (screen.dataset.shown !== key || !shownMedia) {
       screen.dataset.shown = key;
-      screen.innerHTML = cue ? thumbHtml(media, pictureSrc(media)) : '';
+      screen.innerHTML = shownMedia ? thumbHtml(shownMedia, pictureSrc(shownMedia)) : '';
     }
     const img = isNow && media?.type === 'image' && screen.querySelector('img:not(.panel-shot)');
     screen.classList.toggle('letterbox', !!img && cue.settings?.displayMode !== 'fill');
@@ -384,12 +388,13 @@ function renderMonitor(root, index, isNow) {
       else img.addEventListener('load', place, { once: true });
     }
   }
-  if (isNow && !previewCollapsed()) updatePanelShot(screen, !!cue);
+  const onAir = !!(cue || dmxMedia);
+  if (isNow && !previewCollapsed()) updatePanelShot(screen, onAir);
   if (isNow) {
-    root.classList.toggle('playing', !!cue);
+    root.classList.toggle('playing', onAir);
     const tag = $('nowTag');
-    tag.textContent = cue ? 'LIVE' : 'IDLE';
-    tag.className = `tag ${cue ? 'tag-live' : 'tag-idle'}`;
+    tag.textContent = onAir ? 'LIVE' : 'IDLE';
+    tag.className = `tag ${onAir ? 'tag-live' : 'tag-idle'}`;
   }
 }
 
@@ -1606,15 +1611,31 @@ const dmxEl = $('dmx');
 const btnDmx = $('btnDmx');
 const dmxPopover = $('dmxPopover');
 const dmxChannels = $('dmxChannels');
+const PCT = (v) => `${Math.round((v * 100) / 255)}%`;
 const DMX_FUNCTIONS = [
   { key: 'brightness', name: 'Brightness', show: (v) => `${Math.round((v * 100) / 255)}%` },
   { key: 'go', name: 'GO', show: (v) => (v >= 128 ? 'On' : 'Off') },
   { key: 'back', name: 'BACK', show: (v) => (v >= 128 ? 'On' : 'Off') },
-  ...[1, 2, 3, 4].map((n) => ({ key: `visual${n}`, name: `Visual ${n}`, show: (v) => `${Math.round((v * 100) / 255)}%` })),
+  // The visuals fixture (setup/DMX.md)
+  { key: 'visual', name: 'Visual', group: 'Visuals fixture', show: (v) => dmxVisualName(v) },
+  { key: 'dimmer', name: 'Dimmer', show: PCT },
+  { key: 'red', name: 'Red', show: PCT },
+  { key: 'green', name: 'Green', show: PCT },
+  { key: 'blue', name: 'Blue', show: PCT },
+  { key: 'speed', name: 'Speed', show: PCT },
+  { key: 'strobe', name: 'Strobe', show: (v) => (v < 10 ? 'Off' : `${(1 + ((v - 10) * 19) / 245).toFixed(1)} Hz`) },
+  { key: 'control', name: 'Control', show: PCT },
+  ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ key: `seg${n}`, name: `Strip ${n}`, show: PCT })),
 ];
+
+// Name of the visual a select value picks (10-19 the first, 20-29 the second, ...)
+function dmxVisualName(v) {
+  const slot = (state.dmx?.visuals || []).find((x) => v >= x.value && v < x.value + 10);
+  return slot ? slot.name : '—';
+}
 let dmxError = null;
 
-dmxChannels.insertAdjacentHTML('beforeend', DMX_FUNCTIONS.map((fn) => `<div class="dmx-ch">
+dmxChannels.insertAdjacentHTML('beforeend', DMX_FUNCTIONS.map((fn) => `${fn.group ? `<div class="dmx-group">${fn.group}</div>` : ''}<div class="dmx-ch">
   <input type="number" data-fn="${fn.key}" min="0" max="512" step="1" inputmode="numeric" placeholder="off" aria-label="${fn.name} channel">
   <span class="dmx-name">${fn.name}</span>
   <span class="dmx-bar"><span></span></span>
@@ -1641,6 +1662,9 @@ function renderDmx() {
     row.querySelector('.dmx-bar span').style.width = `${v == null ? 0 : (v * 100) / 255}%`;
     row.querySelector('.dmx-val').textContent = v == null ? '—' : fn.show(v);
   });
+  $('dmxSlots').textContent = (d.visuals || []).length
+    ? `Visual select: ${d.visuals.map((x) => `${x.value} ${x.name}`).join(' · ')}`
+    : '';
   const status = $('dmxStatus');
   status.classList.toggle('error', !!dmxError);
   status.textContent = dmxError || (on ? '' : `Waiting for Art-Net on universe ${d.universe ?? 0}`);

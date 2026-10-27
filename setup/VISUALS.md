@@ -1,6 +1,6 @@
 # Live visuals
 
-Generative visuals for the LED wall, rendered by mpv itself on the box's Intel GPU. A visual is a GLSL shader: it sits in the library like any clip, plays as a cue (GO, BACK, auto-advance, loop list all work), and has sliders that change it live, from the cue settings or from DMX (setup/DMX.md).
+Generative visuals for the LED wall, rendered by mpv itself on the box's Intel GPU. A visual is a GLSL shader: it sits in the library like any clip, plays as a cue (GO, BACK, auto-advance, loop list all work), and has sliders that change it live from the cue settings. A 16-channel DMX fixture (setup/DMX.md) picks visuals and adds dimmer, colour, strobe, speed and 8 strips for desk chases.
 
 There is no second display process: mpv plays a tiny generated source and the shader draws the picture at the panel's size (`VISUAL_SIZE`, default `2304x768`), which then goes through the same Fill/Centered/Stretch handling as a 2304×768 clip.
 
@@ -17,12 +17,13 @@ Shipped in `visuals/` and added to a **Visuals** folder in the library on start.
 | Dots | A grid of LED-style dots lit by a travelling wave |
 | Wash | One colour over the whole wall, optionally breathing |
 | Stars | A starfield flying towards the audience |
+| Chase | Blocks lighting up in turn: run, bounce, fill, random, alternate |
 
 ## Writing a visual
 
 Upload a `.glsl` file like any other media (or add it to `visuals/` with a 576×192 thumbnail). The file holds:
 
-1. A first comment line with the name: `// Plasma: soft colour clouds`.
+1. A first comment line with the name: `// Plasma: soft colour clouds`. Optionally a `// control: <param>` line naming the slider the DMX control channel moves (otherwise the first one that isn't speed or colour).
 2. One libplacebo `//!PARAM` block per slider. Use `DYNAMIC float` so moving the slider doesn't recompile the shader. `DESC` is the slider's label, `MINIMUM`/`MAXIMUM` its range, and the line after the block its default.
 3. A function `vec3 visual(vec2 uv, float t)` returning the colour (0-1) at `uv` (0-1, top left is 0,0) at time `t` in seconds.
 
@@ -56,7 +57,7 @@ Shadertoy code ports easily: `fragCoord / iResolution.xy` becomes `uv` (with y f
 
 ## How it works
 
-mpv user shaders get no playback time, so the source is `lavfi nullsrc` at 16×16 and 60 fps whose pixel colour encodes its own frame number; the wrapper reads it back as seconds. `visuals.js` turns a visual file into a full mpv shader (the params, a hidden clock, a `MAIN` hook at panel size and the helpers) in `uploads/.visuals/`, and the cue loads it with per-file `glsl-shaders` / `glsl-shader-opts` options so the next clip plays without it. Slider moves set `glsl-shader-opts` on the running file.
+mpv user shaders get no playback time, so the source is `lavfi nullsrc` at 16×16 and 60 fps whose pixel colour encodes its own frame number; the wrapper reads it back as seconds. `visuals.js` turns a visual file into a full mpv shader (the params, a hidden clock, a `MAIN` hook at panel size and the helpers) in `uploads/.visuals/`, and the cue loads it with per-file `glsl-shaders` / `glsl-shader-opts` options so the next clip plays without it. Slider moves set `glsl-shader-opts` on the running file. The DMX fixture's dimmer, colour, strobe and strips are hidden `fx_*` params of the same wrapper, applied after `visual()`.
 
 The Live monitor's panel inset uses a `window` screenshot for visuals, because the `video` screenshot would be the 16×16 source.
 
