@@ -14,7 +14,7 @@ By default the 16 channels after BACK (4-19 with `DMX_ADDRESS=1`). They only aff
 
 | Default channel | Function | Behaviour |
 |---|---|---|
-| 4 | Visual select | 0-9 leaves the cues alone. 10-19 plays the first visual, 20-29 the second, and so on (the Visuals lab lists them: built-ins by file name, then your own by file name). The visual plays outside the cue list; GO goes back to the cues. |
+| 4 | Visual select | Switches the wall's mode (setup/VISUALS.md). Moving into 0-9 returns to backdrop's cues (resuming the cue from before). 10-19 plays the first visual, 20-29 the second, and so on (the Visuals lab lists them: built-ins by file name, then your own by file name). The visual plays outside the cue list; GO also goes back to the cues. |
 | 5 | Dimmer | 0-100 % on the visual. |
 | 6-8 | Red, green, blue | Replaces the visual's colours with this colour, keeping its brightness pattern. |
 | 9 | Speed | Across the visual's speed range. The animation never jumps when it changes. |

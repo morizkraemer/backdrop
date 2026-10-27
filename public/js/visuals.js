@@ -283,7 +283,7 @@ $('btnStopWall').addEventListener('click', () => {
 
 function renderAir() {
   const v = state.visual;
-  $('airText').textContent = v ? `On the wall: ${v.name}` : 'Wall: backdrop cues';
+  $('airText').textContent = v ? `Visuals mode: ${v.name}` : 'Wall: backdrop cues';
   $('airText').classList.toggle('live', !!v);
   $('btnStopWall').hidden = !v;
   render();

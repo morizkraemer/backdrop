@@ -3,8 +3,11 @@
  * apart from backdrop's cue list. The lab page (/visuals) lists, previews,
  * edits and plays visuals; DMX plays them through a 16-channel fixture.
  *
- * Backdrop and the lab share mpv: playing a visual takes the screen from the
- * cues (takeScreen), and backdrop calls release() when a cue takes it back.
+ * Backdrop and the lab share mpv, and the wall is in one of two modes: cues
+ * (backdrop) or visuals (a visual on air). Playing a visual takes the screen
+ * from the cues (takeScreen); exitToCues hands it back, and backdrop calls
+ * release() when a cue takes it back. Whoever acted last wins: backdrop's
+ * switch, a cue or GO, the lab, or the desk's select channel.
  */
 const express = require('express');
 const fs = require('fs');
@@ -74,7 +77,7 @@ function dot2Fixture(slots) {
 `;
 }
 
-function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
+function createVisualsLab({ config, mpv, takeScreen, exitToCues, broadcast }) {
   const userDir = path.resolve(config.uploadsDir, 'visuals');
   const cacheDir = path.resolve(config.uploadsDir, '.visuals');
   const settingsPath = config.visualsSettingsPath;
@@ -153,7 +156,13 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     const shaderPath = visuals.writeShader(v.file, cacheDir, v.id, config.visualSize);
     const vals = visuals.paramValues(v.params, values ?? settings.values[v.id]);
     const clock = { clock_t0: 0, clock_ta: 0 };
+    // Entering visuals mode: faders only count once they move again
+    if (!onAir) resetEngaged();
     onAir = { id: v.id, values: vals, clock };
+    if (settings.last !== v.id) {
+      settings.last = v.id;
+      try { saveSettings(); } catch (err) { console.warn('Visuals settings:', err.message); }
+    }
     try {
       await mpv.loadFile(visuals.SOURCE, {
         loop: true,
@@ -170,6 +179,15 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     if (!onAir) return;
     onAir = null;
     broadcast();
+  }
+
+  // Visuals mode from backdrop's switch: the last visual played, else the first
+  function enter() {
+    if (onAir) return Promise.resolve();
+    const all = list();
+    const v = all.find((x) => x.id === settings.last) ?? all[0];
+    if (!v) return Promise.reject(new Error('No visuals'));
+    return play(v.id);
   }
 
   function stop() {
@@ -236,17 +254,22 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
   let engaged = new Set(); // functions whose fader moved since the last prime
   let maskDarkSince = null;
 
-  // Back to neutral: nothing engaged, visuals show as they are
-  function resetDmx() {
+  function resetEngaged() {
     engaged = new Set();
     maskDarkSince = null;
     fx = { ...visuals.FX_NEUTRAL };
+  }
+
+  // Back to neutral: nothing engaged, visuals show as they are
+  function resetDmx() {
+    resetEngaged();
     setLive(null);
   }
 
   // values/prev: { visual, dimmer, ..., seg8 } 0-255 or null for unused.
   // Select plays a visual; dimmer, colour, strobe and the 8 strips lie over
   // it; speed and control move its sliders. Each follows only once it moved.
+  // Select 10+ switches the wall to visuals, back to 0-9 returns it to backdrop.
   function applyDmx(values, prev) {
     for (const fn of DMX_FUNCTIONS) {
       if (values[fn] !== null && values[fn] !== prev[fn]) engaged.add(fn);
@@ -255,8 +278,10 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     const level = (fn) => values[fn] / 255;
 
     if (on('visual') && Math.floor(values.visual / DMX_SLOT) !== Math.floor((prev.visual ?? 0) / DMX_SLOT)) {
-      const v = list()[Math.floor(values.visual / DMX_SLOT) - 1];
+      const slot = Math.floor(values.visual / DMX_SLOT);
+      const v = list()[slot - 1];
       if (v && onAir?.id !== v.id) play(v.id).catch((err) => console.warn('DMX visual:', err.message));
+      else if (slot === 0 && onAir) exitToCues();
     }
 
     const nextFx = { ...visuals.FX_NEUTRAL };
@@ -384,8 +409,9 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     }
   });
 
+  // Back to backdrop (resumes the cue that was playing)
   router.post('/stop', (req, res) => {
-    stop();
+    exitToCues();
     res.status(204).send();
   });
 
@@ -443,6 +469,8 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     release,
     status,
     slots,
+    enter,
+    stop,
     isOnAir: () => !!onAir,
   };
 }

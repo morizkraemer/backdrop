@@ -41,15 +41,33 @@ let hdmi = {
 };
 // Live shader visuals, run from their own page (/visuals). Playing one takes
 // the screen from the cues; a cue taking it back calls lab.release().
+// The cue that was playing when a visual took over; going back to backdrop resumes it.
+let resumeCueId = null;
 const lab = createVisualsLab({
   config,
   mpv,
   takeScreen: () => {
     clearDurationTimer();
-    if (state.getState().currentCueIndex !== -1) state.updateState({ currentCueIndex: -1 });
+    const s = state.getState();
+    if (s.currentCueIndex !== -1) {
+      resumeCueId = s.playlist[s.currentCueIndex]?.id ?? null;
+      state.updateState({ currentCueIndex: -1 });
+    } else if (!lab.isOnAir()) {
+      resumeCueId = null;
+    }
   },
+  exitToCues: () => backToCues(),
   broadcast: () => broadcastState(),
 });
+
+function backToCues() {
+  if (!lab.isOnAir()) return;
+  const idx = state.getState().playlist.findIndex((c) => c.id === resumeCueId);
+  resumeCueId = null;
+  if (idx !== -1) playCue(idx);
+  else lab.stop();
+  broadcastState();
+}
 // DMX functions in display order; each maps to one channel of the universe (0 = unused).
 // After the show controls come the 16 channels of the visuals fixture.
 const DMX_FUNCTIONS = ['brightness', 'go', 'back', ...lab.DMX_FUNCTIONS];
@@ -833,6 +851,22 @@ app.post('/api/go/:cueId', (req, res) => {
   playCue(idx);
   broadcastState();
   res.status(204).send();
+});
+
+// The wall's mode: 'cues' (backdrop) or 'visuals' (the last visual from the lab)
+app.post('/api/wall', async (req, res) => {
+  const mode = req.body?.mode;
+  if (mode === 'cues') {
+    backToCues();
+    return res.status(204).send();
+  }
+  if (mode !== 'visuals') return res.status(400).json({ error: "mode must be 'cues' or 'visuals'" });
+  try {
+    await lab.enter();
+    res.status(204).send();
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
 });
 
 app.post('/api/stop', (req, res) => {

@@ -348,7 +348,7 @@ function renderMonitor(root, index, isNow) {
     ? media?.originalName ?? '?'
     : visual ? `Visual: ${visual.name}`
     : isNow ? (state.isTransitioning ? 'Loading…' : 'Nothing playing') : (state.playlist.length ? 'End of list' : '—');
-  root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : visual ? 'From the Visuals lab or DMX · GO returns to the cues' : '';
+  root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : visual ? 'Visuals mode · GO or Backdrop returns to the cues' : '';
   if (isNow && previewCollapsed()) {
     // Phones keep the live preview behind a tap, so don't stream video nobody sees
     stopPreview();
@@ -699,8 +699,26 @@ function renderInspector() {
     : saveStatus || 'Changes save automatically';
 }
 
+// --- LED wall mode: backdrop's cues or live visuals (Visuals lab, desk over DMX) ---
+
+function renderWallMode() {
+  const visuals = !!state.visual;
+  $('wallCues').setAttribute('aria-checked', String(!visuals));
+  $('wallVisuals').setAttribute('aria-checked', String(visuals));
+}
+
+document.querySelector('.wall-mode').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-mode]');
+  if (!b || b.getAttribute('aria-checked') === 'true') return;
+  b.disabled = true;
+  api('POST', '/wall', { mode: b.dataset.mode })
+    .catch(() => {})
+    .finally(() => { b.disabled = false; });
+});
+
 function render() {
   renderHeader();
+  renderWallMode();
   renderLed();
   renderHdmi();
   renderDmx();

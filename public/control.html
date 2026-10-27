@@ -21,10 +21,16 @@
         </div>
       </div>
       <div class="header-right">
-        <a class="btn-led" href="/visuals" title="Visuals lab: live shader visuals for the LED wall">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z"/></svg>
-          <span>Visuals</span>
-        </a>
+        <div class="wall-mode" role="radiogroup" aria-label="LED wall">
+          <button type="button" role="radio" data-mode="cues" id="wallCues" aria-checked="true" title="The wall plays backdrop's cues">Backdrop</button>
+          <button type="button" role="radio" data-mode="visuals" id="wallVisuals" aria-checked="false" title="The wall plays live visuals; the desk controls them over DMX">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z"/></svg>
+            Visuals
+          </button>
+          <a href="/visuals" class="wall-lab" title="Visuals lab: try and edit the visuals" aria-label="Visuals lab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>
+          </a>
+        </div>
         <div class="dmx" id="dmx" hidden>
           <button type="button" class="btn-led" id="btnDmx" aria-expanded="false" aria-controls="dmxPopover" title="DMX control (Art-Net)">
             <span class="sig" id="dmxSig"></span>
