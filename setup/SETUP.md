@@ -106,8 +106,9 @@ systemctl enable pulseaudio-screenview snapserver
 systemctl start pulseaudio-screenview snapserver
 ```
 
-`screenview-mpv.service` sets `PULSE_SERVER` and `XDG_RUNTIME_DIR` so mpv
-reaches this PulseAudio instance (uid 1000 is `screenview`).
+PulseAudio runs as `screenview` with its socket in `/run/screenview-pulse`
+(a system user has no `/run/user/<uid>`). `screenview-mpv.service` points
+`PULSE_SERVER` there.
 
 ### On the Raspberry Pi:
 

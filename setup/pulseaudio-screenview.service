@@ -5,10 +5,15 @@ Before=screenview-mpv.service
 [Service]
 Type=simple
 User=screenview
-Environment=XDG_RUNTIME_DIR=/run/user/1000
-ExecStart=/usr/bin/pulseaudio --disallow-exit --disallow-module-loading=0 --log-target=journal
+# screenview is a system user without a login session, so there is no
+# /run/user/<uid>. Give PulseAudio its own runtime dir instead.
+RuntimeDirectory=screenview-pulse
+Environment=XDG_RUNTIME_DIR=/run/screenview-pulse
+Environment=HOME=/opt/screenview
+ExecStart=/usr/bin/pulseaudio --disallow-exit --disallow-module-loading=0 --exit-idle-time=-1 --log-target=journal
 ExecStartPost=/bin/sleep 1
-ExecStartPost=/bin/bash -c "export XDG_RUNTIME_DIR=/run/user/1000; pactl load-module module-pipe-sink file=/tmp/snapfifo sink_name=snapcast format=s16le rate=48000 channels=2; pactl set-default-sink snapcast"
+ExecStartPost=/usr/bin/pactl load-module module-pipe-sink file=/tmp/snapfifo sink_name=snapcast format=s16le rate=48000 channels=2
+ExecStartPost=/usr/bin/pactl set-default-sink snapcast
 Restart=on-failure
 
 [Install]
