@@ -57,7 +57,7 @@ intentionally still say `screenview`.
   only when mpv itself is stuck.
 - Secrets: `.env` in the repo dir (`BT_HOST`, `BT_USER`, `BT_PASSWORD` for the Bluetooth Pi), loaded by `screenview.service`
 - LED brightness: the server talks to the NovaStar controller at `192.168.178.173` by default ([NOVASTAR.md](NOVASTAR.md)). Override with `NOVA_HOST` in `.env`, or set `NOVA_HOST=` (empty) to hide the control.
-- HDMI matrix: the server talks to the ezcoo matrix over TCP port 23 ([HDMI-MATRIX.md](HDMI-MATRIX.md)). It tries `w550-010203` (its DHCP hostname) and then `192.168.178.211`. Override with `HDMI_HOST` in `.env` (comma-separated, first that answers wins), or set `HDMI_HOST=` (empty) to hide the control.
+- LED wall source: the server switches matrix output 1 between backdrop, FOH, Stage and Balkon. It talks to the ezcoo matrix over TCP port 23 ([HDMI-MATRIX.md](HDMI-MATRIX.md)). It tries `w550-010203` (its DHCP hostname) and then `192.168.178.211`. Override with `HDMI_HOST` in `.env` (comma-separated, first that answers wins), or set `HDMI_HOST=` (empty) to hide the control.
 - `/etc/sudoers.d/screenview` (from `setup/sudoers-screenview`) lets `screenview` run `systemctl restart screenview.service`, which the deploy job needs.
 
 Run git as `screenview`, not root: git refuses the repo as root ("dubious ownership").

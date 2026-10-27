@@ -22,16 +22,13 @@
       </div>
       <div class="header-right">
         <div class="hdmi" id="hdmi" hidden>
-          <button type="button" class="btn-led" id="btnHdmi" aria-expanded="false" aria-controls="hdmiPopover" title="HDMI matrix routing">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h5l8 10h5"/><path d="M3 17h5l3-4"/><path d="M14 9l2-2h5"/></svg>
-            <span id="hdmiText">HDMI</span>
+          <button type="button" class="btn-led" id="btnHdmi" aria-expanded="false" aria-controls="hdmiPopover" title="LED wall source (HDMI matrix)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+            <span id="hdmiText">—</span>
           </button>
           <div class="hdmi-popover" id="hdmiPopover" hidden>
-            <div class="led-head">
-              <span class="field-label">HDMI matrix</span>
-              <button type="button" class="hdmi-rename" id="hdmiRename" aria-pressed="false">Rename</button>
-            </div>
-            <div class="hdmi-grid" id="hdmiGrid" role="grid" aria-label="Pick the input for each output"></div>
+            <span class="field-label" id="lblHdmi">LED wall source</span>
+            <div class="hdmi-sources" id="hdmiSources" role="radiogroup" aria-labelledby="lblHdmi"></div>
             <div class="led-status" id="hdmiStatus"></div>
           </div>
         </div>

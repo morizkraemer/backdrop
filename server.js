@@ -32,10 +32,8 @@ const matrix = config.hdmiHosts.length ? createMatrix(config.hdmiHosts) : null;
 let hdmi = {
   configured: !!matrix,
   available: false,
-  size: matrix?.size ?? 0,
-  routes: [],
-  inputLink: [],
-  outputLink: [],
+  sources: config.hdmiSources.map((name) => ({ name, signal: null })),
+  current: null, // input number feeding config.hdmiOutput
 };
 
 function getDiskFree() {
@@ -55,7 +53,7 @@ function broadcastState() {
     isTransitioning,
     mpvConnected: mpv.connected,
     led,
-    hdmi: { ...hdmi, names: s.hdmiNames },
+    hdmi,
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -732,12 +730,19 @@ function setHdmi(patch) {
   broadcastState();
 }
 
+function hdmiFromStatus({ routes, inputLink }) {
+  return {
+    available: true,
+    current: routes[config.hdmiOutput - 1] ?? hdmi.current,
+    sources: hdmi.sources.map((src, i) => ({ ...src, signal: inputLink?.[i] ?? src.signal })),
+  };
+}
+
 async function pollHdmi() {
   if (!matrix || hdmiPolling) return;
   hdmiPolling = true;
   try {
-    const st = await matrix.status();
-    setHdmi({ available: true, ...st });
+    setHdmi(hdmiFromStatus(await matrix.status()));
   } catch {
     setHdmi({ available: false });
   } finally {
@@ -745,32 +750,22 @@ async function pollHdmi() {
   }
 }
 
-app.put('/api/hdmi/route', async (req, res) => {
+// Picks the source shown on the LED wall (matrix output config.hdmiOutput)
+app.put('/api/hdmi/source', async (req, res) => {
   if (!matrix) return res.status(501).json({ error: 'HDMI_HOST not configured' });
-  const output = Number(req.body?.output);
   const input = Number(req.body?.input);
-  if (!Number.isInteger(output) || output < 0 || output > matrix.size
-    || !Number.isInteger(input) || input < 1 || input > matrix.size) {
-    return res.status(400).json({ error: `output must be 0-${matrix.size} and input 1-${matrix.size}` });
+  if (!Number.isInteger(input) || input < 1 || input > hdmi.sources.length) {
+    return res.status(400).json({ error: `input must be 1-${hdmi.sources.length}` });
   }
   try {
-    const routes = await matrix.route(output, input);
-    setHdmi({ available: true, routes: routes.map((r, i) => r ?? hdmi.routes[i] ?? null) });
-    const ok = output === 0 ? routes.every((r) => r === input) : routes[output - 1] === input;
-    if (!ok) return res.status(502).json({ error: 'HDMI matrix did not switch' });
+    const routes = await matrix.route(config.hdmiOutput, input);
+    setHdmi(hdmiFromStatus({ routes }));
+    if (hdmi.current !== input) return res.status(502).json({ error: 'HDMI matrix did not switch' });
     res.json(hdmi);
   } catch (err) {
     setHdmi({ available: false });
     res.status(502).json({ error: err.message });
   }
-});
-
-app.put('/api/hdmi/names', (req, res) => {
-  const clean = (a) => (Array.isArray(a) ? a.slice(0, 16).map((x) => String(x ?? '').trim().slice(0, 40)) : []);
-  const names = { inputs: clean(req.body?.inputs), outputs: clean(req.body?.outputs) };
-  state.updateState((s) => ({ ...s, hdmiNames: names }));
-  broadcastState();
-  res.json(names);
 });
 
 if (matrix) {
@@ -792,7 +787,7 @@ wss.on('connection', (ws) => {
     isTransitioning,
     mpvConnected: mpv.connected,
     led,
-    hdmi: { ...hdmi, names: state.getState().hdmiNames },
+    hdmi,
   }));
   pollLed();
   pollHdmi();
