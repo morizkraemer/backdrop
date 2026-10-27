@@ -21,6 +21,10 @@
         </div>
       </div>
       <div class="header-right">
+        <a class="btn-led" href="/visuals" title="Visuals lab: live shader visuals for the LED wall">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z"/></svg>
+          <span>Visuals</span>
+        </a>
         <div class="dmx" id="dmx" hidden>
           <button type="button" class="btn-led" id="btnDmx" aria-expanded="false" aria-controls="dmxPopover" title="DMX control (Art-Net)">
             <span class="sig" id="dmxSig"></span>
@@ -34,6 +38,7 @@
             <div class="dmx-channels" id="dmxChannels">
               <div class="dmx-ch dmx-ch-head"><span>Channel</span><span>Function</span><span></span><span>Value</span></div>
             </div>
+            <div class="dmx-fixture" id="dmxFixture"></div>
             <div class="led-status" id="dmxStatus"></div>
           </div>
         </div>
@@ -193,7 +198,7 @@
           </div>
           <div class="screen" id="inspScreen"></div>
 
-          <div class="field">
+          <div class="field" id="displayField">
             <span class="field-label" id="lblDisplay">Display</span>
             <div class="segmented seg-3" role="radiogroup" aria-labelledby="lblDisplay" id="segDisplay">
               <button type="button" role="radio" data-value="fill">Fill</button>

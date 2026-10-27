@@ -9,3 +9,5 @@ remote-upload.json.tmp
 *.log
 .DS_Store
 .env
+visuals.json
+visuals.json.tmp

@@ -196,6 +196,23 @@ svg {
   height: 14px;
 }
 
+a.btn-led {
+  text-decoration: none;
+}
+
+a.btn-led:hover {
+  color: var(--text);
+}
+
+.dmx-fixture {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.dmx-fixture a {
+  color: var(--live-soft);
+}
+
 .btn-led:hover,
 .btn-led[aria-expanded="true"] {
   background: var(--bg-hover);
