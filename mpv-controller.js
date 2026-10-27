@@ -201,7 +201,6 @@ class MpvController extends EventEmitter {
       displayMode = 'fill',
       isImage = false,
       freeze = false,
-      color = {},
     } = opts;
     const mode = DISPLAY_MODES[displayMode] || DISPLAY_MODES.fill;
 
@@ -212,7 +211,6 @@ class MpvController extends EventEmitter {
     await this.setProperty('keep-open', freeze && !loop ? 'yes' : 'no');
     await this.setProperty('keepaspect', mode.keepaspect);
     await this.setProperty('panscan', mode.panscan);
-    await this.applyColorSettings(color);
     if (isImage) {
       await this.setProperty('image-display-duration', 'inf');
     }
@@ -228,14 +226,6 @@ class MpvController extends EventEmitter {
 
   getProperty(name) {
     return this._command('get_property', [name]);
-  }
-
-  async applyColorSettings(color = {}) {
-    const hue = Number.isFinite(color.hue) ? color.hue : 0;
-    const saturation = Number.isFinite(color.saturation) ? color.saturation : 0;
-
-    await this.setProperty('hue', hue);
-    await this.setProperty('saturation', saturation);
   }
 }
 

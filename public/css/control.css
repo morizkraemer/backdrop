@@ -729,11 +729,6 @@ body {
   color: var(--text);
 }
 
-#popupTintHue,
-#popupTintSaturation {
-  width: 5rem;
-}
-
 .cue-popup-inner select {
   padding: 0.25rem 0.5rem;
   background: var(--bg);

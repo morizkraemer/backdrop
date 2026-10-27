@@ -67,15 +67,6 @@ function isValidDisplayMode(m) {
   return ['stretch', 'centered', 'fill'].includes(m);
 }
 
-function parseTintValue(value, name) {
-  if (value === undefined || value === null || value === '') return 0;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < -100 || parsed > 100) {
-    throw new Error(`Invalid ${name}`);
-  }
-  return parsed;
-}
-
 function getCuePlaybackOptions(cue, media) {
   const settings = cue.settings || {};
   return {
@@ -83,10 +74,6 @@ function getCuePlaybackOptions(cue, media) {
     displayMode: settings.displayMode ?? 'fill',
     isImage: media.type === 'image',
     freeze: settings.freeze ?? false,
-    color: {
-      hue: Number.isFinite(settings.tintHue) ? settings.tintHue : 0,
-      saturation: Number.isFinite(settings.tintSaturation) ? settings.tintSaturation : 0,
-    },
   };
 }
 
@@ -324,14 +311,6 @@ app.post('/api/playlist', (req, res) => {
   if (!mediaId || !isValidId(mediaId)) return res.status(400).json({ error: 'mediaId required' });
   const s = state.getState();
   if (!s.library.some((m) => m.id === mediaId)) return res.status(404).json({ error: 'Media not found' });
-  let tintHue = 0;
-  let tintSaturation = 0;
-  try {
-    tintHue = parseTintValue(settings.tintHue, 'tintHue');
-    tintSaturation = parseTintValue(settings.tintSaturation, 'tintSaturation');
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
-  }
   const id = `cue-${uuidv4().slice(0, 8)}`;
   const cue = {
     id,
@@ -341,8 +320,6 @@ app.post('/api/playlist', (req, res) => {
       displayMode: settings.displayMode ?? 'fill',
       duration: settings.duration ?? null,
       freeze: settings.freeze ?? false,
-      tintHue,
-      tintSaturation,
     },
   };
   state.updateState((s) => ({ ...s, playlist: [...s.playlist, cue] }));
@@ -376,7 +353,7 @@ app.post('/api/playlist/upload', (req, res) => {
     const cue = {
       id: cueId,
       mediaId: id,
-      settings: { loop: false, displayMode: 'fill', duration: null, freeze: false, tintHue: 0, tintSaturation: 0 },
+      settings: { loop: false, displayMode: 'fill', duration: null, freeze: false },
     };
     state.updateState((s) => ({
       ...s,
@@ -393,7 +370,7 @@ app.put('/api/playlist/:cueId', (req, res) => {
   const s = state.getState();
   const idx = s.playlist.findIndex((c) => c.id === req.params.cueId);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  const { loop, displayMode, duration, freeze, tintHue, tintSaturation } = req.body;
+  const { loop, displayMode, duration, freeze } = req.body;
   const cue = { ...s.playlist[idx] };
   cue.settings = { ...cue.settings };
   if (loop !== undefined) cue.settings.loop = !!loop;
@@ -406,12 +383,6 @@ app.put('/api/playlist/:cueId', (req, res) => {
     const d = duration === null || duration === '' ? null : Number(duration);
     if (d !== null && (isNaN(d) || d < 0)) return res.status(400).json({ error: 'Invalid duration' });
     cue.settings.duration = d;
-  }
-  try {
-    if (tintHue !== undefined) cue.settings.tintHue = parseTintValue(tintHue, 'tintHue');
-    if (tintSaturation !== undefined) cue.settings.tintSaturation = parseTintValue(tintSaturation, 'tintSaturation');
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
   }
   const playlist = [...s.playlist];
   playlist[idx] = cue;

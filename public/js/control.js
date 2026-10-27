@@ -40,8 +40,6 @@ const popupFreeze = document.getElementById('popupFreeze');
 const popupDisplayMode = document.getElementById('popupDisplayMode');
 const popupDuration = document.getElementById('popupDuration');
 const popupHold = document.getElementById('popupHold');
-const popupTintHue = document.getElementById('popupTintHue');
-const popupTintSaturation = document.getElementById('popupTintSaturation');
 const popupCancel = document.getElementById('popupCancel');
 const popupSave = document.getElementById('popupSave');
 
@@ -226,8 +224,6 @@ function openCuePopup(cueId) {
   const dur = cue.settings?.duration;
   popupDuration.value = dur != null ? dur : '';
   popupHold.checked = dur == null || dur === '';
-  popupTintHue.value = cue.settings?.tintHue ?? 0;
-  popupTintSaturation.value = cue.settings?.tintSaturation ?? 0;
 
   cuePopupBackdrop.hidden = false;
   cuePopupBackdrop.setAttribute('aria-hidden', 'false');
@@ -243,13 +239,6 @@ function closeCuePopup() {
   render();
 }
 
-function readCueNumberInput(input, fallback = 0) {
-  const raw = input.value.trim();
-  if (raw === '') return fallback;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : fallback;
-}
-
 popupCancel.addEventListener('click', () => closeCuePopup());
 
 popupSave.addEventListener('click', () => {
@@ -260,8 +249,6 @@ popupSave.addEventListener('click', () => {
     freeze: popupFreeze.checked,
     displayMode: popupDisplayMode.value,
     duration,
-    tintHue: readCueNumberInput(popupTintHue, 0),
-    tintSaturation: readCueNumberInput(popupTintSaturation, 0),
   }).then((r) => {
     if (r.ok) {
       closeCuePopup();
