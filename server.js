@@ -1,5 +1,6 @@
 const { spawn, execFile } = require('child_process');
 const express = require('express');
+const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
@@ -25,6 +26,7 @@ let durationTimer = null;
 let isTransitioning = false;
 let wss = null;
 let mpvProcess = null;
+let led = { configured: !!config.novaHost, available: false, brightness: null };
 
 function getDiskFree() {
   try {
@@ -42,6 +44,7 @@ function broadcastState() {
     diskFree: getDiskFree(),
     isTransitioning,
     mpvConnected: mpv.connected,
+    led,
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -561,6 +564,100 @@ app.post('/api/bluetooth/pairing', async (req, res) => {
   }
 });
 
+// LED panel brightness via the NovaStar controller (see setup/NOVASTAR.md)
+let ledTarget = null;
+let ledJob = null;
+
+function novaRequest(readWrite, params) {
+  return new Promise((resolve, reject) => {
+    const q = new URLSearchParams({ ReadWrite: String(readWrite), DevidIndex: '0', ...params });
+    q.append('anticache', String(Math.floor(Math.random() * 1e4)));
+    q.append('_', String(Date.now())); // must come after anticache or the controller ignores writes
+    const req = http.get(`http://${config.novaHost}/leds.cgi?${q}`, { timeout: 4000 }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(body));
+        } catch {
+          reject(new Error('Bad response from LED controller'));
+        }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('LED controller timed out')));
+    req.on('error', reject);
+  });
+}
+
+async function readLedBrightness() {
+  const r = await novaRequest(0, { abaa: 0 });
+  const n = parseInt(r.abaa, 10);
+  if (r.ERRC !== '0' || !Number.isFinite(n)) throw new Error(`LED controller error ${r.ERRC}`);
+  return n;
+}
+
+function setLed(available, brightness) {
+  if (led.available === available && led.brightness === brightness) return;
+  led = { ...led, available, brightness };
+  broadcastState();
+}
+
+async function pollLed() {
+  if (!config.novaHost || ledJob) return;
+  try {
+    const n = await readLedBrightness();
+    if (!ledJob) setLed(true, n);
+  } catch {
+    if (!ledJob) setLed(false, led.brightness);
+  }
+}
+
+// Applies the latest requested brightness. The controller replies OK even when it
+// drops a write, so every write is read back and retried.
+async function runLedWrites() {
+  while (ledTarget !== null) {
+    const want = ledTarget;
+    let got = null;
+    for (let i = 0; i < 3 && got !== want && ledTarget === want; i++) {
+      await novaRequest(1, { abaa: want });
+      got = await readLedBrightness();
+    }
+    setLed(true, got);
+    if (ledTarget === want) {
+      ledTarget = null;
+      if (got !== want) throw new Error('LED controller did not apply the brightness');
+    }
+  }
+}
+
+app.put('/api/led/brightness', async (req, res) => {
+  if (!config.novaHost) return res.status(501).json({ error: 'NOVA_HOST not configured' });
+  const value = Number(req.body?.brightness);
+  if (!Number.isInteger(value) || value < 0 || value > 100) {
+    return res.status(400).json({ error: 'brightness must be an integer 0-100' });
+  }
+  ledTarget = value;
+  if (!ledJob) {
+    ledJob = runLedWrites().finally(() => { ledJob = null; });
+  }
+  try {
+    await ledJob;
+    res.json(led);
+  } catch (err) {
+    ledTarget = null;
+    if (err.code) setLed(false, led.brightness); // network error: controller unreachable
+    res.status(502).json({ error: err.message });
+  }
+});
+
+if (config.novaHost) {
+  // Picks up changes made on the controller itself; skipped while nobody is watching
+  setInterval(() => {
+    if (wss && wss.clients.size > 0) pollLed();
+  }, 10000);
+}
+
 const server = app.listen(config.port, () => {
   console.log(`backdrop listening on port ${config.port}`);
 });
@@ -572,7 +669,9 @@ wss.on('connection', (ws) => {
     diskFree: getDiskFree(),
     isTransitioning,
     mpvConnected: mpv.connected,
+    led,
   }));
+  pollLed();
 });
 
 mpv.on('connected', () => broadcastState());

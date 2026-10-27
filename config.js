@@ -18,4 +18,6 @@ module.exports = {
   btHost: process.env.BT_HOST || null,
   btUser: process.env.BT_USER || 'bhf',
   btPassword: process.env.BT_PASSWORD || null,
+  // NovaStar LED controller (setup/NOVASTAR.md). Set NOVA_HOST= (empty) to disable.
+  novaHost: process.env.NOVA_HOST ?? '192.168.178.173',
 };

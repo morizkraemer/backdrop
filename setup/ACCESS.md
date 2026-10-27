@@ -56,6 +56,7 @@ intentionally still say `screenview`.
   server reconnects and replays the current cue. Restart `screenview-mpv`
   only when mpv itself is stuck.
 - Secrets: `.env` in the repo dir (`BT_HOST`, `BT_USER`, `BT_PASSWORD` for the Bluetooth Pi), loaded by `screenview.service`
+- LED brightness: the server talks to the NovaStar controller at `192.168.178.173` by default ([NOVASTAR.md](NOVASTAR.md)). Override with `NOVA_HOST` in `.env`, or set `NOVA_HOST=` (empty) to hide the control.
 - `/etc/sudoers.d/screenview` (from `setup/sudoers-screenview`) lets `screenview` run `systemctl restart screenview.service`, which the deploy job needs.
 
 Run git as `screenview`, not root: git refuses the repo as root ("dubious ownership").

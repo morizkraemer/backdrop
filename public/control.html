@@ -21,6 +21,27 @@
         </div>
       </div>
       <div class="header-right">
+        <div class="led" id="led" hidden>
+          <button type="button" class="btn-led" id="btnLed" aria-expanded="false" aria-controls="ledPopover" title="LED panel brightness">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M4.93 19.07l1.41-1.41"/><path d="M17.66 6.34l1.41-1.41"/></svg>
+            <span id="ledText">—</span>
+          </button>
+          <div class="led-popover" id="ledPopover" hidden>
+            <div class="led-head">
+              <span class="field-label" id="lblLed">LED brightness</span>
+              <span class="led-value" id="ledValue">—</span>
+            </div>
+            <input type="range" id="ledSlider" min="0" max="100" step="1" aria-labelledby="lblLed">
+            <div class="led-presets" id="ledPresets">
+              <button type="button" data-value="0">Off</button>
+              <button type="button" data-value="25">25</button>
+              <button type="button" data-value="50">50</button>
+              <button type="button" data-value="75">75</button>
+              <button type="button" data-value="100">100</button>
+            </div>
+            <div class="led-status" id="ledStatus"></div>
+          </div>
+        </div>
         <button type="button" class="btn-bt" id="btnBluetooth" hidden aria-pressed="false" title="Bluetooth pairing mode">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>
           <span id="btText">BT pairing</span>
