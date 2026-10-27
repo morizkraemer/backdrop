@@ -24,29 +24,22 @@ By default the 16 channels after BACK (4-19 with `DMX_ADDRESS=1`). They only aff
 
 Each function only takes over once its fader moves; until then the visual looks as its saved defaults in the Visuals lab set it. When Art-Net stops for 3 s, the fixture goes back to neutral and the next packet only records the fader positions again.
 
-The first packet after the server starts (or after the DMX settings change) only records the current values, so a fader that is already up does not fire.
+### dot2 fixture type
 
-## In the web UI
+The Visuals lab has **Download dot2 fixture** (`/api/visuals/dot2.xml`): an MA fixture type (grandMA2 XML) for the 16 channels, with every visual named on the select channel. Download it again after adding visuals, so the names stay current.
 
-- A **DMX** pill in the header shows a green dot while Art-Net arrives on the universe (grey after 3 s without packets). Clicking it opens the channel for each function (saved as you leave a field), with each channel's live value.
-- **BACK** sits next to GO and does the same as the BACK channel (`POST /api/back`).
-- When DMX moves the brightness, the LED brightness pill follows it.
+To import: copy it to a USB stick as `dot2/library/backdrop_visuals.xml`, then on the dot2 open Setup → Patch and Fixture Schedule → Add New Fixtures → Select other... → Import, pick the USB drive, manufacturer "backdrop", "Visuals". Patch it at the first fixture channel (4 by default) on the Art-Net universe backdrop listens to.
 
-## Settings (.env)
+dot2 only has its own attribute names, so the functions sit on the nearest ones:
 
-| Variable | Default | |
+| Fixture channel | On the dot2 | Function |
 |---|---|---|
-| `DMX_UNIVERSE` | `0` | Art-Net universe, matching the node's Universe IN (15-bit port address: Net × 256 + Sub-Net × 16 + Universe). Empty disables DMX entirely. |
-| `DMX_ADDRESS` | `1` | Default first channel (brightness; GO, BACK and the visuals fixture follow on consecutive channels) until changed in the UI. |
+| 1 | Gobo 1 (Gobo view, named buttons) | Visual select |
+| 2 | Dimmer | Dimmer |
+| 3-5 | Color RGB | Red, green, blue |
+| 6 | Gobo 1 position | Speed |
+| 7 | Shutter (Beam view) | Strobe |
+| 8 | Gobo 2 | Control (what it moves per visual is shown in the lab) |
+| 9-16 | Sub-fixtures .1-.8, Dimmer | Strips 1-8, so the desk's effects can chase across them |
 
-## Electroconcept "Node 2 Univers" (Art-Net / sACN)
-
-The USB port on this node only powers it (5 V, at least 500 mA) and carries its configuration (WebHID, used by Electroconcept's *dmx_tools* page in Chrome/Edge). It does **not** carry DMX or Art-Net to the computer: on a Mac it shows up as a vendor HID device (VID `1fc9`, PID `0052`, "Node 2 Electro") and no network interface or serial port. DMX goes over its RJ45 port.
-
-1. Plug the node's RJ45 into the LAN (the UniFi switch). Power it from any USB charger or a computer.
-2. With the node on USB, open *dmx_tools* from https://www.electroconcept.fr/en/docs/2-universes-artnet-sacn-node/ in Chrome, click **Connect** and pick the node.
-3. **IP Setting**: DHCP (default) is fine, or set a static address on 192.168.178.0/24. Protocol: Art-Net.
-4. **DMX 1 Setting** (the XLR the console is plugged into): set *DMX* to **Input**, *Universe IN* to the same number as `DMX_UNIVERSE` (0), and *DMX IN -> IP Cast Out* to the backdrop box (192.168.178.75) or broadcast (192.168.178.255). The XLR ports are female, so the console's output needs a male-male (gender changer) cable.
-5. Apply. The **Info** tab shows the node's current IP. That IP also serves the node's own config page in any browser, with a Status page showing the DMX values passing through.
-
-To check that packets arrive on the box: `timeout 5 tcpdump -ni eth0 udp port 6454` (tcpdump is not installed in the container by default), or watch `journalctl -u screenview -f` while moving the GO fader.
+This file hasn't been tried on a real dot2 yet. If the import fails, patch generic fixtures from the dot2 library at the same channels instead (a dimmer for select, an RGB LED, 8 dimmers for the strips); everything works, only the names are missing.

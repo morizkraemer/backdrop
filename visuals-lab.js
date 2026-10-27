@@ -20,6 +20,60 @@ const DMX_FUNCTIONS = ['visual', 'dimmer', 'red', 'green', 'blue', 'speed', 'str
 const DMX_SLOT = 10; // visual select: 10-19 = first visual, 20-29 = second, ...
 const DMX_MASK_HOLD_MS = 2000; // strips all at 0 this long = whole wall again
 
+const xmlEsc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/**
+ * The fixture as an MA fixture type (grandMA2 XML, which dot2 imports from
+ * USB: dot2/library). dot2 only knows its own attributes, so each function
+ * sits on the nearest one (setup/DMX.md); channel sets name the visuals and
+ * ranges. The 8 strips are sub-fixtures with their own dimmer, so the desk's
+ * effects can chase across them.
+ */
+function dot2Fixture(slots) {
+  const set = (name, from, to) => `<ChannelSet name="${xmlEsc(name)}" from_dmx="${from}" to_dmx="${to}" />`;
+  const channel = (coarse, attribute, feature, preset, sets = [], range = [0, 100]) => `
+				<ChannelType attribute="${attribute}" feature="${feature}" preset="${preset}" coarse="${coarse}">
+					<ChannelFunction from="${range[0]}" to="${range[1]}" min_dmx_24="0" max_dmx_24="16777215" physfrom="${range[0]}" physto="${range[1]}" subattribute="${attribute}" attribute="${attribute}" feature="${feature}" preset="${preset}">
+						${sets.join('\n\t\t\t\t\t\t')}
+					</ChannelFunction>
+				</ChannelType>`;
+  const visualSets = [
+    set('Cues (no visual)', 0, DMX_SLOT - 1),
+    ...slots.map((s) => set(s.name, s.value, s.value + DMX_SLOT - 1)),
+  ];
+  const main = [
+    channel(1, 'GOBO1', 'GOBO', 'GOBO', visualSets, [0, 255]),
+    channel(2, 'DIM', 'DIMMER', 'DIMMER', [set('Closed', 0, 0), set('Open', 255, 255)]),
+    channel(3, 'COLORRGB1', 'RGB', 'COLOR'),
+    channel(4, 'COLORRGB2', 'RGB', 'COLOR'),
+    channel(5, 'COLORRGB3', 'RGB', 'COLOR'),
+    channel(6, 'GOBO1_POS', 'GOBO', 'GOBO', [set('Speed slow', 0, 0), set('Speed fast', 255, 255)]),
+    channel(7, 'SHUTTER', 'SHUTTER', 'BEAM', [set('Open', 0, 9), set('Strobe 1-20 Hz', 10, 255)], [0, 20]),
+    channel(8, 'GOBO2', 'GOBO', 'GOBO', [set('Control min', 0, 0), set('Control max', 255, 255)]),
+  ].join('');
+  const strips = SEGMENT_FNS.map((_, i) => `
+			<Instance module_index="1" patch="${9 + i}" locked="true" />`).join('');
+  return `<?xml version="1.0" encoding="utf-8"?>
+<MA xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.malighting.de/grandma2/xml/MA http://schemas.malighting.de/grandma2/xml/2.8.123/MA.xsd" major_vers="2" minor_vers="8" stream_vers="123" xmlns="http://schemas.malighting.de/grandma2/xml/MA">
+	<FixtureType name="Visuals" mode="16ch">
+		<short_name>Visuals</short_name>
+		<manufacturer>backdrop</manufacturer>
+		<short_manufacturer>backdrop</short_manufacturer>
+		<Modules>
+			<Module name="Main" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${main}
+			</Module>
+			<Module name="Strip" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${channel(1, 'DIM', 'DIMMER', 'DIMMER', [set('Closed', 0, 0), set('Open', 255, 255)])}
+			</Module>
+		</Modules>
+		<Instances>
+			<Instance module_index="0" patch="1" locked="true" />${strips}
+		</Instances>
+		<Wheels />
+	</FixtureType>
+</MA>
+`;
+}
+
 function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
   const userDir = path.resolve(config.uploadsDir, 'visuals');
   const cacheDir = path.resolve(config.uploadsDir, '.visuals');
@@ -275,6 +329,13 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     res.json({ visuals: list().map((v) => ({ ...v, file: undefined })), slots: slots(), onAir: status(), size: config.visualSize });
   });
 
+  // dot2 / grandMA2 fixture type for the fixture, with the visuals named on select
+  router.get('/dot2.xml', (req, res) => {
+    res.type('application/xml');
+    res.attachment('backdrop_visuals.xml');
+    res.send(dot2Fixture(slots()));
+  });
+
   // Parse a shader without saving it: its sliders and preview (lab editor)
   router.post('/preview', (req, res) => {
     const { source } = req.body;
@@ -386,4 +447,4 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
   };
 }
 
-module.exports = { createVisualsLab, DMX_FUNCTIONS };
+module.exports = { createVisualsLab, DMX_FUNCTIONS, dot2Fixture };

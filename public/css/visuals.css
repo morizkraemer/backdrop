@@ -368,6 +368,13 @@
 
 /* --- DMX --- */
 
+.lab-download {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .lab-dmx .dmx-ch {
   grid-template-columns: 56px 92px 1fr 64px;
 }
