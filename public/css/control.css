@@ -139,6 +139,36 @@ svg {
   color: var(--text-muted);
 }
 
+.btn-bt {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #2e3036;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.btn-bt svg {
+  width: 14px;
+  height: 14px;
+}
+
+.btn-bt:hover {
+  background: var(--bg-hover);
+}
+
+.btn-bt.active {
+  border-color: #2b4a7a;
+  background: #15203a;
+  color: #8fb6ff;
+}
+
 .conn {
   display: flex;
   align-items: center;
@@ -1121,6 +1151,10 @@ svg {
   }
 
   #diskSpace {
+    display: none;
+  }
+
+  .btn-bt span {
     display: none;
   }
 

@@ -3,20 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Screenview Control</title>
+  <title>backdrop</title>
+  <meta name="theme-color" content="#111214">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="stylesheet" href="css/control.css">
 </head>
 <body>
   <div class="app" id="app" data-tab="cues">
     <header class="header">
       <div class="header-left">
-        <h1>Screenview</h1>
+        <h1>backdrop</h1>
         <div class="player-pill" id="playerPill">
           <span class="dot"></span>
           <span id="playerText">Connecting…</span>
         </div>
       </div>
       <div class="header-right">
+        <button type="button" class="btn-bt" id="btnBluetooth" hidden aria-pressed="false" title="Bluetooth pairing mode">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>
+          <span id="btText">BT pairing</span>
+        </button>
         <span id="diskSpace">—</span>
         <span class="conn" id="connStatus"><span class="dot"></span><span id="connText">Connecting…</span></span>
       </div>

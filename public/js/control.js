@@ -135,13 +135,13 @@ function mediaMeta(media) {
 
 function endShort(cue, media) {
   const st = cue.settings || {};
-  if (media?.type === 'video') return st.loop ? 'Loop' : 'To end';
+  if (media?.type === 'video') return st.loop ? 'Loop' : st.freeze ? 'Freeze' : 'To end';
   return st.duration > 0 ? `${st.duration} s` : 'Hold';
 }
 
 function endLong(cue, media) {
   const st = cue.settings || {};
-  if (media?.type === 'video') return st.loop ? 'loops until GO' : 'plays to the end';
+  if (media?.type === 'video') return st.loop ? 'loops until GO' : st.freeze ? 'freezes on the last frame' : 'plays to the end';
   return st.duration > 0 ? `advances after ${st.duration} s` : 'holds until GO';
 }
 
@@ -302,11 +302,14 @@ function renderInspector() {
   setSegment(segDisplay, st.displayMode ?? 'fill');
 
   const endOptions = isVideo
-    ? [['end', 'Play to end'], ['loop', 'Loop until GO']]
+    ? [['end', 'Next cue'], ['freeze', 'Freeze frame'], ['loop', 'Loop']]
     : [['hold', 'Hold until GO'], ['auto', 'Auto-advance']];
-  const endValue = isVideo ? (st.loop ? 'loop' : 'end') : (st.duration > 0 ? 'auto' : 'hold');
+  const endValue = isVideo
+    ? (st.loop ? 'loop' : st.freeze ? 'freeze' : 'end')
+    : (st.duration > 0 ? 'auto' : 'hold');
   if (segEnd.dataset.kind !== (isVideo ? 'video' : 'image')) {
     segEnd.dataset.kind = isVideo ? 'video' : 'image';
+    segEnd.className = `segmented ${isVideo ? 'seg-3' : 'seg-2'}`;
     segEnd.innerHTML = endOptions.map(([v, l]) => `<button type="button" role="radio" data-value="${v}">${l}</button>`).join('');
   }
   setSegment(segEnd, endValue);
@@ -603,7 +606,7 @@ segEnd.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-value]');
   if (!b) return;
   const v = b.dataset.value;
-  if (v === 'loop' || v === 'end') updateCue({ loop: v === 'loop' });
+  if (['end', 'freeze', 'loop'].includes(v)) updateCue({ loop: v === 'loop', freeze: v === 'freeze' });
   else if (v === 'hold') updateCue({ duration: null });
   else updateCue({ duration: Number(inspSeconds.value) > 0 ? Number(inspSeconds.value) : 10 });
 });
@@ -622,6 +625,37 @@ $('inspRemove').addEventListener('click', () => {
   api('DELETE', `/playlist/${id}`);
 });
 $('inspClose').addEventListener('click', () => selectCue(null));
+
+// --- Bluetooth pairing (only shown when the server has BT_HOST configured) ---
+
+const btnBluetooth = $('btnBluetooth');
+let btDiscoverable = false;
+
+function renderBluetooth(available) {
+  btnBluetooth.hidden = !available;
+  btnBluetooth.classList.toggle('active', btDiscoverable);
+  btnBluetooth.setAttribute('aria-pressed', String(btDiscoverable));
+  $('btText').textContent = btDiscoverable ? 'BT pairing on' : 'BT pairing';
+}
+
+api('GET', '/bluetooth/status')
+  .then((r) => (r.ok ? r.json() : null))
+  .then((data) => {
+    if (!data) return;
+    btDiscoverable = !!data.discoverable;
+    renderBluetooth(!!data.available);
+  })
+  .catch(() => {});
+
+btnBluetooth.addEventListener('click', () => {
+  api('POST', '/bluetooth/pairing', { enabled: !btDiscoverable })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (data) btDiscoverable = !!data.discoverable;
+      renderBluetooth(true);
+    })
+    .catch(() => {});
+});
 
 connectWs();
 render();

@@ -1,19 +1,25 @@
 [Unit]
-Description=Screenview mpv Display
-After=network.target
+Description=backdrop mpv Display
+After=network.target pulseaudio-screenview.service
+Wants=pulseaudio-screenview.service
 
 [Service]
 Type=simple
 User=screenview
+SupplementaryGroups=video render
+# Keep /run/screenview (the IPC socket) when the server restarts
 RuntimeDirectory=screenview
+RuntimeDirectoryPreserve=yes
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=PULSE_SERVER=unix:/run/user/1000/pulse/native
 ExecStart=/usr/bin/mpv --idle --force-window=yes \
     --input-ipc-server=/run/screenview/mpv.sock \
-    --vo=drm --hwdec=vaapi --fs --no-terminal --really-quiet \
+    --vo=drm --hwdec=vaapi --fs --ao=pulse \
+    --no-terminal --really-quiet \
     --no-input-default-bindings --no-osc --no-osd-bar \
     --image-display-duration=inf
 Restart=always
 RestartSec=3
-SupplementaryGroups=video render
 
 [Install]
 WantedBy=multi-user.target

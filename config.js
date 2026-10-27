@@ -15,4 +15,7 @@ module.exports = {
   minFreeDisk: minFreeDisk || 500 * 1024 * 1024,
   isDev,
   spawnMpv,
+  btHost: process.env.BT_HOST || null,
+  btUser: process.env.BT_USER || 'bhf',
+  btPassword: process.env.BT_PASSWORD || null,
 };

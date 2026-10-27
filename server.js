@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -81,6 +81,16 @@ function isValidDisplayMode(m) {
   return ['stretch', 'centered', 'fill'].includes(m);
 }
 
+function getCuePlaybackOptions(cue, media) {
+  const settings = cue.settings || {};
+  return {
+    loop: settings.loop ?? false,
+    displayMode: settings.displayMode ?? 'fill',
+    isImage: media.type === 'image',
+    freeze: settings.freeze ?? false,
+  };
+}
+
 function clearDurationTimer() {
   if (durationTimer) {
     clearTimeout(durationTimer);
@@ -121,9 +131,9 @@ function playCue(index) {
   isTransitioning = true;
   broadcastState();
 
-  const { loop = false, displayMode = 'fill', duration = null } = cue.settings || {};
+  const duration = cue.settings?.duration ?? null;
 
-  mpv.loadFile(filePath, { loop, displayMode, isImage: media.type === 'image' })
+  mpv.loadFile(filePath, getCuePlaybackOptions(cue, media))
     .then(() => {
       state.updateState({ currentCueIndex: index });
       clearTransitionLock();
@@ -173,14 +183,13 @@ function handleFileEnded() {
   if (!media || media.type === 'image') return;
   const loop = cue.settings?.loop ?? false;
   if (loop) return;
+  const freeze = cue.settings?.freeze ?? false;
+  if (freeze) return;
   advance();
 }
 
 // mpv events
 mpv.on('file-ended', handleFileEnded);
-mpv.on('file-loaded', () => {
-  if (isTransitioning) clearTransitionLock();
-});
 mpv.onReconnect(() => {
   const s = state.getState();
   if (s.currentCueIndex >= 0 && s.currentCueIndex < s.playlist.length) {
@@ -333,6 +342,7 @@ app.post('/api/playlist', (req, res) => {
       loop: settings.loop ?? false,
       displayMode: settings.displayMode ?? 'fill',
       duration: settings.duration ?? null,
+      freeze: settings.freeze ?? false,
     },
   };
   state.updateState((s) => ({ ...s, playlist: [...s.playlist, cue] }));
@@ -366,7 +376,7 @@ app.post('/api/playlist/upload', (req, res) => {
     const cue = {
       id: cueId,
       mediaId: id,
-      settings: { loop: false, displayMode: 'fill', duration: null },
+      settings: { loop: false, displayMode: 'fill', duration: null, freeze: false },
     };
     state.updateState((s) => ({
       ...s,
@@ -400,10 +410,11 @@ app.put('/api/playlist/:cueId', (req, res) => {
   const s = state.getState();
   const idx = s.playlist.findIndex((c) => c.id === req.params.cueId);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  const { loop, displayMode, duration } = req.body;
+  const { loop, displayMode, duration, freeze } = req.body;
   const cue = { ...s.playlist[idx] };
   cue.settings = { ...cue.settings };
   if (loop !== undefined) cue.settings.loop = !!loop;
+  if (freeze !== undefined) cue.settings.freeze = !!freeze;
   if (displayMode !== undefined) {
     if (!isValidDisplayMode(displayMode)) return res.status(400).json({ error: 'Invalid displayMode' });
     cue.settings.displayMode = displayMode;
@@ -422,11 +433,7 @@ app.put('/api/playlist/:cueId', (req, res) => {
     if (media) {
       const filePath = path.resolve(config.uploadsDir, media.filename);
       if (fs.existsSync(filePath)) {
-        mpv.loadFile(filePath, {
-          loop: cue.settings.loop,
-          displayMode: cue.settings.displayMode,
-          isImage: media.type === 'image',
-        }).catch(console.error);
+        mpv.loadFile(filePath, getCuePlaybackOptions(cue, media)).catch(console.error);
       }
     }
   }
@@ -509,8 +516,53 @@ app.post('/api/stop', (req, res) => {
   res.status(204).send();
 });
 
+// Bluetooth pairing control (remote Pi)
+function sshCommand(cmd) {
+  return new Promise((resolve, reject) => {
+    if (!config.btHost) return reject(new Error('BT_HOST not configured'));
+    const args = ['-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=5'];
+    let bin = 'ssh';
+    const fullArgs = [];
+    if (config.btPassword) {
+      bin = 'sshpass';
+      fullArgs.push('-p', config.btPassword);
+      fullArgs.push('ssh', ...args);
+    } else {
+      fullArgs.push(...args);
+    }
+    fullArgs.push(`${config.btUser}@${config.btHost}`, cmd);
+    execFile(bin, fullArgs, { timeout: 10000 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(stderr || err.message));
+      resolve(stdout.trim());
+    });
+  });
+}
+
+app.get('/api/bluetooth/status', async (req, res) => {
+  if (!config.btHost) return res.json({ available: false });
+  try {
+    const out = await sshCommand('bluetoothctl show | grep Discoverable:');
+    const discoverable = out.includes('yes');
+    res.json({ available: true, discoverable });
+  } catch {
+    res.json({ available: false });
+  }
+});
+
+app.post('/api/bluetooth/pairing', async (req, res) => {
+  if (!config.btHost) return res.status(501).json({ error: 'BT_HOST not configured' });
+  const { enabled } = req.body;
+  const onOff = enabled ? 'on' : 'off';
+  try {
+    await sshCommand(`bluetoothctl discoverable ${onOff}`);
+    res.json({ discoverable: !!enabled });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const server = app.listen(config.port, () => {
-  console.log(`Screenview listening on port ${config.port}`);
+  console.log(`backdrop listening on port ${config.port}`);
 });
 
 wss = new WebSocketServer({ server, path: '/ws' });
