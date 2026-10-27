@@ -1,18 +1,20 @@
 [Unit]
 Description=backdrop Media Server
+# Wants (not Requires): restarting the server leaves mpv and the screen alone
 After=network.target screenview-mpv.service
+Wants=screenview-mpv.service
 
 [Service]
 Type=simple
 User=screenview
-WorkingDirectory=/opt/screenview
+WorkingDirectory=/opt/screenview/backdrop
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=3
 Environment=NODE_ENV=production
 Environment=MPV_SOCKET=/run/screenview/mpv.sock
-# Bluetooth Pi settings (BT_HOST, BT_USER, BT_PASSWORD) go in the gitignored .env
-EnvironmentFile=-/opt/screenview/.env
+# Bluetooth Pi settings (BT_HOST, BT_USER, BT_PASSWORD)
+EnvironmentFile=-/opt/screenview/backdrop/.env
 
 [Install]
 WantedBy=multi-user.target

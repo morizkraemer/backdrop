@@ -45,20 +45,20 @@ ssh root@192.168.178.18 "pct exec 102 -- bash -c 'cat >> /root/.ssh/authorized_k
 ## How the app runs
 
 The app was renamed from "Screenview" to "backdrop". System-level names
-(Linux user, `/opt/screenview`, PM2 process, socket paths, service files)
+(Linux user, `/opt/screenview`, socket paths, service names)
 intentionally still say `screenview`.
 
 - Code: `/opt/screenview/backdrop` (git checkout, owned by `screenview`, branch `main`)
-- Process: PM2 as user `screenview`, `PM2_HOME=/opt/screenview/.pm2`, app name `screenview`, running `npm run start:all:prod`
-- Boot: `pm2-screenview.service` (systemd) resurrects PM2. The `screenview*.service` units from SETUP.md are **not** used.
-- Secrets: `.env` in the repo dir (`BT_HOST`, `BT_USER`, `BT_PASSWORD` for the Bluetooth Pi)
+- Processes: two systemd services, both running as `screenview`:
+  - `screenview-mpv.service` drives the panel (mpv, IPC socket `/run/screenview/mpv.sock`, audio via PulseAudio)
+  - `screenview.service` is the Node server, which connects to that socket
+- Restarting `screenview.service` leaves mpv and the screen running; the
+  server reconnects and replays the current cue. Restart `screenview-mpv`
+  only when mpv itself is stuck.
+- Secrets: `.env` in the repo dir (`BT_HOST`, `BT_USER`, `BT_PASSWORD` for the Bluetooth Pi), loaded by `screenview.service`
+- `/etc/sudoers.d/screenview` (from `setup/sudoers-screenview`) lets `screenview` run `systemctl restart screenview.service`, which the deploy job needs.
 
-Run git and PM2 as `screenview`, not root. Root has its own empty PM2, and
-git refuses the repo as root ("dubious ownership").
-
-```bash
-alias svpm2='runuser -u screenview -- env PM2_HOME=/opt/screenview/.pm2 pm2'
-```
+Run git as `screenview`, not root: git refuses the repo as root ("dubious ownership").
 
 ## Deploying an update
 
@@ -68,8 +68,11 @@ Merging to `main` deploys automatically. The `CI` workflow
 container, which runs `scripts/deploy.sh`:
 
 - fast-forwards `/opt/screenview/backdrop` to `origin/main`
-- runs `npm ci` if `package.json` or `package-lock.json` changed
-- restarts the `screenview` PM2 app unless only `public/`, docs or `setup/` changed
+- runs `npm ci --omit=dev` if `package.json` or `package-lock.json` changed
+- restarts `screenview.service` unless only `public/`, docs or `setup/` changed
+
+Changes to the unit files in `setup/` are not applied automatically; copy
+them to `/etc/systemd/system/` and `systemctl daemon-reload` by hand.
 
 The container is only reachable on the LAN, so GitHub can't push to it. The
 runner instead polls GitHub over an outbound connection. To redeploy by hand,
@@ -97,8 +100,7 @@ runuser -u screenview -- ./config.sh --unattended \
 ./svc.sh start
 ```
 
-The runner service runs as `screenview`, so git and PM2 behave as in the
-commands below. Check it with `./svc.sh status` or under Settings → Actions → Runners.
+The runner service runs as `screenview`, so git behaves as described above. Check it with `./svc.sh status` or under Settings → Actions → Runners.
 
 Because the repo is public, keep **Settings → Actions → General → Fork pull
 request workflows** on "Require approval for all external contributors", so
@@ -107,6 +109,6 @@ nobody else's PR can run code on the runner without you approving it.
 ## Status & logs
 
 ```bash
-ssh root@192.168.178.75 'runuser -u screenview -- env PM2_HOME=/opt/screenview/.pm2 pm2 status'
-ssh root@192.168.178.75 'runuser -u screenview -- env PM2_HOME=/opt/screenview/.pm2 pm2 logs screenview --lines 100 --nostream'
+ssh root@192.168.178.75 'systemctl status screenview screenview-mpv'
+ssh root@192.168.178.75 'journalctl -u screenview -u screenview-mpv -n 100 --no-pager'
 ```

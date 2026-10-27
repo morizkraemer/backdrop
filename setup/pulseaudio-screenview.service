@@ -1,6 +1,6 @@
 [Unit]
 Description=PulseAudio for screenview (audio routing to Snapcast)
-Before=pm2-screenview.service
+Before=screenview-mpv.service
 
 [Service]
 Type=simple

@@ -60,37 +60,27 @@ chown -R screenview:screenview /opt/screenview
 
 ## 6. Deploy Application
 
-Copy the backdrop files to `/opt/screenview`:
-
-```
-/opt/screenview/
-  package.json
-  config.js
-  server.js
-  mpv-controller.js
-  state.js
-  public/
-  uploads/
-  setup/
-```
-
-Install dependencies:
+Clone the repo as `screenview` and install dependencies:
 
 ```bash
 cd /opt/screenview
-npm install --production
+runuser -u screenview -- git clone https://github.com/morizkraemer/backdrop.git
+cd backdrop
+runuser -u screenview -- npm ci --omit=dev
 ```
+
+Later updates deploy automatically from `main`; see [ACCESS.md](ACCESS.md).
 
 ## 7. systemd Services
 
-> The live install runs under PM2 instead of these units (see [ACCESS.md](ACCESS.md)). They are kept as an alternative.
+Set up audio (section 8) first: the mpv unit outputs to PulseAudio.
 
 ```bash
-cp /opt/screenview/setup/screenview-mpv.service /etc/systemd/system/
-cp /opt/screenview/setup/screenview.service /etc/systemd/system/
+cd /opt/screenview/backdrop
+cp setup/screenview-mpv.service setup/screenview.service /etc/systemd/system/
+install -m 0440 setup/sudoers-screenview /etc/sudoers.d/screenview   # needs: apt install sudo
 systemctl daemon-reload
-systemctl enable screenview-mpv screenview
-systemctl start screenview-mpv screenview
+systemctl enable --now screenview-mpv screenview
 ```
 
 ## 8. Audio (Snapcast to Raspberry Pi)
@@ -116,16 +106,8 @@ systemctl enable pulseaudio-screenview snapserver
 systemctl start pulseaudio-screenview snapserver
 ```
 
-PM2 must be started with PulseAudio env vars so mpv can connect:
-
-```bash
-export PULSE_SERVER=unix:/run/user/1000/pulse/native
-export XDG_RUNTIME_DIR=/run/user/1000
-pm2 delete screenview
-cd /opt/screenview/backdrop
-pm2 start npm --name screenview --update-env -- run start:all
-pm2 save
-```
+`screenview-mpv.service` sets `PULSE_SERVER` and `XDG_RUNTIME_DIR` so mpv
+reaches this PulseAudio instance (uid 1000 is `screenview`).
 
 ### On the Raspberry Pi:
 
@@ -150,18 +132,17 @@ systemctl start snapclient
 
 ## Dev Mode (macOS/Linux)
 
-For local development, the server spawns mpv automatically:
+For local development, let the server spawn mpv in a window:
 
 ```bash
-NODE_ENV=development node server.js
+npm run dev
 ```
-
-Or: `npm start` with `NODE_ENV=development`.
 
 Then open `http://localhost:3000/control`. mpv opens in a 1280×720 window.
 
-To run mpv separately (e.g. for debugging), set `SPAWN_MPV=0`:
+To run mpv yourself instead (e.g. for debugging), start it with an IPC socket and run the server without `SPAWN_MPV`:
 
 ```bash
-SPAWN_MPV=0 MPV_SOCKET=/tmp/screenview-mpv.sock NODE_ENV=development node server.js
+mpv --idle --force-window=yes --input-ipc-server=/tmp/screenview-mpv.sock &
+NODE_ENV=development npm start
 ```
