@@ -31,6 +31,16 @@ Shipped in `visuals/`, with 576×192 thumbnails in `visuals/thumbs/`.
 | Stars | A starfield flying towards the audience |
 | Chase | Blocks lighting up in turn: run, bounce, fill, random, alternate |
 | Black hole | A swirling accretion disk falling into the dark, with lensed stars; "Trippy" cycles the colours |
+| Lasers | Club-style laser beams fanning up from below and sweeping |
+| Kaleido | A kaleidoscope of drifting colour, with adjustable mirrors |
+| Aurora | Northern lights curtains rippling over a starry sky |
+| Synthwave | Retro striped sun over a scrolling neon grid |
+| Rain | Columns of falling glowing code |
+| Fire | Flames licking up from the bottom of the wall |
+| Lines | Stacked waveforms, like a sound-wave landscape |
+| Cells | Pulsing stained-glass (Voronoi) cells |
+| Glitch | Digital tearing, blocks and colour splits |
+| Hexagons | A honeycomb with waves of light running through it |
 
 ## Writing a visual
 
