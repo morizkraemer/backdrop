@@ -527,13 +527,22 @@ cueFileInput.addEventListener('change', () => {
   cueFileInput.value = '';
 });
 
+// Double-click plays the cue. Detected from click events because the first
+// click re-renders the list, so the browser never sees two clicks on the
+// same row element and never fires dblclick.
+const DOUBLE_CLICK_MS = 400;
+let lastCueClick = { id: null, at: 0 };
+
 cueList.addEventListener('click', (e) => {
   const row = e.target.closest('.cue-row');
-  if (row) selectCue(row.dataset.cueId);
-});
-cueList.addEventListener('dblclick', (e) => {
-  const row = e.target.closest('.cue-row');
-  if (row && !e.target.closest('button')) api('POST', `/go/${row.dataset.cueId}`);
+  if (!row) return;
+  const cueId = row.dataset.cueId;
+  const isDouble = !e.target.closest('button')
+    && lastCueClick.id === cueId
+    && e.timeStamp - lastCueClick.at < DOUBLE_CLICK_MS;
+  lastCueClick = isDouble ? { id: null, at: 0 } : { id: cueId, at: e.timeStamp };
+  selectCue(cueId);
+  if (isDouble) api('POST', `/go/${cueId}`);
 });
 
 let draggingCueId = null;
