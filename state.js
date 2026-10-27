@@ -11,7 +11,7 @@ const DEFAULT_STATE = {
   playlist: [],
   currentCueIndex: -1,
   playlistLoop: false,
-  dmxConfig: null, // { universe, channels: { brightness, go, back } }; null = .env defaults
+  dmxConfig: null, // { channels: { brightness, go, back } }; null = .env defaults
 };
 
 function load(statePath) {

@@ -1459,12 +1459,11 @@ hdmiSources.addEventListener('click', (e) => {
   if (b && !b.disabled) sendHdmiSource(Number(b.dataset.input));
 });
 
-// --- DMX control (Art-Net input; universe and channels are saved on the server) ---
+// --- DMX control (Art-Net input; channels are saved on the server) ---
 
 const dmxEl = $('dmx');
 const btnDmx = $('btnDmx');
 const dmxPopover = $('dmxPopover');
-const dmxUniverse = $('dmxUniverse');
 const dmxChannels = $('dmxChannels');
 const DMX_FUNCTIONS = [
   { key: 'brightness', name: 'Brightness', show: (v) => `${Math.round((v * 100) / 255)}%` },
@@ -1490,7 +1489,6 @@ function renderDmx() {
   btnDmx.title = on ? 'DMX: receiving' : 'DMX: no signal';
   $('dmxState').textContent = on ? 'Receiving' : 'No signal';
   $('dmxState').classList.toggle('on', on);
-  if (document.activeElement !== dmxUniverse) dmxUniverse.value = d.universe ?? 0;
   DMX_FUNCTIONS.forEach((fn) => {
     const row = dmxChannels.querySelector(`input[data-fn="${fn.key}"]`).closest('.dmx-ch');
     const input = row.querySelector('input');
@@ -1516,9 +1514,6 @@ function sendDmxConfig(patch) {
     .finally(renderDmx);
 }
 
-dmxUniverse.addEventListener('change', () => {
-  sendDmxConfig({ universe: Math.max(0, Math.round(Number(dmxUniverse.value) || 0)) });
-});
 dmxChannels.addEventListener('change', (e) => {
   const input = e.target.closest('input[data-fn]');
   if (!input) return;

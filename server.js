@@ -973,8 +973,8 @@ if (matrix) {
   }, 10000);
 }
 
-// DMX control over Art-Net (see setup/DMX.md). The universe and the channel of each
-// function are set in the UI (state.dmxConfig, defaults from .env):
+// DMX control over Art-Net (see setup/DMX.md). The universe comes from .env; the channel
+// of each function is set in the UI (state.dmxConfig, defaults from .env):
 // brightness = LED brightness (0-255 -> 0-100 %), go = next cue, back = previous cue.
 // GO and BACK fire once when their channel rises past half; brightness follows the
 // fader only when it moves, so the UI can still set it while the fader rests.
@@ -986,10 +986,9 @@ let dmxLast = null; // previous frame's values; null primes on the next frame
 let dmxUiTimer = null;
 
 function getDmxConfig() {
-  const saved = state.getState().dmxConfig;
-  if (saved) return saved;
   const a = config.dmxAddress;
-  return { universe: config.dmxUniverse ?? 0, channels: { brightness: a, go: a + 1, back: a + 2 } };
+  const channels = state.getState().dmxConfig?.channels ?? { brightness: a, go: a + 1, back: a + 2 };
+  return { universe: config.dmxUniverse ?? 0, channels };
 }
 
 function setDmx(patch) {
@@ -1034,14 +1033,10 @@ if (dmx.configured) {
   console.log(`DMX: Art-Net universe ${universe}, channels`, channels);
 }
 
-// Universe 0-32767, channels 1-512 or 0 (unused)
+// Channels 1-512, or 0 for unused
 app.put('/api/dmx', (req, res) => {
   if (!dmx.configured) return res.status(501).json({ error: 'DMX is disabled (DMX_UNIVERSE is empty)' });
   const cur = getDmxConfig();
-  const universe = req.body?.universe ?? cur.universe;
-  if (!Number.isInteger(universe) || universe < 0 || universe > 0x7fff) {
-    return res.status(400).json({ error: 'universe must be 0-32767' });
-  }
   const channels = { ...cur.channels };
   for (const fn of DMX_FUNCTIONS) {
     const ch = req.body?.channels?.[fn];
@@ -1051,7 +1046,7 @@ app.put('/api/dmx', (req, res) => {
     }
     channels[fn] = ch;
   }
-  state.updateState({ dmxConfig: { universe, channels } });
+  state.updateState({ dmxConfig: { channels } });
   dmxLast = null;
   dmx = { ...dmx, receiving: false, values: null };
   broadcastState();

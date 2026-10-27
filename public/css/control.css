@@ -327,8 +327,7 @@ svg {
   text-align: right;
 }
 
-.dmx-ch input,
-.dmx-universe input {
+.dmx-ch input {
   width: 100%;
   height: 30px;
   padding: 0 8px;
@@ -344,19 +343,6 @@ svg {
 .dmx-ch.unused .dmx-name,
 .dmx-ch.unused .dmx-val {
   color: var(--text-dim);
-}
-
-.dmx-universe {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-2);
-}
-
-.dmx-universe input {
-  width: 72px;
 }
 
 .dmx-state {

@@ -1,6 +1,6 @@
 # DMX control (Art-Net)
 
-backdrop listens for Art-Net on UDP port 6454. The universe and the channel of each function are set in the web UI (DMX pill in the header) and saved in state.json; a channel left empty is unused.
+backdrop listens for Art-Net on UDP port 6454. The channel of each function is set in the web UI (DMX pill in the header) and saved in state.json; a channel left empty is unused. The universe is set once in .env and must match the node's Universe IN.
 
 | Default channel | Function | Behaviour |
 |---|---|---|
@@ -12,7 +12,7 @@ The first packet after the server starts (or after the DMX settings change) only
 
 ## In the web UI
 
-- A **DMX** pill in the header shows a green dot while Art-Net arrives on the universe (grey after 3 s without packets). Clicking it opens the settings: the Art-Net universe and the channel for each function (saved as you leave a field), with each channel's live value.
+- A **DMX** pill in the header shows a green dot while Art-Net arrives on the universe (grey after 3 s without packets). Clicking it opens the channel for each function (saved as you leave a field), with each channel's live value.
 - **BACK** sits next to GO and does the same as the BACK channel (`POST /api/back`).
 - When DMX moves the brightness, the LED brightness pill follows it.
 
@@ -20,7 +20,7 @@ The first packet after the server starts (or after the DMX settings change) only
 
 | Variable | Default | |
 |---|---|---|
-| `DMX_UNIVERSE` | `0` | Default Art-Net universe until it is changed in the UI (15-bit port address: Net × 256 + Sub-Net × 16 + Universe). Empty disables DMX entirely. |
+| `DMX_UNIVERSE` | `0` | Art-Net universe, matching the node's Universe IN (15-bit port address: Net × 256 + Sub-Net × 16 + Universe). Empty disables DMX entirely. |
 | `DMX_ADDRESS` | `1` | Default first channel (brightness; GO and BACK follow) until changed in the UI. |
 
 ## Electroconcept "Node 2 Univers" (Art-Net / sACN)
