@@ -486,7 +486,8 @@ function renderLibrary() {
   const crumbs = [{ id: '', name: 'Library' }, ...folderPath(currentFolderId)];
   libraryCrumbs.innerHTML = q
     ? '<span class="crumb-note">Searching all folders</span>'
-    : crumbs.map((c, i) => (i === crumbs.length - 1
+    : `<button type="button" class="crumb crumb-back" data-folder-id="${crumbs.length > 1 ? crumbs[crumbs.length - 2].id : ''}" aria-label="Back" title="Back" ${crumbs.length > 1 ? '' : 'disabled'}>${ICONS.chevron}</button>`
+      + crumbs.map((c, i) => (i === crumbs.length - 1
       ? `<span class="crumb current" data-folder-id="${c.id}" aria-current="page">${escapeHtml(c.name)}</span>`
       : `<button type="button" class="crumb" data-folder-id="${c.id}">${escapeHtml(c.name)}</button>${ICONS.chevron}`)).join('');
 
@@ -1012,7 +1013,7 @@ function clearFolderDropMarks() {
 // Folder rows and breadcrumbs take dragged library rows
 function folderDropTarget(e) {
   if (!libDrag) return null;
-  const el = e.target.closest('.folder-item, .crumb');
+  const el = e.target.closest('.folder-item, .crumb:not(:disabled)');
   if (!el) return null;
   const folderId = el.dataset.folderId || null;
   if (libDrag.kind === 'folder' && (folderId === libDrag.id || isInside(folderId, libDrag.id))) return null;

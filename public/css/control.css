@@ -991,6 +991,27 @@ button.crumb:hover {
   color: var(--text);
 }
 
+.crumb-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin-right: 4px;
+  border-color: var(--border);
+}
+
+.crumb-back svg {
+  width: 14px;
+  height: 14px;
+  transform: scaleX(-1);
+}
+
+.crumb-back:disabled {
+  opacity: 0.35;
+}
+
 .crumb.current {
   color: var(--text);
   font-weight: 500;
