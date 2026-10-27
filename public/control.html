@@ -168,6 +168,18 @@
             </div>
           </div>
 
+          <div class="field" id="framingField" hidden>
+            <div class="field-row">
+              <span class="field-label" id="lblFraming">Position &amp; size</span>
+              <button type="button" class="btn-link" id="framingReset">Reset</button>
+            </div>
+            <label class="seconds-row">
+              Size
+              <span><input type="range" id="inspScale" min="10" max="200" step="1" aria-labelledby="lblFraming"><output class="framing-value" id="inspScaleValue"></output></span>
+            </label>
+            <span class="field-hint">Drag the picture above to move it. Live cues follow on the panel.</span>
+          </div>
+
           <div class="field">
             <span class="field-label" id="lblEnd">When it ends</span>
             <div class="segmented seg-2" role="radiogroup" aria-labelledby="lblEnd" id="segEnd"></div>

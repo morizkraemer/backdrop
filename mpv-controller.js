@@ -11,6 +11,16 @@ const DISPLAY_MODES = {
   fill: { keepaspect: true, panscan: 1 },
 };
 
+// Position and size of a centered clip, in mpv's own units: pan is a fraction
+// of the scaled video's size, zoom is log2 of the scale factor.
+function framingProps({ offsetX = 0, offsetY = 0, scale = 1 } = {}) {
+  return {
+    'video-pan-x': String(offsetX),
+    'video-pan-y': String(offsetY),
+    'video-zoom': String(Math.log2(scale)),
+  };
+}
+
 class MpvController extends EventEmitter {
   constructor(socketPath) {
     super();
@@ -205,6 +215,7 @@ class MpvController extends EventEmitter {
       loop = false,
       displayMode = 'fill',
       isImage = false,
+      framing,
     } = opts;
     const mode = DISPLAY_MODES[displayMode] || DISPLAY_MODES.fill;
 
@@ -218,6 +229,7 @@ class MpvController extends EventEmitter {
       'keep-open': isImage ? 'no' : 'yes',
       'keepaspect': mode.keepaspect ? 'yes' : 'no',
       'panscan': String(mode.panscan),
+      ...framingProps(framing),
     };
     if (isImage) options['image-display-duration'] = 'inf';
     const optionString = Object.entries(options).map(([k, v]) => `${k}=${v}`).join(',');
@@ -240,6 +252,13 @@ class MpvController extends EventEmitter {
   async restart() {
     await this._command('seek', [0, 'absolute', 'exact']);
     await this.setProperty('pause', false);
+  }
+
+  // Move/resize the picture on screen without reloading the file
+  async setFraming(framing) {
+    for (const [name, value] of Object.entries(framingProps(framing))) {
+      await this.setProperty(name, Number(value));
+    }
   }
 
   screenshotToFile(file) {

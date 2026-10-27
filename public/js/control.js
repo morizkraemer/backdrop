@@ -42,6 +42,8 @@ const inspector = $('inspector');
 const segDisplay = $('segDisplay');
 const segEnd = $('segEnd');
 const inspSeconds = $('inspSeconds');
+const inspScreen = $('inspScreen');
+const inspScale = $('inspScale');
 const uploadsEl = $('uploads');
 
 const ICONS = {
@@ -173,6 +175,45 @@ function renderHeader() {
   connText.textContent = wsConnected ? 'Connected' : 'Reconnecting…';
 }
 
+// --- framing: moving and resizing a centered clip on the panel ---
+// Offsets use mpv's video-pan units (a fraction of the scaled picture's size),
+// so a drag maps 1:1 to what mpv does on the panel.
+const PANEL_ASPECT = 3; // 2304x768
+const mediaAspects = new Map(); // media id -> width / height
+let dragFraming = null; // { cueId, offsetX, offsetY, scale } while dragging
+
+function rememberAspect(mediaId, w, h) {
+  if (w > 0 && h > 0) mediaAspects.set(mediaId, w / h);
+}
+
+function cueFraming(settings = {}) {
+  return { offsetX: settings.offsetX ?? 0, offsetY: settings.offsetY ?? 0, scale: settings.scale ?? 1 };
+}
+
+function liveFraming(cue) {
+  return dragFraming?.cueId === cue.id ? { ...cue.settings, ...dragFraming } : cue.settings;
+}
+
+// Size of the contained picture as a fraction of the 3:1 screen box
+function fitFraction(mediaId) {
+  const aspect = mediaAspects.get(mediaId);
+  if (!aspect) return null;
+  return { w: Math.min(1, aspect / PANEL_ASPECT), h: Math.min(1, PANEL_ASPECT / aspect) };
+}
+
+// Positions a contained <img>/<video> filling a .screen box the way mpv draws it
+function applyFraming(el, settings = {}, mediaId) {
+  const fit = fitFraction(mediaId);
+  if ((settings.displayMode ?? 'fill') !== 'centered' || !fit) {
+    el.style.transform = '';
+    return;
+  }
+  const { offsetX, offsetY, scale } = cueFraming(settings);
+  const tx = offsetX * fit.w * scale * 100;
+  const ty = offsetY * fit.h * scale * 100;
+  el.style.transform = `translate(${tx}%, ${ty}%) scale(${scale})`;
+}
+
 // The Live monitor plays the live video itself, muted and kept in step with
 // mpv's position, so the preview moves smoothly without streaming the panel.
 const PREVIEW_SYNC_MS = 2000;
@@ -215,7 +256,11 @@ function renderLivePreview(screen, cue, media) {
   video.loop = !!cue.settings?.loop;
   video.style.objectFit = PREVIEW_FIT[cue.settings?.displayMode ?? 'fill'];
   video.src = `/uploads/${encodeURIComponent(media.filename)}`;
-  video.addEventListener('loadedmetadata', () => syncPreview(video), { once: true });
+  video.addEventListener('loadedmetadata', () => {
+    rememberAspect(media.id, video.videoWidth, video.videoHeight);
+    applyFraming(video, cue.settings, media.id);
+    syncPreview(video);
+  }, { once: true });
   previewTimer = setInterval(() => syncPreview(video), PREVIEW_SYNC_MS);
 }
 
@@ -276,12 +321,32 @@ function renderMonitor(root, index, isNow) {
   root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : '';
   if (isNow && cue && media?.type === 'video') {
     renderLivePreview(screen, cue, media);
+    delete screen.dataset.shown;
+    screen.classList.toggle('letterbox', cue.settings?.displayMode !== 'fill');
+    const video = screen.querySelector('video');
+    if (video) applyFraming(video, liveFraming(cue), media.id);
   } else {
     if (isNow) {
       stopPreview();
       delete screen.dataset.preview;
     }
-    screen.innerHTML = cue ? thumbHtml(media) : '';
+    // Rebuild only when the picture changes, so dragging a live image doesn't flicker
+    const key = cue ? `${cue.id}:${thumbSrc(media)}` : '';
+    if (screen.dataset.shown !== key || !cue) {
+      screen.dataset.shown = key;
+      screen.innerHTML = cue ? thumbHtml(media) : '';
+    }
+    const img = isNow && media?.type === 'image' && screen.querySelector('img:not(.panel-shot)');
+    screen.classList.toggle('letterbox', !!img && cue.settings?.displayMode !== 'fill');
+    if (img) {
+      img.style.objectFit = PREVIEW_FIT[cue.settings?.displayMode ?? 'fill'];
+      const place = () => {
+        rememberAspect(media.id, img.naturalWidth, img.naturalHeight);
+        applyFraming(img, liveFraming(cue), media.id);
+      };
+      if (img.complete) place();
+      else img.addEventListener('load', place, { once: true });
+    }
   }
   if (isNow) updatePanelShot(screen, !!cue);
   if (isNow) {
@@ -385,6 +450,47 @@ function setSegment(seg, value) {
   seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === value)));
 }
 
+// The inspector screen shows the cue as the panel will; for centered cues it
+// is also the drag surface for moving the picture.
+function renderStage(cue, media) {
+  const screen = inspScreen;
+  const mode = cue.settings?.displayMode ?? 'fill';
+  const src = thumbSrc(media);
+  const key = `${media?.id}:${src}`;
+  if (screen.dataset.media !== key) {
+    screen.dataset.media = key;
+    screen.innerHTML = src
+      ? `<img src="${src}" alt="" draggable="false">`
+      : media?.type === 'video'
+        ? `<video muted playsinline preload="metadata" src="/uploads/${encodeURIComponent(media.filename)}#t=0.5"></video>`
+        : ICONS.play;
+    const el = screen.querySelector('img, video');
+    if (el) {
+      const onSize = () => {
+        rememberAspect(media.id, el.naturalWidth || el.videoWidth, el.naturalHeight || el.videoHeight);
+        renderInspector();
+        renderTransport();
+      };
+      el.addEventListener(el.tagName === 'IMG' ? 'load' : 'loadedmetadata', onSize, { once: true });
+      el.addEventListener('error', () => el.remove(), { once: true });
+    }
+  }
+  const el = screen.querySelector('img, video');
+  const centered = mode === 'centered';
+  screen.classList.toggle('stage', centered);
+  if (el) {
+    el.style.objectFit = PREVIEW_FIT[mode];
+    applyFraming(el, liveFraming(cue), media?.id);
+  }
+
+  $('framingField').hidden = !centered;
+  if (centered) {
+    const { scale } = cueFraming(liveFraming(cue));
+    if (document.activeElement !== inspScale) inspScale.value = Math.round(scale * 100);
+    $('inspScaleValue').textContent = `${Math.round(scale * 100)}%`;
+  }
+}
+
 function renderInspector() {
   const idx = state.playlist.findIndex((c) => c.id === selectedCueId);
   const cue = state.playlist[idx];
@@ -399,7 +505,7 @@ function renderInspector() {
   $('inspCue').textContent = `CUE Q${idx + 1}`;
   $('inspName').textContent = media?.originalName ?? '?';
   $('inspMeta').textContent = mediaMeta(media);
-  $('inspScreen').innerHTML = thumbHtml(media);
+  renderStage(cue, media);
   setSegment(segDisplay, st.displayMode ?? 'fill');
 
   const endOptions = isVideo
@@ -727,6 +833,96 @@ inspSeconds.addEventListener('change', () => {
   if (n > 0) updateCue({ duration: n });
   else render();
 });
+// Live framing while dragging: one request in flight at a time, always
+// sending the newest position, so the panel keeps up without a backlog.
+let framingInFlight = false;
+let framingQueued = false;
+
+function sendLiveFraming() {
+  if (!dragFraming) return;
+  if (framingInFlight) {
+    framingQueued = true;
+    return;
+  }
+  framingInFlight = true;
+  const { cueId, ...framing } = dragFraming;
+  api('POST', `/playlist/${cueId}/framing`, framing)
+    .catch(() => {})
+    .finally(() => {
+      framingInFlight = false;
+      if (framingQueued) {
+        framingQueued = false;
+        sendLiveFraming();
+      }
+    });
+}
+
+function setDragFraming(patch) {
+  const cue = state.playlist.find((c) => c.id === selectedCueId);
+  if (!cue) return;
+  dragFraming = { cueId: cue.id, ...cueFraming(cue.settings), ...(dragFraming?.cueId === cue.id ? dragFraming : {}), ...patch };
+  renderStage(cue, getMedia(cue.mediaId));
+  if (state.playlist[state.currentCueIndex]?.id === cue.id) renderTransport();
+  sendLiveFraming();
+}
+
+function commitFraming() {
+  if (!dragFraming) return;
+  const { cueId, ...framing } = dragFraming;
+  dragFraming = null;
+  if (cueId === selectedCueId) updateCue(framing);
+}
+
+const SNAP = 0.02; // snap to center when this close (fraction of the picture)
+let drag = null;
+
+inspScreen.addEventListener('pointerdown', (e) => {
+  const cue = state.playlist.find((c) => c.id === selectedCueId);
+  if (!cue || cue.settings?.displayMode !== 'centered') return;
+  const fit = fitFraction(cue.mediaId);
+  if (!fit) return;
+  e.preventDefault();
+  inspScreen.setPointerCapture(e.pointerId);
+  const rect = inspScreen.getBoundingClientRect();
+  const start = cueFraming(cue.settings);
+  drag = {
+    x: e.clientX,
+    y: e.clientY,
+    start,
+    // screen pixels per unit of offset
+    unitX: rect.width * fit.w * start.scale,
+    unitY: rect.height * fit.h * start.scale,
+  };
+  inspScreen.classList.add('dragging');
+});
+
+inspScreen.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  let offsetX = drag.start.offsetX + (e.clientX - drag.x) / drag.unitX;
+  let offsetY = drag.start.offsetY + (e.clientY - drag.y) / drag.unitY;
+  if (Math.abs(offsetX) < SNAP) offsetX = 0;
+  if (Math.abs(offsetY) < SNAP) offsetY = 0;
+  const clamp = (v) => Math.max(-2, Math.min(2, Math.round(v * 1000) / 1000));
+  setDragFraming({ offsetX: clamp(offsetX), offsetY: clamp(offsetY) });
+});
+
+function endDrag() {
+  if (!drag) return;
+  drag = null;
+  inspScreen.classList.remove('dragging');
+  commitFraming();
+}
+inspScreen.addEventListener('pointerup', endDrag);
+inspScreen.addEventListener('pointercancel', endDrag);
+inspScreen.addEventListener('dblclick', () => {
+  const cue = state.playlist.find((c) => c.id === selectedCueId);
+  if (cue?.settings?.displayMode === 'centered') updateCue({ offsetX: 0, offsetY: 0 });
+});
+
+inspScale.addEventListener('input', () => setDragFraming({ scale: Number(inspScale.value) / 100 }));
+inspScale.addEventListener('change', commitFraming);
+$('framingReset').addEventListener('click', () => updateCue({ offsetX: 0, offsetY: 0, scale: 1 }));
+
 $('inspPlay').addEventListener('click', () => {
   if (selectedCueId) api('POST', `/go/${selectedCueId}`);
 });
