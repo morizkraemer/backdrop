@@ -9,7 +9,7 @@ const { WebSocketServer } = require('ws');
 const config = require('./config');
 const { MpvController } = require('./mpv-controller');
 const { createStateManager } = require('./state');
-const { analyzeVideo, removeThumbnail } = require('./media-info');
+const { analyzeMedia, removeThumbnail } = require('./media-info');
 const { createMatrix } = require('./hdmi-matrix');
 
 const ALLOWED_EXT = [
@@ -62,14 +62,14 @@ function broadcastState() {
   }
 }
 
-// Adds thumbnail + duration to a video in the background, then pushes the update
+// Adds a small thumbnail (and a video's duration) in the background, then pushes the update
 function enrichMedia(item) {
-  if (item.type !== 'video') return Promise.resolve();
-  return analyzeVideo(config.uploadsDir, item).then(({ thumb, duration }) => {
+  return analyzeMedia(config.uploadsDir, item).then(({ thumb, duration }) => {
     if (!thumb && duration == null) return;
+    const patch = item.type === 'video' ? { thumb, duration } : { thumb };
     state.updateState((s) => ({
       ...s,
-      library: s.library.map((m) => (m.id === item.id ? { ...m, thumb, duration } : m)),
+      library: s.library.map((m) => (m.id === item.id ? { ...m, ...patch } : m)),
     }));
     broadcastState();
   });
@@ -259,10 +259,10 @@ mpv.onReconnect(() => {
 // Ensure uploads dir exists
 fs.mkdirSync(config.uploadsDir, { recursive: true });
 
-// Backfill thumbnails for videos uploaded before thumbnails existed, one at a time
+// Backfill thumbnails for media uploaded before thumbnails existed, one at a time
 (async () => {
   for (const item of state.getState().library) {
-    if (item.type === 'video' && !item.thumb) await enrichMedia(item);
+    if (!item.thumb) await enrichMedia(item);
   }
 })();
 
