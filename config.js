@@ -33,6 +33,8 @@ module.exports = {
     const [w, h] = (process.env.VISUAL_SIZE || '2304x768').split('x').map((n) => parseInt(n, 10));
     return w > 0 && h > 0 ? { width: w, height: h } : { width: 2304, height: 768 };
   })(),
+  // Saved slider values of the Visuals lab
+  visualsSettingsPath: process.env.VISUALS_SETTINGS || path.join(__dirname, 'visuals.json'),
   // DMX control over Art-Net (setup/DMX.md). Set DMX_UNIVERSE= (empty) to disable.
   // These are only the defaults; the universe and channels are set in the web UI.
   dmxUniverse: (process.env.DMX_UNIVERSE ?? '0') === '' ? null

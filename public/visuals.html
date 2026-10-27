@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visuals lab · backdrop</title>
+  <meta name="theme-color" content="#111214">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+  <link rel="stylesheet" href="css/control.css">
+  <link rel="stylesheet" href="css/visuals.css">
+</head>
+<body>
+  <div class="lab">
+    <header class="lab-header">
+      <div class="lab-title">
+        <a class="lab-back" href="/control" title="Back to backdrop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          backdrop
+        </a>
+        <h1>Visuals lab</h1>
+      </div>
+      <div class="lab-air">
+        <span class="lab-air-text" id="airText">Wall: cues</span>
+        <button type="button" class="lab-btn lab-btn-danger" id="btnStopWall" hidden>Stop visual</button>
+      </div>
+    </header>
+
+    <main class="lab-main">
+      <aside class="lab-list" aria-label="Visuals">
+        <div class="lab-list-head">
+          <span class="field-label">Visuals</span>
+          <button type="button" class="lab-btn" id="btnNew">New</button>
+        </div>
+        <div id="visualList"></div>
+      </aside>
+
+      <section class="lab-stage">
+        <div class="lab-preview">
+          <canvas id="preview" width="1152" height="384"></canvas>
+          <span class="lab-preview-tag" id="previewTag">Preview</span>
+          <pre class="lab-error" id="previewError" hidden></pre>
+        </div>
+        <div class="lab-actions">
+          <div class="lab-name">
+            <h2 id="visualName">—</h2>
+            <span class="lab-sub" id="visualSub"></span>
+          </div>
+          <button type="button" class="lab-btn lab-btn-live" id="btnPlay">Send to wall</button>
+        </div>
+
+        <div class="lab-panel">
+          <div class="field-row">
+            <span class="field-label">Sliders</span>
+            <span>
+              <button type="button" class="btn-link" id="btnReset">Reset</button>
+              <button type="button" class="btn-link" id="btnSaveValues">Save as default</button>
+            </span>
+          </div>
+          <div class="lab-params" id="params"></div>
+          <span class="field-hint" id="paramsHint">The preview runs in this browser. Sliders also move the wall while this visual is on it.</span>
+        </div>
+
+        <details class="lab-panel lab-code" id="codePanel">
+          <summary class="field-label">Shader code</summary>
+          <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+          <div class="lab-code-actions">
+            <button type="button" class="lab-btn" id="btnRun">Run preview</button>
+            <button type="button" class="lab-btn" id="btnSave">Save</button>
+            <button type="button" class="lab-btn" id="btnSaveCopy">Save as copy</button>
+            <button type="button" class="lab-btn lab-btn-danger" id="btnDelete">Delete</button>
+            <span class="lab-status" id="codeStatus"></span>
+          </div>
+          <span class="field-hint">Write <code>vec3 visual(vec2 uv, float t)</code> and one <code>//!PARAM</code> block per slider. See setup/VISUALS.md.</span>
+        </details>
+      </section>
+
+      <aside class="lab-dmx" aria-label="DMX fixture">
+        <div class="lab-panel">
+          <div class="field-row">
+            <span class="field-label">DMX fixture</span>
+            <span class="dmx-state" id="dmxState"></span>
+          </div>
+          <div class="dmx-channels" id="dmxChannels">
+            <div class="dmx-ch dmx-ch-head"><span>Channel</span><span>Function</span><span></span><span>Value</span></div>
+          </div>
+          <div class="led-status" id="dmxStatus"></div>
+          <span class="field-hint">Brightness, GO and BACK are set in backdrop. Each fixture channel takes over once its fader moves. Full map in setup/DMX.md.</span>
+        </div>
+      </aside>
+    </main>
+  </div>
+  <script src="js/visuals.js"></script>
+</body>
+</html>

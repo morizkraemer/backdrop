@@ -13,17 +13,14 @@ const { analyzeMedia, removeThumbnail } = require('./media-info');
 const { createMatrix } = require('./hdmi-matrix');
 const { listenArtNet } = require('./artnet');
 const { createRemoteUpload } = require('./remote-upload');
+const { createVisualsLab } = require('./visuals-lab');
 const visuals = require('./visuals');
 
 const ALLOWED_EXT = [
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
   'mp4', 'webm', 'mkv', 'avi', 'mov', 'm4v',
-  'glsl',
 ];
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
-const VISUAL_EXT = ['glsl'];
-// Built shaders for live visuals (visuals.js), next to the media so mpv can read them
-const VISUAL_CACHE = path.resolve(config.uploadsDir, '.visuals');
 const TRANSITION_TIMEOUT_MS = 2000;
 
 const app = express();
@@ -42,42 +39,25 @@ let hdmi = {
   sources: config.hdmiSources.map((name) => ({ name, signal: null })),
   current: null, // input number feeding config.hdmiOutput
 };
+// Live shader visuals, run from their own page (/visuals). Playing one takes
+// the screen from the cues; a cue taking it back calls lab.release().
+const lab = createVisualsLab({
+  config,
+  mpv,
+  takeScreen: () => {
+    clearDurationTimer();
+    if (state.getState().currentCueIndex !== -1) state.updateState({ currentCueIndex: -1 });
+  },
+  broadcast: () => broadcastState(),
+});
 // DMX functions in display order; each maps to one channel of the universe (0 = unused).
-// After the three show controls comes a 16-channel "fixture" for live visuals
-// (setup/DMX.md): visual select, dimmer, colour, speed, strobe, control, 8 strips.
-const DMX_SEGMENTS = Array.from({ length: visuals.SEGMENTS }, (_, i) => `seg${i + 1}`);
-const DMX_FIXTURE = ['visual', 'dimmer', 'red', 'green', 'blue', 'speed', 'strobe', 'control', ...DMX_SEGMENTS];
-const DMX_FUNCTIONS = ['brightness', 'go', 'back', ...DMX_FIXTURE];
+// After the show controls come the 16 channels of the visuals fixture.
+const DMX_FUNCTIONS = ['brightness', 'go', 'back', ...lab.DMX_FUNCTIONS];
 let dmx = {
   configured: config.dmxUniverse !== null,
   receiving: false,
-  values: null, // { brightness, go, ..., seg8 }: 0-255, null for unused functions
+  values: null, // { brightness, go, back, ...fixture }: 0-255, null for unused functions
 };
-// The visual on screen: what plays it (key: its cue id, or dmx:<media id> when
-// the DMX visual channel picked it), the slider values it shows (saved values
-// plus live moves from the UI or DMX) and its clock (visuals.clockAfterSpeedChange)
-let liveVisual = null;
-let dmxVisualId = null; // library id of the visual DMX put on screen, outside the cues
-// The DMX fixture's dimmer, colour, strobe and strips, laid over every visual
-let fx = { ...visuals.FX_NEUTRAL };
-
-function onAirKey() {
-  const s = state.getState();
-  const cue = s.playlist[s.currentCueIndex];
-  if (cue) return cue.id;
-  return dmxVisualId ? `dmx:${dmxVisualId}` : null;
-}
-
-// liveVisual while it is still the one on screen (stop leaves it behind)
-function currentVisual() {
-  return liveVisual && liveVisual.key === onAirKey() ? liveVisual : null;
-}
-
-function liveVisualInfo() {
-  const lv = currentVisual();
-  if (!lv) return null;
-  return { cueId: lv.key, mediaId: lv.mediaId, dmx: lv.key.startsWith('dmx:'), values: lv.values };
-}
 
 function getDiskFree() {
   try {
@@ -98,7 +78,7 @@ function broadcastState() {
     led,
     hdmi,
     dmx: { ...dmx, ...getDmxConfig() },
-    liveVisual: liveVisualInfo(),
+    visual: lab.status(),
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -107,70 +87,21 @@ function broadcastState() {
   }
 }
 
-function patchLibraryItem(id, patch) {
-  state.updateState((s) => ({
-    ...s,
-    library: s.library.map((m) => (m.id === id ? { ...m, ...patch } : m)),
-  }));
-  broadcastState();
-}
-
-// Adds a small thumbnail (and a video's duration) in the background, then pushes
-// the update. Visuals get their sliders read from the shader instead.
+// Adds a small thumbnail (and a video's duration) in the background, then pushes the update
 function enrichMedia(item) {
-  if (item.type === 'visual') {
-    try {
-      const v = visuals.readVisual(mediaPath(item));
-      patchLibraryItem(item.id, { params: visuals.publicParams(v.params), control: visuals.controlParam(v) });
-    } catch (e) {
-      console.warn(`Could not read visual ${item.originalName}:`, e.message);
-    }
-    return Promise.resolve();
-  }
   return analyzeMedia(config.uploadsDir, item).then(({ thumb, duration }) => {
     if (!thumb && duration == null) return;
-    patchLibraryItem(item.id, item.type === 'video' ? { thumb, duration } : { thumb });
+    const patch = item.type === 'video' ? { thumb, duration } : { thumb };
+    state.updateState((s) => ({
+      ...s,
+      library: s.library.map((m) => (m.id === item.id ? { ...m, ...patch } : m)),
+    }));
+    broadcastState();
   });
-}
-
-// Built-in visuals live in visuals/, everything else in uploads/
-function mediaPath(media) {
-  return media.builtin
-    ? path.join(visuals.BUILTIN_DIR, media.filename)
-    : path.resolve(config.uploadsDir, media.filename);
-}
-
-// Puts the built-in visuals into the library (in a "Visuals" folder on first
-// run) and keeps their sliders in step with the shader files. Deleted ones
-// come back on the next start.
-function seedBuiltinVisuals() {
-  const builtins = visuals.listBuiltins();
-  if (!builtins.length) return;
-  const s = state.getState();
-  let folder = s.folders.find((f) => !f.parentId && f.name === 'Visuals');
-  const folders = folder ? s.folders : [...s.folders, folder = { id: 'f-visuals', name: 'Visuals', parentId: null }];
-  const ids = new Set(builtins.map((b) => `vis-${path.basename(b.file, '.glsl')}`));
-  const library = s.library.filter((m) => !m.builtin || ids.has(m.id) || s.playlist.some((c) => c.mediaId === m.id));
-  for (const b of builtins) {
-    const id = `vis-${path.basename(b.file, '.glsl')}`;
-    const fields = {
-      filename: b.file,
-      type: 'visual',
-      builtin: true,
-      params: b.params,
-      control: b.control,
-      thumbUrl: `/visuals/thumbs/${path.basename(b.file, '.glsl')}.jpg`,
-    };
-    const i = library.findIndex((m) => m.id === id);
-    if (i >= 0) library[i] = { ...library[i], ...fields };
-    else library.push({ id, originalName: b.name, size: 0, addedAt: new Date(0).toISOString(), folderId: folder.id, ...fields });
-  }
-  state.updateState({ folders, library });
 }
 
 function getMediaType(filename) {
   const ext = path.extname(filename).slice(1).toLowerCase();
-  if (VISUAL_EXT.includes(ext)) return 'visual';
   return IMAGE_EXT.includes(ext) ? 'image' : 'video';
 }
 
@@ -223,21 +154,6 @@ function getCueFraming(settings = {}) {
   };
 }
 
-// Validates a visual's slider values ({ name: number }); returns { params } or { error }.
-// Ranges are clamped when the visual plays.
-function parseParams(body) {
-  if (body === undefined) return {};
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'params must be an object' };
-  const params = {};
-  for (const [k, v] of Object.entries(body)) {
-    if (!/^\w{1,64}$/.test(k) || k.startsWith('clock_')) return { error: `Invalid param ${k}` };
-    const n = Number(v);
-    if (!Number.isFinite(n)) return { error: `Invalid value for ${k}` };
-    params[k] = n;
-  }
-  return { params };
-}
-
 // Validates offsetX/offsetY/scale in body; returns { framing } or { error }
 function parseFraming(body) {
   const framing = {};
@@ -258,100 +174,12 @@ function parseFraming(body) {
 function getCuePlaybackOptions(cue, media) {
   const settings = cue.settings || {};
   return {
-    loop: media.type === 'visual' || (settings.loop ?? false),
+    loop: settings.loop ?? false,
     displayMode: settings.displayMode ?? 'fill',
     isImage: media.type === 'image',
     freeze: settings.freeze ?? false,
     framing: getCueFraming(settings),
   };
-}
-
-// Starts a visual: a tiny generated source plus its shader, clock from zero
-function loadVisual(key, media, saved, opts) {
-  const shaderPath = visuals.writeShader(mediaPath(media), VISUAL_CACHE, media.id, config.visualSize);
-  const values = visuals.paramValues(media.params, saved);
-  const clock = { clock_t0: 0, clock_ta: 0 };
-  liveVisual = { key, mediaId: media.id, values, clock };
-  return mpv.loadFile(visuals.SOURCE, { ...opts, shader: { path: shaderPath, opts: visuals.shaderOpts(values, clock, fx) } });
-}
-
-// Loads a cue's media into mpv
-async function loadCue(cue, media) {
-  dmxVisualId = null;
-  const opts = getCuePlaybackOptions(cue, media);
-  if (media.type === 'visual') return loadVisual(cue.id, media, cue.settings?.params, opts);
-  liveVisual = null;
-  return mpv.loadFile(mediaPath(media), opts);
-}
-
-// The DMX visual channel plays a visual straight away, outside the cue list
-async function playDmxVisual(media) {
-  if (isTransitioning || !fs.existsSync(mediaPath(media))) return;
-  clearDurationTimer();
-  dmxVisualId = media.id;
-  state.updateState({ currentCueIndex: -1 });
-  try {
-    await loadVisual(`dmx:${media.id}`, media, {}, { loop: true, displayMode: 'fill' });
-  } catch (err) {
-    console.warn('DMX visual:', err.message);
-    dmxVisualId = null;
-  }
-  broadcastState();
-}
-
-// Moves sliders of the visual on screen without reloading it (nothing is saved).
-// Calls run one after another so a burst of DMX frames can't interleave.
-let visualQueue = Promise.resolve();
-let visualUiTimer = null;
-
-// Clients see slider moves (e.g. from DMX) at most every 200 ms
-function scheduleVisualBroadcast() {
-  if (visualUiTimer) return;
-  visualUiTimer = setTimeout(() => {
-    visualUiTimer = null;
-    broadcastState();
-  }, 200);
-}
-
-// key is the on-air key (a cue id or dmx:<id>); null means whatever is on air.
-// No patch just pushes the DMX fixture state (fx). While one update is running,
-// later ones merge into a single follow-up, so DMX at 40 frames a second never
-// queues up behind mpv.
-let visualNext = null; // { key, patch, promise, resolve } waiting for its turn
-
-function setLiveVisualParams(key, patch = {}) {
-  if (visualNext && visualNext.key === key) {
-    Object.assign(visualNext.patch, patch);
-    return visualNext.promise;
-  }
-  const job = { key, patch: { ...patch } };
-  job.promise = new Promise((resolve) => { job.resolve = resolve; });
-  visualNext = job;
-  visualQueue = visualQueue.then(async () => {
-    if (visualNext === job) visualNext = null;
-    job.resolve(await applyLiveVisual(job.key, job.patch));
-  });
-  return job.promise;
-}
-
-async function applyLiveVisual(key, patch) {
-  try {
-    const lv = currentVisual();
-    if (!lv || (key && lv.key !== key)) return false;
-    const media = state.getState().library.find((m) => m.id === lv.mediaId);
-    const values = visuals.paramValues(media?.params, { ...lv.values, ...patch });
-    if ('speed' in values && values.speed !== lv.values.speed) {
-      const now = await mpv.getProperty('time-pos').catch(() => null);
-      if (typeof now === 'number') lv.clock = visuals.clockAfterSpeedChange(lv.clock, lv.values.speed, now);
-    }
-    lv.values = values;
-    await mpv.setShaderOpts(visuals.shaderOpts(values, lv.clock, fx));
-    if (Object.keys(patch).length) scheduleVisualBroadcast();
-    return true;
-  } catch (err) {
-    console.warn('Visual params:', err.message);
-    return false;
-  }
 }
 
 function clearDurationTimer() {
@@ -369,6 +197,7 @@ function clearTransitionLock() {
 function playCue(index) {
   if (isTransitioning) return;
   clearDurationTimer();
+  lab.release();
 
   const s = state.getState();
   const cue = s.playlist[index];
@@ -385,7 +214,8 @@ function playCue(index) {
     return;
   }
 
-  if (!fs.existsSync(mediaPath(media))) {
+  const filePath = path.resolve(config.uploadsDir, media.filename);
+  if (!fs.existsSync(filePath)) {
     advance();
     return;
   }
@@ -395,15 +225,14 @@ function playCue(index) {
 
   const duration = cue.settings?.duration ?? null;
 
-  loadCue(cue, media)
+  mpv.loadFile(filePath, getCuePlaybackOptions(cue, media))
     .then(() => {
       state.updateState({ currentCueIndex: index });
       clearTransitionLock();
 
-      // Stills and visuals never end by themselves: advance after their duration
-      const holds = media.type !== 'video';
+      const isImage = media.type === 'image';
       const sec = duration != null && duration > 0 ? Number(duration) : null;
-      if (holds && sec) {
+      if (isImage && sec) {
         durationTimer = setTimeout(advance, sec * 1000);
       }
     })
@@ -460,7 +289,7 @@ function handleFileEnded() {
   const cue = s.playlist[s.currentCueIndex];
   if (!cue) return;
   const media = s.library.find((m) => m.id === cue.mediaId);
-  if (!media || media.type !== 'video') return;
+  if (!media || media.type === 'image') return;
   const loop = cue.settings?.loop ?? false;
   if (loop) return;
   const freeze = cue.settings?.freeze ?? false;
@@ -480,12 +309,23 @@ mpv.onReconnect(() => {
 // Ensure uploads dir exists
 fs.mkdirSync(config.uploadsDir, { recursive: true });
 
-seedBuiltinVisuals();
+// Visuals used to live in the library and cue list (an earlier test build);
+// they're in the Visuals lab now, so drop those entries
+{
+  const s = state.getState();
+  if (s.library.some((m) => m.type === 'visual')) {
+    const gone = new Set(s.library.filter((m) => m.type === 'visual').map((m) => m.id));
+    const playlist = s.playlist.filter((c) => !gone.has(c.mediaId));
+    const library = s.library.filter((m) => !gone.has(m.id));
+    const folders = s.folders.filter((f) => f.id !== 'f-visuals' || library.some((m) => m.folderId === f.id));
+    state.updateState({ library, playlist, folders, currentCueIndex: -1 });
+  }
+}
 
 // Backfill thumbnails for media uploaded before thumbnails existed, one at a time
 (async () => {
   for (const item of state.getState().library) {
-    if (!item.thumb && !item.builtin) await enrichMedia(item);
+    if (!item.thumb) await enrichMedia(item);
   }
 })();
 
@@ -523,6 +363,8 @@ if (remoteUpload) app.use('/api/remote-upload', remoteUpload.controlRouter);
 else app.get('/api/remote-upload', (req, res) => res.json({ disabled: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/visuals/thumbs', express.static(path.join(visuals.BUILTIN_DIR, 'thumbs')));
+app.use('/api/visuals', lab.router);
+app.get('/visuals', (req, res) => res.sendFile(path.join(__dirname, 'public', 'visuals.html')));
 app.get(/^\/uploads\/.+/, (req, res) => {
   const requested = req.path.replace(/^\/uploads\/?/, '') || '';
   const filePath = path.join(config.uploadsDir, requested);
@@ -584,7 +426,7 @@ function removeMedia(ids, extra = {}) {
   const s = state.getState();
   const gone = new Set(ids);
   for (const item of s.library) {
-    if (!gone.has(item.id) || item.builtin) continue;
+    if (!gone.has(item.id)) continue;
     const filePath = path.join(config.uploadsDir, item.filename);
     try {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
@@ -743,7 +585,8 @@ let screenshot = { at: 0, pending: null };
 function takeScreenshot() {
   if (Date.now() - screenshot.at < SCREENSHOT_MAX_AGE_MS) return Promise.resolve(true);
   if (!screenshot.pending) {
-    screenshot.pending = mpv.screenshotToFile(SCREENSHOT_PATH, currentVisual() ? 'window' : 'video')
+    // A visual's source is 16x16, so its 'video' shot would be too: take the output
+    screenshot.pending = mpv.screenshotToFile(SCREENSHOT_PATH, lab.isOnAir() ? 'window' : 'video')
       .then(() => { screenshot.at = Date.now(); return true; })
       .catch(() => false)
       .finally(() => { screenshot.pending = null; });
@@ -851,12 +694,9 @@ app.put('/api/playlist/:cueId', (req, res) => {
   const { loop, displayMode, duration, freeze } = req.body;
   const { framing, error } = parseFraming(req.body);
   if (error) return res.status(400).json({ error });
-  const { params, error: paramsError } = parseParams(req.body.params);
-  if (paramsError) return res.status(400).json({ error: paramsError });
   const cue = { ...s.playlist[idx] };
   const before = cue.settings || {};
   cue.settings = { ...before, ...framing };
-  if (params) cue.settings.params = { ...before.params, ...params };
   if (loop !== undefined) cue.settings.loop = !!loop;
   if (freeze !== undefined) cue.settings.freeze = !!freeze;
   if (displayMode !== undefined) {
@@ -877,10 +717,14 @@ app.put('/api/playlist/:cueId', (req, res) => {
     .some((k) => (cue.settings[k] ?? null) !== (before[k] ?? null));
   if (idx === s.currentCueIndex && !needsReload) {
     mpv.setFraming(getCueFraming(cue.settings)).catch(console.error);
-    if (params) setLiveVisualParams(cue.id, params);
   } else if (idx === s.currentCueIndex) {
     const media = s.library.find((m) => m.id === cue.mediaId);
-    if (media && fs.existsSync(mediaPath(media))) loadCue(cue, media).catch(console.error);
+    if (media) {
+      const filePath = path.resolve(config.uploadsDir, media.filename);
+      if (fs.existsSync(filePath)) {
+        mpv.loadFile(filePath, getCuePlaybackOptions(cue, media)).catch(console.error);
+      }
+    }
   }
   broadcastState();
   res.json(cue);
@@ -899,15 +743,6 @@ app.post('/api/playlist/:cueId/framing', (req, res) => {
   mpv.setFraming(getCueFraming({ ...cue.settings, ...framing }))
     .then(() => res.json({ live: true }))
     .catch((err) => res.status(502).json({ error: err.message }));
-});
-
-// Live preview while moving a visual's slider: changes the panel without
-// saving. The final value is saved with PUT /api/playlist/:cueId.
-app.post('/api/playlist/:cueId/params', async (req, res) => {
-  if (!isValidId(req.params.cueId)) return res.status(400).json({ error: 'Invalid cue ID' });
-  const { params, error } = parseParams(req.body.params);
-  if (error || !params) return res.status(400).json({ error: error || 'params required' });
-  res.json({ live: await setLiveVisualParams(req.params.cueId, params) });
 });
 
 app.delete('/api/playlist/:cueId', (req, res) => {
@@ -957,6 +792,7 @@ function goNext() {
     if (s.playlistLoop && s.playlist.length > 0) {
       playCue(0);
     } else {
+      lab.release();
       mpv.stop();
       clearDurationTimer();
       state.updateState({ currentCueIndex: -1 });
@@ -1000,7 +836,7 @@ app.post('/api/go/:cueId', (req, res) => {
 });
 
 app.post('/api/stop', (req, res) => {
-  dmxVisualId = null;
+  lab.release();
   mpv.stop();
   clearDurationTimer();
   state.updateState({ currentCueIndex: -1 });
@@ -1212,19 +1048,15 @@ if (matrix) {
 // DMX control over Art-Net (see setup/DMX.md). The universe comes from .env; the channel
 // of each function is set in the UI (state.dmxConfig, defaults from .env):
 // brightness = LED brightness (0-255 -> 0-100 %), go = next cue, back = previous cue,
-// then the visuals fixture (applyDmxFixture).
-// GO and BACK fire once when their channel rises past half. Everything else follows
-// its fader only once it has moved, so the UI keeps control while the faders rest.
+// then the visuals fixture (visuals-lab.js applyDmx).
+// GO and BACK fire once when their channel rises past half; brightness follows the
+// fader only when it moves, so the UI can still set it while the fader rests.
 const DMX_ON = 128;
 const DMX_TIMEOUT_MS = 3000; // Art-Net senders repeat at least every 4 s, nodes usually ~40x/s
 const DMX_UI_MS = 200; // the UI follows the channels at most this often
-const DMX_SLOT = 10; // visual select: 10-19 = first visual, 20-29 = second, ...
-const DMX_MASK_HOLD_MS = 2000; // strips all at 0 this long = whole wall again
 let dmxLastPacket = 0;
 let dmxLast = null; // previous frame's values; null primes on the next frame
 let dmxUiTimer = null;
-let dmxEngaged = new Set(); // functions whose fader moved since the last prime
-let dmxMaskDarkSince = null;
 
 function getDmxConfig() {
   const a = config.dmxAddress;
@@ -1232,20 +1064,7 @@ function getDmxConfig() {
   const channels = {};
   // Unsaved functions default to consecutive channels from DMX_ADDRESS
   DMX_FUNCTIONS.forEach((fn, i) => { channels[fn] = saved[fn] ?? Math.min(512, a + i); });
-  return { universe: config.dmxUniverse ?? 0, channels, visuals: dmxVisualSlots() };
-}
-
-// The visuals the select channel can pick, in slot order: built-ins by file
-// name, then uploads oldest first
-function dmxVisualList() {
-  const all = state.getState().library.filter((m) => m.type === 'visual');
-  const builtins = all.filter((m) => m.builtin).sort((x, y) => x.filename.localeCompare(y.filename));
-  const uploads = all.filter((m) => !m.builtin).sort((x, y) => String(x.addedAt).localeCompare(String(y.addedAt)));
-  return [...builtins, ...uploads].slice(0, Math.floor(256 / DMX_SLOT) - 1);
-}
-
-function dmxVisualSlots() {
-  return dmxVisualList().map((m, i) => ({ value: (i + 1) * DMX_SLOT, name: m.originalName }));
+  return { universe: config.dmxUniverse ?? 0, channels, visuals: lab.slots() };
 }
 
 function setDmx(patch) {
@@ -1255,14 +1074,6 @@ function setDmx(patch) {
     dmxUiTimer = null;
     broadcastState();
   }, DMX_UI_MS);
-}
-
-// Back to neutral: nothing engaged, the fixture lets visuals show as they are
-function resetDmxFixture() {
-  dmxEngaged = new Set();
-  dmxMaskDarkSince = null;
-  fx = { ...visuals.FX_NEUTRAL };
-  setLiveVisualParams(null);
 }
 
 function handleDmxFrame(universe, data) {
@@ -1284,62 +1095,7 @@ function handleDmxFrame(universe, data) {
   }
   if (values.go >= DMX_ON && !(prev.go >= DMX_ON)) goNext();
   if (values.back >= DMX_ON && !(prev.back >= DMX_ON)) goBack();
-  applyDmxFixture(values, prev);
-}
-
-// The visuals fixture: select plays a visual; dimmer, colour, strobe and the
-// 8 strips are laid over whatever visual is on screen; speed and control move
-// that visual's sliders. Nothing here touches clips or stills.
-function applyDmxFixture(values, prev) {
-  for (const fn of DMX_FIXTURE) {
-    if (values[fn] !== null && values[fn] !== prev[fn]) dmxEngaged.add(fn);
-  }
-  const on = (fn) => dmxEngaged.has(fn) && values[fn] !== null;
-  const level = (fn) => values[fn] / 255;
-
-  if (on('visual') && values.visual !== prev.visual) {
-    const media = dmxVisualList()[Math.floor(values.visual / DMX_SLOT) - 1];
-    const slotChanged = Math.floor(values.visual / DMX_SLOT) !== Math.floor((prev.visual ?? 0) / DMX_SLOT);
-    if (media && slotChanged && currentVisual()?.mediaId !== media.id) playDmxVisual(media);
-  }
-
-  const next = { ...visuals.FX_NEUTRAL };
-  if (on('dimmer')) next.fx_dimmer = level('dimmer');
-  if (on('red') || on('green') || on('blue')) {
-    next.fx_tint = 1;
-    next.fx_r = (values.red ?? 0) / 255;
-    next.fx_g = (values.green ?? 0) / 255;
-    next.fx_b = (values.blue ?? 0) / 255;
-  }
-  // 0-9 open, then 1-20 flashes per second
-  if (on('strobe') && values.strobe >= 10) next.fx_strobe = Math.round((1 + ((values.strobe - 10) * 19) / 245) * 10) / 10;
-  // The strips mask the wall once one is up, and let go only after all have sat
-  // at 0 for a while, so a chase passing through dark doesn't flash the whole wall
-  const segs = DMX_SEGMENTS.filter(on);
-  if (segs.length) {
-    const lit = segs.some((fn) => values[fn] > 0);
-    if (lit) dmxMaskDarkSince = null;
-    else dmxMaskDarkSince ??= Date.now();
-    const masking = lit || (fx.fx_mask && Date.now() - dmxMaskDarkSince < DMX_MASK_HOLD_MS);
-    if (masking) {
-      next.fx_mask = 1;
-      DMX_SEGMENTS.forEach((fn, i) => { next[`fx_s${i}`] = on(fn) ? level(fn) : 0; });
-    }
-  }
-
-  const patch = {};
-  const lv = currentVisual();
-  const media = lv && state.getState().library.find((m) => m.id === lv.mediaId);
-  const param = (name) => media?.params?.find((p) => p.name === name);
-  const scaled = (p, fn) => p.min + (p.max - p.min) * level(fn);
-  if (on('speed') && values.speed !== prev.speed && param('speed')) patch.speed = scaled(param('speed'), 'speed');
-  if (on('control') && values.control !== prev.control && media?.control && param(media.control)) {
-    patch[media.control] = scaled(param(media.control), 'control');
-  }
-
-  const fxChanged = Object.keys(next).some((k) => next[k] !== fx[k]);
-  fx = next;
-  if (lv && (fxChanged || Object.keys(patch).length)) setLiveVisualParams(lv.key, patch);
+  lab.applyDmx(values, prev);
 }
 
 if (dmx.configured) {
@@ -1351,7 +1107,7 @@ if (dmx.configured) {
     if (dmx.receiving && Date.now() - dmxLastPacket > DMX_TIMEOUT_MS) {
       setDmx({ receiving: false, values: null });
       dmxLast = null;
-      resetDmxFixture();
+      lab.resetDmx();
     }
   }, 1000);
   const { universe, channels } = getDmxConfig();
@@ -1373,7 +1129,7 @@ app.put('/api/dmx', (req, res) => {
   }
   state.updateState({ dmxConfig: { channels } });
   dmxLast = null;
-  resetDmxFixture();
+  lab.resetDmx();
   dmx = { ...dmx, receiving: false, values: null };
   broadcastState();
   res.json(getDmxConfig());
@@ -1400,7 +1156,7 @@ wss.on('connection', (ws) => {
     led,
     hdmi,
     dmx: { ...dmx, ...getDmxConfig() },
-    liveVisual: liveVisualInfo(),
+    visual: lab.status(),
   }));
   pollLed();
   pollHdmi();
@@ -1439,7 +1195,7 @@ function spawnMpvProcess() {
       args.push('--vo=null', '--no-terminal', '--really-quiet');
     }
   } else {
-    args.push('--vo=gpu-next', '--gpu-context=drm', '--hwdec=vaapi', '--fs', '--no-terminal', '--really-quiet');
+    args.push('--vo=drm', '--hwdec=vaapi', '--fs', '--no-terminal', '--really-quiet');
   }
   console.log('Spawning mpv, socket:', config.mpvSocket);
   mpvProcess = spawn(mpvBin, args, { stdio: ['ignore', 'ignore', 'pipe'] });

@@ -1,12 +1,20 @@
 # Live visuals
 
-Generative visuals for the LED wall, rendered by mpv itself on the box's Intel GPU. A visual is a GLSL shader: it sits in the library like any clip, plays as a cue (GO, BACK, auto-advance, loop list all work), and has sliders that change it live from the cue settings. A 16-channel DMX fixture (setup/DMX.md) picks visuals and adds dimmer, colour, strobe, speed and 8 strips for desk chases.
+Generative visuals for the LED wall, rendered by mpv itself on the box's Intel GPU. A visual is a GLSL shader with sliders. They live in the **Visuals lab** (`/visuals`, linked as "Visuals" in backdrop's header), apart from the cue list, so backdrop stays simple for everyday shows. A 16-channel DMX fixture (setup/DMX.md) picks visuals and adds dimmer, colour, strobe, speed and 8 strips for desk chases.
+
+## The Visuals lab
+
+- **Preview**: the selected visual runs in the browser (WebGL2) with the same code, so you can try sliders and edits without touching the wall.
+- **Send to wall** plays it on the LED wall. While it's on the wall, the sliders move it live. A cue (GO, BACK, a double-click in backdrop) or **Stop visual** takes the wall back.
+- **Save as default** stores the sliders as the values DMX and Send to wall start with (`visuals.json`, `VISUALS_SETTINGS`).
+- **Shader code**: edit and **Run preview** (Ctrl/Cmd+Enter); compile errors show over the preview with line numbers of the file. Built-ins are read-only: **Save as copy** makes your own, stored in `uploads/visuals/`. **New** starts from a template.
+- **DMX fixture**: channel of each fixture function and live fader values. The select value of each visual is shown in the list (DMX 10, 20, ...).
 
 There is no second display process: mpv plays a tiny generated source and the shader draws the picture at the panel's size (`VISUAL_SIZE`, default `2304x768`), which then goes through the same Fill/Centered/Stretch handling as a 2304×768 clip.
 
 ## Built-in visuals
 
-Shipped in `visuals/` and added to a **Visuals** folder in the library on start. Thumbnails are in `visuals/thumbs/`. Deleting one from the library only lasts until the next restart.
+Shipped in `visuals/`, with 576×192 thumbnails in `visuals/thumbs/`.
 
 | Visual | What it is |
 |---|---|
@@ -22,7 +30,7 @@ Shipped in `visuals/` and added to a **Visuals** folder in the library on start.
 
 ## Writing a visual
 
-Upload a `.glsl` file like any other media (or add it to `visuals/` with a 576×192 thumbnail). The file holds:
+Use **New** or **Save as copy** in the lab (or add a file to `visuals/` with a 576×192 thumbnail). The file holds:
 
 1. A first comment line with the name: `// Plasma: soft colour clouds`. Optionally a `// control: <param>` line naming the slider the DMX control channel moves (otherwise the first one that isn't speed or colour).
 2. One libplacebo `//!PARAM` block per slider. Use `DYNAMIC float` so moving the slider doesn't recompile the shader. `DESC` is the slider's label, `MINIMUM`/`MAXIMUM` its range, and the line after the block its default.
@@ -58,9 +66,9 @@ Shadertoy code ports easily: `fragCoord / iResolution.xy` becomes `uv` (with y f
 
 ## How it works
 
-mpv user shaders get no playback time, so the source is `lavfi nullsrc` at 16×16 and 60 fps whose pixel colour encodes its own frame number; the wrapper reads it back as seconds. `visuals.js` turns a visual file into a full mpv shader (the params, a hidden clock, a `MAIN` hook at panel size and the helpers) in `uploads/.visuals/`, and the cue loads it with per-file `glsl-shaders` / `glsl-shader-opts` options so the next clip plays without it. Slider moves set `glsl-shader-opts` on the running file. The DMX fixture's dimmer, colour, strobe and strips are hidden `fx_*` params of the same wrapper, applied after `visual()`.
+mpv user shaders get no playback time, so the source is `lavfi nullsrc` at 16×16 and 60 fps whose pixel colour encodes its own frame number; the wrapper reads it back as seconds. `visuals.js` turns a visual file into a full mpv shader (the params, a hidden clock, a `MAIN` hook at panel size and the helpers) in `uploads/.visuals/`, and plays it with per-file `glsl-shaders` / `glsl-shader-opts` options so the next clip plays without it. `visuals-lab.js` holds the lab's API (`/api/visuals`), the on-air state and the DMX fixture; the lab preview uses `buildPreview`, the same code as a WebGL2 fragment shader. Slider moves set `glsl-shader-opts` on the running file. The DMX fixture's dimmer, colour, strobe and strips are hidden `fx_*` params of the same wrapper, applied after `visual()`.
 
-The Live monitor's panel inset uses a `window` screenshot for visuals, because the `video` screenshot would be the 16×16 source.
+backdrop's Live monitor shows "Visual: <name>" while one plays; its panel inset uses a `window` screenshot for visuals, because the `video` screenshot would be the 16×16 source.
 
 ## Requirements on the box
 

@@ -21,6 +21,10 @@
         </div>
       </div>
       <div class="header-right">
+        <a class="btn-led" href="/visuals" title="Visuals lab: live shader visuals for the LED wall">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z"/></svg>
+          <span>Visuals</span>
+        </a>
         <div class="dmx" id="dmx" hidden>
           <button type="button" class="btn-led" id="btnDmx" aria-expanded="false" aria-controls="dmxPopover" title="DMX control (Art-Net)">
             <span class="sig" id="dmxSig"></span>
@@ -34,7 +38,7 @@
             <div class="dmx-channels" id="dmxChannels">
               <div class="dmx-ch dmx-ch-head"><span>Channel</span><span>Function</span><span></span><span>Value</span></div>
             </div>
-            <div class="dmx-slots" id="dmxSlots"></div>
+            <div class="dmx-fixture" id="dmxFixture"></div>
             <div class="led-status" id="dmxStatus"></div>
           </div>
         </div>
@@ -141,7 +145,7 @@
             Upload
           </button>
         </div>
-        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v,.glsl" hidden>
+        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v" hidden>
         <label class="search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
           <input type="search" id="librarySearch" placeholder="Search media" aria-label="Search media library">
@@ -161,7 +165,7 @@
             Add file
           </button>
         </div>
-        <input type="file" id="cueFileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v,.glsl" hidden>
+        <input type="file" id="cueFileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mkv,.avi,.mov,.m4v" hidden>
         <div class="cue-list" id="cueList"></div>
         <div class="cue-add-bar">
           <button type="button" class="btn-secondary" id="btnCueFromLibrary">
@@ -213,15 +217,6 @@
               <span><input type="range" id="inspScale" min="10" max="200" step="1" aria-labelledby="lblFraming"><output class="framing-value" id="inspScaleValue"></output></span>
             </label>
             <span class="field-hint">Drag the picture above to move it. Live cues follow on the panel.</span>
-          </div>
-
-          <div class="field" id="visualField" hidden>
-            <div class="field-row">
-              <span class="field-label">Look</span>
-              <button type="button" class="btn-link" id="visualReset">Reset</button>
-            </div>
-            <div class="param-list" id="visualParams"></div>
-            <span class="field-hint">Live cues follow on the panel. DMX visual sliders 1-4 move the first four.</span>
           </div>
 
           <div class="field">

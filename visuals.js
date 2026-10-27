@@ -74,6 +74,8 @@ function parseVisual(text) {
     }
     p.default = Number(lines[i]);
     p.raw.push(lines[i] ?? '0');
+    // Blank lines in its place keep compiler line numbers matching the file
+    body.push(...p.raw.map(() => ''));
     if (!Number.isFinite(p.default)) p.default = 0;
     params.push(p);
   }
@@ -175,6 +177,36 @@ function buildShader(visual, width, height) {
   ].join('\n');
 }
 
+/**
+ * The same visual as a WebGL2 fragment shader, for previews in the browser
+ * (the Visuals lab). Params become uniforms; the page supplies u_t (seconds,
+ * already at the chosen speed) and u_res.
+ */
+function buildPreview(visual, width, height) {
+  const params = visual.params.filter((p) => !HIDDEN(p.name));
+  return [
+    '#version 300 es',
+    'precision highp float;',
+    'precision highp int;',
+    'uniform float u_t;',
+    'uniform vec2 u_res;',
+    ...params.map((p) => `uniform ${p.int ? 'int' : 'float'} ${p.name};`),
+    'out vec4 fragColor;',
+    `#define VISUAL_W ${width}`,
+    `#define VISUAL_H ${height}`,
+    PRELUDE,
+    '#line 1',
+    visual.body,
+    '',
+    'void main() {',
+    '    vec2 uv = gl_FragCoord.xy / u_res;',
+    '    uv.y = 1.0 - uv.y;',
+    '    fragColor = vec4(clamp(visual(uv, u_t), 0.0, 1.0), 1.0);',
+    '}',
+    '',
+  ].join('\n');
+}
+
 function readVisual(filePath) {
   return parseVisual(fs.readFileSync(filePath, 'utf8'));
 }
@@ -236,6 +268,7 @@ module.exports = {
   parseVisual,
   publicParams,
   buildShader,
+  buildPreview,
   readVisual,
   listBuiltins,
   writeShader,
