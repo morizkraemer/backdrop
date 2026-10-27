@@ -18,6 +18,7 @@ Shipped in `visuals/` and added to a **Visuals** folder in the library on start.
 | Wash | One colour over the whole wall, optionally breathing |
 | Stars | A starfield flying towards the audience |
 | Chase | Blocks lighting up in turn: run, bounce, fill, random, alternate |
+| Black hole | A swirling accretion disk falling into the dark, with lensed stars; "Trippy" cycles the colours |
 
 ## Writing a visual
 
