@@ -393,9 +393,9 @@ svg {
 .transport {
   flex-shrink: 0;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 24px;
-  padding: 20px 24px;
+  padding: 12px 24px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-raised);
 }
@@ -408,11 +408,22 @@ svg {
 }
 
 .monitor-now {
-  width: 384px;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
 }
 
-.monitor-next {
+.monitor-info {
+  width: 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.monitor-now .screen {
   width: 264px;
+  flex-shrink: 0;
 }
 
 .monitor-label {
@@ -552,29 +563,29 @@ svg {
 .controls-row {
   display: flex;
   align-items: stretch;
-  gap: 12px;
-  height: 128px;
+  gap: 10px;
+  height: 88px;
 }
 
 .btn-stop {
-  width: 120px;
+  width: 96px;
   border-radius: 10px;
   border: 1px solid var(--danger-border);
   background: var(--danger-bg);
   color: var(--danger);
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.06em;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .btn-stop svg {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
 }
 
 .btn-stop:hover {
@@ -582,7 +593,7 @@ svg {
 }
 
 .btn-go {
-  width: 240px;
+  width: 200px;
   border-radius: 10px;
   border: none;
   background: var(--live);
@@ -604,7 +615,7 @@ svg {
 }
 
 .go-label {
-  font-size: 40px;
+  font-size: 32px;
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -1420,12 +1431,12 @@ svg {
     width: 290px;
   }
 
-  .monitor-next {
-    display: none;
+  .monitor-info {
+    width: 180px;
   }
 
-  .monitor-now {
-    width: 330px;
+  .monitor-now .screen {
+    width: 216px;
   }
 
   .pane-header .hint {
@@ -1462,7 +1473,10 @@ svg {
     display: none;
   }
 
-  .btn-bt span {
+  .btn-bt span,
+  #hdmiText,
+  #ledText,
+  #connText {
     display: none;
   }
 
@@ -1479,6 +1493,9 @@ svg {
   }
 
   .monitor-now {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
     width: auto;
     margin: 12px 16px 0;
     padding: 12px;
@@ -1487,7 +1504,12 @@ svg {
     border: 1px solid #222428;
   }
 
+  .monitor-info {
+    width: auto;
+  }
+
   .monitor-now .screen {
+    width: 100%;
     max-height: 120px;
   }
 
@@ -1707,6 +1729,13 @@ svg {
 
 @media (max-width: 480px) {
   #connText {
+    display: none;
+  }
+}
+
+/* Phones: keep the header to one row of icons so the page never scrolls sideways */
+@media (max-width: 480px) {
+  #playerText {
     display: none;
   }
 }

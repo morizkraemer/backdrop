@@ -63,28 +63,6 @@
     </header>
 
     <section class="transport">
-      <div class="monitor monitor-now" id="monitorNow">
-        <div class="monitor-label">
-          <span class="tag tag-live" id="nowTag">LIVE</span>
-          <span class="cue-num" id="nowNum"></span>
-          <span class="monitor-name" id="nowName">Nothing playing</span>
-        </div>
-        <div class="screen" id="nowScreen"></div>
-        <div class="monitor-meta" id="nowMeta"></div>
-      </div>
-
-      <div class="monitor monitor-next" id="monitorNext">
-        <div class="monitor-label">
-          <span class="tag tag-next">NEXT</span>
-          <span class="cue-num" id="nextNum"></span>
-          <span class="monitor-name" id="nextName">—</span>
-        </div>
-        <div class="screen" id="nextScreen"></div>
-        <div class="monitor-meta" id="nextMeta"></div>
-      </div>
-
-      <div class="transport-spacer"></div>
-
       <div class="controls">
         <div class="controls-next" id="controlsNext"></div>
         <div class="controls-row">
@@ -101,6 +79,20 @@
             <span>Loop list</span>
           </button>
         </div>
+      </div>
+
+      <div class="transport-spacer"></div>
+
+      <div class="monitor monitor-now" id="monitorNow">
+        <div class="monitor-info">
+          <div class="monitor-label">
+            <span class="tag tag-live" id="nowTag">LIVE</span>
+            <span class="cue-num" id="nowNum"></span>
+            <span class="monitor-name" id="nowName">Nothing playing</span>
+          </div>
+          <div class="monitor-meta" id="nowMeta"></div>
+        </div>
+        <div class="screen" id="nowScreen"></div>
       </div>
     </section>
 
