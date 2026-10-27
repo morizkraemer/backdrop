@@ -10,8 +10,8 @@ SupplementaryGroups=video render
 # Keep /run/screenview (the IPC socket) when the server restarts
 RuntimeDirectory=screenview
 RuntimeDirectoryPreserve=yes
-Environment=XDG_RUNTIME_DIR=/run/user/1000
-Environment=PULSE_SERVER=unix:/run/user/1000/pulse/native
+Environment=HOME=/opt/screenview
+Environment=PULSE_SERVER=unix:/run/screenview-pulse/pulse/native
 ExecStart=/usr/bin/mpv --idle --force-window=yes \
     --input-ipc-server=/run/screenview/mpv.sock \
     --vo=drm --hwdec=vaapi --fs --ao=pulse \
