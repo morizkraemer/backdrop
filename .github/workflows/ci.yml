@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Syntax check
+        run: |
+          for f in *.js public/js/*.js; do node --check "$f"; done
+
+  # Runs on the self-hosted runner inside the backdrop container
+  # (see setup/ACCESS.md). Only pushes to main reach this job.
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, backdrop]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        run: ./scripts/deploy.sh "$GITHUB_SHA"

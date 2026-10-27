@@ -48,7 +48,7 @@ The app was renamed from "Screenview" to "backdrop". System-level names
 (Linux user, `/opt/screenview`, PM2 process, socket paths, service files)
 intentionally still say `screenview`.
 
-- Code: `/opt/screenview/backdrop` (git checkout, owned by `screenview`, branch `feature/implementation`)
+- Code: `/opt/screenview/backdrop` (git checkout, owned by `screenview`, branch `main`)
 - Process: PM2 as user `screenview`, `PM2_HOME=/opt/screenview/.pm2`, app name `screenview`, running `npm run start:all:prod`
 - Boot: `pm2-screenview.service` (systemd) resurrects PM2. The `screenview*.service` units from SETUP.md are **not** used.
 - Secrets: `.env` in the repo dir (`BT_HOST`, `BT_USER`, `BT_PASSWORD` for the Bluetooth Pi)
@@ -62,20 +62,47 @@ alias svpm2='runuser -u screenview -- env PM2_HOME=/opt/screenview/.pm2 pm2'
 
 ## Deploying an update
 
-From your Mac, after pushing to `feature/implementation`:
+Merging to `main` deploys automatically. The `CI` workflow
+(`.github/workflows/ci.yml`) syntax-checks every PR and push; on `main` its
+`deploy` job runs on a self-hosted GitHub Actions runner inside the
+container, which runs `scripts/deploy.sh`:
+
+- fast-forwards `/opt/screenview/backdrop` to `origin/main`
+- runs `npm ci` if `package.json` or `package-lock.json` changed
+- restarts the `screenview` PM2 app unless only `public/`, docs or `setup/` changed
+
+The container is only reachable on the LAN, so GitHub can't push to it. The
+runner instead polls GitHub over an outbound connection. To redeploy by hand,
+run the workflow from the Actions tab, or on the container:
 
 ```bash
-ssh root@192.168.178.75 'cd /opt/screenview/backdrop && runuser -u screenview -- git pull --ff-only'
+ssh root@192.168.178.75 'runuser -u screenview -- /opt/screenview/backdrop/scripts/deploy.sh'
 ```
 
-- Changes only under `public/`: live immediately, no restart needed.
-- Server JS or `package.json` changes: restart (and `npm install` if deps changed):
+### Installing the runner (once)
+
+1. On GitHub: **Settings → Actions → Runners → New self-hosted runner**,
+   Linux x64. Keep the page open for the download URL and token.
+2. On the container, as root:
 
 ```bash
-ssh root@192.168.178.75 'cd /opt/screenview/backdrop \
-  && runuser -u screenview -- npm install --omit=dev \
-  && runuser -u screenview -- env PM2_HOME=/opt/screenview/.pm2 pm2 restart screenview'
+mkdir -p /opt/screenview/actions-runner && cd /opt/screenview/actions-runner
+curl -fsSL -o runner.tar.gz <download URL from the GitHub page>
+tar xzf runner.tar.gz && rm runner.tar.gz
+chown -R screenview:screenview .
+runuser -u screenview -- ./config.sh --unattended \
+  --url https://github.com/morizkraemer/backdrop --token <token> \
+  --name backdrop --labels backdrop
+./svc.sh install screenview
+./svc.sh start
 ```
+
+The runner service runs as `screenview`, so git and PM2 behave as in the
+commands below. Check it with `./svc.sh status` or under Settings → Actions → Runners.
+
+Because the repo is public, keep **Settings → Actions → General → Fork pull
+request workflows** on "Require approval for all external contributors", so
+nobody else's PR can run code on the runner without you approving it.
 
 ## Status & logs
 
