@@ -742,7 +742,22 @@ function updateCue(patch) {
 }
 
 function addToCues(mediaId) {
-  api('POST', '/playlist', { mediaId });
+  api('POST', '/playlist', { mediaId })
+    .then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then((cue) => {
+      // On phones the cue list is on the other tab, so say where it went
+      const n = state.playlist.findIndex((c) => c.id === cue.id) + 1 || state.playlist.length + 1;
+      toast(`Added to cues as Q${n}`);
+    })
+    .catch(() => toast('Could not add to cues'));
+}
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'upload toast';
+  el.textContent = msg;
+  uploadsEl.appendChild(el);
+  setTimeout(() => el.remove(), 2000);
 }
 
 function reorderCue(fromId, toId, after) {
@@ -1116,6 +1131,8 @@ libraryPane.addEventListener('drop', (e) => {
 // --- events: cues ---
 
 $('btnAddCueFile').addEventListener('click', () => cueFileInput.click());
+$('btnCueUpload').addEventListener('click', () => cueFileInput.click());
+$('btnCueFromLibrary').addEventListener('click', () => { appEl.dataset.tab = 'library'; });
 cueFileInput.addEventListener('change', () => {
   if (cueFileInput.files.length) uploadFiles(cueFileInput.files, '/playlist/upload');
   cueFileInput.value = '';
