@@ -396,6 +396,7 @@ svg {
 }
 
 .screen img,
+.screen video,
 .thumb img {
   position: absolute;
   inset: 0;
@@ -403,6 +404,18 @@ svg {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.screen .panel-shot {
+  position: absolute;
+  inset: auto 6px 6px auto;
+  width: 28%;
+  height: auto;
+  aspect-ratio: 3 / 1;
+  object-fit: fill;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 2px 8px rgba(0, 0, 0, 0.5);
+  z-index: 1;
 }
 
 .screen svg {
