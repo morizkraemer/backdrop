@@ -24,4 +24,8 @@ module.exports = {
   // one answers. Set HDMI_HOST= (empty) to disable.
   hdmiHosts: (process.env.HDMI_HOST ?? 'w550-010203,192.168.178.211')
     .split(',').map((h) => h.trim()).filter(Boolean),
+  // Only this matrix output is used (it feeds the LED wall); inputs are named in order
+  hdmiOutput: Math.max(1, parseInt(process.env.HDMI_OUTPUT || '1', 10)),
+  hdmiSources: (process.env.HDMI_SOURCES || 'Backdrop,FOH,Stage,Balkon')
+    .split(',').map((n) => n.trim()).filter(Boolean),
 };

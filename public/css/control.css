@@ -293,7 +293,7 @@ svg {
   top: calc(100% + 8px);
   right: 0;
   z-index: 50;
-  width: 360px;
+  width: 260px;
   padding: 14px;
   border-radius: 12px;
   border: 1px solid var(--border-strong);
@@ -304,71 +304,65 @@ svg {
   gap: 12px;
 }
 
-.hdmi-rename {
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border-strong);
-  background: transparent;
-  color: var(--text-2);
-  font-size: 12px;
-  font-weight: 500;
+.btn-led.external {
+  border-color: #6a4f1d;
+  background: #241c0e;
+  color: #f2c45a;
 }
 
-.hdmi-rename:hover,
-.hdmi-rename.active {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.hdmi-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) repeat(var(--hdmi-cols, 4), minmax(0, 1fr));
+.hdmi-sources {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-  align-items: center;
-  font-size: 12px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #1c1d21;
 }
 
-.hdmi-corner {
-  color: var(--text-dim);
-  font-size: 11px;
-}
-
-.hdmi-in,
-.hdmi-out {
+.hdmi-sources button {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
   display: flex;
   align-items: center;
-  gap: 5px;
-  min-width: 0;
-  color: var(--text-2);
+  gap: 8px;
+  text-align: left;
 }
 
-.hdmi-in {
-  justify-content: center;
-  text-align: center;
-}
-
-.hdmi-in span:last-child,
-.hdmi-out span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hdmi-all {
-  color: var(--text-dim);
-}
-
-.hdmi-grid input {
-  width: 100%;
-  min-width: 0;
-  height: 26px;
-  padding: 0 6px;
-  border-radius: 6px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-input);
+.hdmi-sources button:hover:not(:disabled) {
   color: var(--text);
-  font: inherit;
+}
+
+.hdmi-sources button.active {
+  background: var(--live-bg);
+  border-color: var(--live-border);
+  color: var(--live-soft);
+  font-weight: 600;
+}
+
+.hdmi-sources button.pending {
+  border-color: var(--live-border);
+  color: var(--text);
+  animation: hdmi-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes hdmi-pulse {
+  to { background: var(--live-bg); }
+}
+
+.hdmi-name {
+  flex: 1;
+}
+
+.hdmi-signal {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-dim);
 }
 
 .sig {
@@ -381,42 +375,6 @@ svg {
 
 .sig.on {
   background: var(--live);
-}
-
-.hdmi-cell {
-  min-height: 34px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: #1c1d21;
-  color: var(--text-dim);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.hdmi-cell:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--border-strong);
-}
-
-.hdmi-cell.active {
-  background: var(--live-bg);
-  border-color: var(--live-border);
-  color: var(--live-soft);
-  font-weight: 600;
-}
-
-.hdmi-cell.pending {
-  border-color: var(--live-border);
-  color: var(--text);
-  animation: hdmi-pulse 0.8s ease-in-out infinite alternate;
-}
-
-@keyframes hdmi-pulse {
-  to { background: var(--live-bg); }
-}
-
-.hdmi-all ~ .hdmi-cell {
-  min-height: 28px;
 }
 
 .conn {

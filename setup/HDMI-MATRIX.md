@@ -1,8 +1,18 @@
 # HDMI matrix (ezcoo EZ-MX44HAS2)
 
-4x4 HDMI matrix, firmware 1.11. The control page's **HDMI** button in the header
-shows which input feeds each output and switches them. Input and output names
-are set with **Rename** in that popover and saved in `state.json`.
+4x4 HDMI matrix, firmware 1.11. Only output 1 is used; it feeds the LED wall.
+
+| Input | Source |
+|---|---|
+| 1 | backdrop (this app) |
+| 2 | HDMI FOH |
+| 3 | HDMI Stage |
+| 4 | HDMI Balkon |
+
+The source button in the control page header shows the current source (amber when
+it isn't backdrop) and opens a list to switch it. `HDMI_OUTPUT` (default `1`) and
+`HDMI_SOURCES` (default `Backdrop,FOH,Stage,Balkon`) in `.env` change the output
+and the names.
 
 ## Network
 
@@ -38,8 +48,7 @@ Full reference: https://github.com/matnig/ha-ezcoo-matrix (PROTOCOL.md).
 
 ## API
 
-- `PUT /api/hdmi/route` `{ "output": 0-4, "input": 1-4 }`: switches, reads the
-  routes back and returns 502 if the matrix did not switch.
-- `PUT /api/hdmi/names` `{ "inputs": [...], "outputs": [...] }`
+- `PUT /api/hdmi/source` `{ "input": 1-4 }`: routes that input to `HDMI_OUTPUT`,
+  reads it back and returns 502 if the matrix did not switch.
 - Live state is in the WebSocket payload under `hdmi`
-  (`available`, `routes`, `inputLink`, `outputLink`, `names`).
+  (`available`, `current` input number, `sources` with `name` and `signal`).
