@@ -762,6 +762,7 @@ svg {
 /* Library */
 
 .library {
+  position: relative;
   width: 340px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
@@ -947,6 +948,175 @@ svg {
 .media-actions .delete:hover {
   background: var(--danger-bg);
   color: var(--danger);
+}
+
+/* Library folders */
+
+#btnNewFolder {
+  padding: 0 9px;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-height: 24px;
+  margin: -4px -6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.crumbs svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.crumb {
+  max-width: 160px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.crumb:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.crumb.current {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.crumb-note {
+  padding: 3px 6px;
+}
+
+.folder-item {
+  cursor: pointer;
+}
+
+.folder-thumb {
+  color: var(--text-muted);
+}
+
+.folder-thumb svg {
+  width: 16px;
+  height: 16px;
+}
+
+.media-item.drop-into,
+.crumb.drop-into {
+  background: rgba(61, 220, 132, 0.1);
+  border-color: var(--live);
+  box-shadow: inset 0 0 0 1px var(--live);
+  color: var(--live-soft);
+}
+
+.media-text input.rename {
+  width: 100%;
+  height: 22px;
+  padding: 0 6px;
+  margin: -2px 0 -2px -7px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+}
+
+.media-actions .menu-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.lib-menu {
+  position: absolute;
+  z-index: 20;
+  width: 220px;
+  max-height: min(420px, 70vh);
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-input);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.lib-menu[hidden] {
+  display: none;
+}
+
+.lib-menu button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 8px 0 calc(8px + var(--depth, 0) * 12px);
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.lib-menu button svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+.lib-menu button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.lib-menu button:disabled {
+  color: var(--text-dim);
+}
+
+.lib-menu button.danger {
+  color: var(--danger);
+}
+
+.lib-menu button.danger:hover {
+  background: var(--danger-bg);
+}
+
+.lib-menu-label {
+  margin-top: 4px;
+  padding: 8px 8px 4px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.lib-menu-moves {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .empty {

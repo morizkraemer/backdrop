@@ -325,7 +325,10 @@ app.post('/api/upload', (req, res) => {
       type: getMediaType(req.file.filename),
       size: req.file.size,
       addedAt: new Date().toISOString(),
+      folderId: null,
     };
+    const folderId = req.query.folder;
+    if (folderId && state.getState().folders.some((f) => f.id === folderId)) item.folderId = folderId;
     state.updateState((s) => ({
       ...s,
       library: [...s.library, item],
@@ -340,27 +343,30 @@ app.get('/api/library', (req, res) => {
   res.json(state.getState().library);
 });
 
-app.delete('/api/library/:id', (req, res) => {
-  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
+// Deletes media files (and their thumbnails), drops their cues, and keeps playback sane
+function removeMedia(ids, extra = {}) {
   const s = state.getState();
-  const item = s.library.find((m) => m.id === req.params.id);
-  if (!item) return res.status(404).json({ error: 'Not found' });
-
-  const filePath = path.join(config.uploadsDir, item.filename);
-  try {
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  } catch (e) {
-    console.error('Delete file error:', e);
+  const gone = new Set(ids);
+  for (const item of s.library) {
+    if (!gone.has(item.id)) continue;
+    const filePath = path.join(config.uploadsDir, item.filename);
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch (e) {
+      console.error('Delete file error:', e);
+    }
+    removeThumbnail(config.uploadsDir, item);
   }
-  removeThumbnail(config.uploadsDir, item);
 
-  const library = s.library.filter((m) => m.id !== req.params.id);
-  const playlist = s.playlist.filter((c) => c.mediaId !== req.params.id);
-  const wasPlayingDeleted = s.playlist[s.currentCueIndex]?.mediaId === req.params.id;
+  const library = s.library.filter((m) => !gone.has(m.id));
+  const playlist = s.playlist.filter((c) => !gone.has(c.mediaId));
+  const current = s.playlist[s.currentCueIndex];
+  const wasPlayingDeleted = current && gone.has(current.mediaId);
 
   if (wasPlayingDeleted) {
-    const nextIdx = s.currentCueIndex;
-    state.updateState({ library, playlist, currentCueIndex: -1 });
+    // Continue with the first surviving cue after the deleted one
+    const nextIdx = s.playlist.slice(0, s.currentCueIndex).filter((c) => !gone.has(c.mediaId)).length;
+    state.updateState({ ...extra, library, playlist, currentCueIndex: -1 });
     if (nextIdx < playlist.length) {
       playCue(nextIdx);
     } else {
@@ -368,12 +374,113 @@ app.delete('/api/library/:id', (req, res) => {
       clearDurationTimer();
     }
   } else {
-    const currentCueIndex = s.currentCueIndex >= 0
-      ? playlist.findIndex((c) => c.id === s.playlist[s.currentCueIndex]?.id)
-      : -1;
-    state.updateState({ library, playlist, currentCueIndex });
+    const currentCueIndex = current ? playlist.findIndex((c) => c.id === current.id) : -1;
+    state.updateState({ ...extra, library, playlist, currentCueIndex });
   }
   broadcastState();
+}
+
+app.delete('/api/library/:id', (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
+  const s = state.getState();
+  if (!s.library.some((m) => m.id === req.params.id)) return res.status(404).json({ error: 'Not found' });
+  removeMedia([req.params.id]);
+  res.status(204).send();
+});
+
+// Rename and/or move a library item. Only the display name changes; the file on disk,
+// its thumbnail and every cue keep pointing at the same id, so nothing breaks.
+app.patch('/api/library/:id', (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
+  const s = state.getState();
+  const item = s.library.find((m) => m.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'Not found' });
+
+  const patch = {};
+  if (req.body.name !== undefined) {
+    const name = cleanName(req.body.name);
+    if (!name) return res.status(400).json({ error: 'Name required' });
+    patch.originalName = name;
+  }
+  if (req.body.folderId !== undefined) {
+    const folderId = req.body.folderId || null;
+    if (folderId && !s.folders.some((f) => f.id === folderId)) return res.status(404).json({ error: 'Folder not found' });
+    patch.folderId = folderId;
+  }
+  const updated = { ...item, ...patch };
+  state.updateState((st) => ({ ...st, library: st.library.map((m) => (m.id === item.id ? updated : m)) }));
+  broadcastState();
+  res.json(updated);
+});
+
+// --- Library folders (virtual: they only exist in state, files stay flat in uploads/) ---
+
+function cleanName(name) {
+  return typeof name === 'string' ? name.replace(/[\x00-\x1f]/g, '').trim().slice(0, 200) : '';
+}
+
+// Folder ids of `id` and everything nested below it
+function folderSubtree(folders, id) {
+  const ids = new Set([id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const f of folders) {
+      if (f.parentId && ids.has(f.parentId) && !ids.has(f.id)) {
+        ids.add(f.id);
+        grew = true;
+      }
+    }
+  }
+  return ids;
+}
+
+app.post('/api/folders', (req, res) => {
+  const name = cleanName(req.body.name);
+  if (!name) return res.status(400).json({ error: 'Name required' });
+  const parentId = req.body.parentId || null;
+  const s = state.getState();
+  if (parentId && !s.folders.some((f) => f.id === parentId)) return res.status(404).json({ error: 'Parent folder not found' });
+  const folder = { id: `f-${uuidv4().slice(0, 8)}`, name, parentId };
+  state.updateState((st) => ({ ...st, folders: [...st.folders, folder] }));
+  broadcastState();
+  res.status(201).json(folder);
+});
+
+app.patch('/api/folders/:id', (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
+  const s = state.getState();
+  const folder = s.folders.find((f) => f.id === req.params.id);
+  if (!folder) return res.status(404).json({ error: 'Not found' });
+
+  const patch = {};
+  if (req.body.name !== undefined) {
+    const name = cleanName(req.body.name);
+    if (!name) return res.status(400).json({ error: 'Name required' });
+    patch.name = name;
+  }
+  if (req.body.parentId !== undefined) {
+    const parentId = req.body.parentId || null;
+    if (parentId && !s.folders.some((f) => f.id === parentId)) return res.status(404).json({ error: 'Parent folder not found' });
+    if (parentId && folderSubtree(s.folders, folder.id).has(parentId)) {
+      return res.status(400).json({ error: "Can't move a folder into itself" });
+    }
+    patch.parentId = parentId;
+  }
+  const updated = { ...folder, ...patch };
+  state.updateState((st) => ({ ...st, folders: st.folders.map((f) => (f.id === folder.id ? updated : f)) }));
+  broadcastState();
+  res.json(updated);
+});
+
+// Deletes the folder, its subfolders and every file inside (and those files' cues)
+app.delete('/api/folders/:id', (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
+  const s = state.getState();
+  if (!s.folders.some((f) => f.id === req.params.id)) return res.status(404).json({ error: 'Not found' });
+  const subtree = folderSubtree(s.folders, req.params.id);
+  const mediaIds = s.library.filter((m) => m.folderId && subtree.has(m.folderId)).map((m) => m.id);
+  removeMedia(mediaIds, { folders: s.folders.filter((f) => !subtree.has(f.id)) });
   res.status(204).send();
 });
 

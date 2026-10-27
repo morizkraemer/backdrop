@@ -3,9 +3,11 @@ const WS_PROTO = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_URL = `${WS_PROTO}//${location.host}/ws`;
 const MEDIA_MIME = 'application/x-screenview-media';
 const CUE_MIME = 'application/x-screenview-cue';
+const FOLDER_MIME = 'application/x-screenview-folder';
 
 let state = {
   library: [],
+  folders: [],
   playlist: [],
   currentCueIndex: -1,
   diskFree: 0,
@@ -16,6 +18,11 @@ let state = {
 let wsConnected = false;
 let selectedCueId = null;
 let libraryFilter = 'all';
+let currentFolderId = null;
+try { currentFolderId = localStorage.getItem('libraryFolder') || null; } catch (_) {}
+let renaming = null; // { kind: 'media' | 'folder', id } while a name is being edited
+let menuTarget = null; // { kind, id } the open row menu belongs to
+let libDrag = null; // { kind, id } while a library row is being dragged
 let saveStatus = null; // null | 'saving' | 'saved' | error message
 
 const $ = (id) => document.getElementById(id);
@@ -33,6 +40,8 @@ const libraryPane = $('libraryPane');
 const libraryList = $('libraryList');
 const libraryFilters = $('libraryFilters');
 const librarySearch = $('librarySearch');
+const libraryCrumbs = $('libraryCrumbs');
+const libraryMenu = $('libraryMenu');
 const fileInput = $('fileInput');
 const cuesPane = $('cuesPane');
 const cueList = $('cueList');
@@ -50,6 +59,8 @@ const ICONS = {
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>',
   grip: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
   more: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>',
 };
 
@@ -372,8 +383,95 @@ function renderTransport() {
   btnLoop.setAttribute('aria-pressed', String(state.playlistLoop));
 }
 
+// --- library folders ---
+
+function getFolder(id) {
+  return state.folders.find((f) => f.id === id);
+}
+
+function libraryItems() {
+  return state.library.filter((m) => !m.playlistOnly);
+}
+
+// Root-first list of folders leading to `id`
+function folderPath(id) {
+  const path = [];
+  const seen = new Set();
+  let f = getFolder(id);
+  while (f && !seen.has(f.id)) {
+    seen.add(f.id);
+    path.unshift(f);
+    f = getFolder(f.parentId);
+  }
+  return path;
+}
+
+function folderLabel(id) {
+  return id ? folderPath(id).map((f) => f.name).join(' / ') : 'Library';
+}
+
+function isInside(folderId, ancestorId) {
+  return folderPath(folderId).some((f) => f.id === ancestorId);
+}
+
+function folderCount(id) {
+  const n = state.folders.filter((f) => f.parentId === id).length
+    + libraryItems().filter((m) => (m.folderId || null) === id).length;
+  return n === 1 ? '1 item' : `${n} items`;
+}
+
+const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+function openFolder(id) {
+  currentFolderId = id || null;
+  try { localStorage.setItem('libraryFolder', currentFolderId || ''); } catch (_) {}
+  closeMenu();
+  renderLibrary();
+  libraryList.scrollTop = 0;
+}
+
+function nameHtml(kind, id, name) {
+  if (renaming?.kind === kind && renaming.id === id) {
+    return `<input class="rename" value="${escapeHtml(name)}" aria-label="New name" spellcheck="false">`;
+  }
+  return `<span class="media-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>`;
+}
+
+function folderRowHtml(f, showPath) {
+  return `
+    <div class="media-item folder-item" draggable="${renaming ? 'false' : 'true'}" data-folder-id="${f.id}">
+      <div class="thumb folder-thumb">${ICONS.folder}</div>
+      <div class="media-text">
+        ${nameHtml('folder', f.id, f.name)}
+        <span class="media-meta">${showPath && f.parentId ? `${escapeHtml(folderLabel(f.parentId))} · ` : ''}${folderCount(f.id)}</span>
+      </div>
+      <div class="media-actions">
+        <button type="button" class="menu-btn" data-kind="folder" data-id="${f.id}" aria-label="More for ${escapeHtml(f.name)}" aria-haspopup="menu">${ICONS.more}</button>
+      </div>
+    </div>`;
+}
+
+function mediaRowHtml(m, showPath) {
+  return `
+    <div class="media-item" draggable="${renaming ? 'false' : 'true'}" data-id="${m.id}">
+      <div class="thumb">${thumbHtml(m)}</div>
+      <div class="media-text">
+        ${nameHtml('media', m.id, m.originalName)}
+        <span class="media-meta">${showPath && m.folderId ? `${escapeHtml(folderLabel(m.folderId))} · ` : ''}${mediaMeta(m)}</span>
+      </div>
+      <div class="media-actions">
+        <button type="button" class="menu-btn" data-kind="media" data-id="${m.id}" aria-label="More for ${escapeHtml(m.originalName)}" aria-haspopup="menu">${ICONS.more}</button>
+        <button type="button" class="add" data-id="${m.id}" aria-label="Add ${escapeHtml(m.originalName)} to cues">${ICONS.plus}</button>
+      </div>
+    </div>`;
+}
+
 function renderLibrary() {
-  const visible = state.library.filter((m) => !m.playlistOnly);
+  // Don't rebuild under someone typing a new name
+  if (renaming && libraryList.contains(document.activeElement)) return;
+
+  if (currentFolderId && !getFolder(currentFolderId)) currentFolderId = null;
+  const visible = libraryItems();
   const counts = {
     all: visible.length,
     image: visible.filter((m) => m.type === 'image').length,
@@ -385,28 +483,44 @@ function renderLibrary() {
   $('tabLibrary').textContent = `Library · ${counts.all}`;
 
   const q = librarySearch.value.trim().toLowerCase();
-  const items = visible.filter((m) =>
-    (libraryFilter === 'all' || m.type === libraryFilter) &&
-    (!q || (m.originalName || '').toLowerCase().includes(q))
-  );
+  const crumbs = [{ id: '', name: 'Library' }, ...folderPath(currentFolderId)];
+  libraryCrumbs.innerHTML = q
+    ? '<span class="crumb-note">Searching all folders</span>'
+    : crumbs.map((c, i) => (i === crumbs.length - 1
+      ? `<span class="crumb current" data-folder-id="${c.id}" aria-current="page">${escapeHtml(c.name)}</span>`
+      : `<button type="button" class="crumb" data-folder-id="${c.id}">${escapeHtml(c.name)}</button>${ICONS.chevron}`)).join('');
 
-  if (!items.length) {
-    libraryList.innerHTML = `<div class="empty">${visible.length ? 'No matches' : 'Drop images or videos here, or use Upload'}</div>`;
-    return;
+  const typeOk = (m) => libraryFilter === 'all' || m.type === libraryFilter;
+  let folders;
+  let items;
+  if (q) {
+    // Search looks through every folder and shows where each hit lives
+    folders = state.folders.filter((f) => f.name.toLowerCase().includes(q));
+    items = visible.filter((m) => typeOk(m) && (m.originalName || '').toLowerCase().includes(q));
+  } else {
+    folders = state.folders.filter((f) => (f.parentId || null) === currentFolderId);
+    items = visible.filter((m) => typeOk(m) && (m.folderId || null) === currentFolderId);
   }
-  libraryList.innerHTML = items.map((m) => `
-    <div class="media-item" draggable="true" data-id="${m.id}">
-      <div class="thumb">${thumbHtml(m)}</div>
-      <div class="media-text">
-        <span class="media-name" title="${escapeHtml(m.originalName)}">${escapeHtml(m.originalName)}</span>
-        <span class="media-meta">${mediaMeta(m)}</span>
-      </div>
-      <div class="media-actions">
-        <button type="button" class="delete" data-id="${m.id}" aria-label="Delete ${escapeHtml(m.originalName)}">${ICONS.trash}</button>
-        <button type="button" class="add" data-id="${m.id}" aria-label="Add ${escapeHtml(m.originalName)} to cues">${ICONS.plus}</button>
-      </div>
-    </div>
-  `).join('');
+  folders.sort((a, b) => byName(a.name, b.name));
+
+  if (!folders.length && !items.length) {
+    let msg = 'Drop images or videos here, or use Upload';
+    if (q) msg = 'No matches';
+    else if (currentFolderId) msg = 'Empty folder. Drop files here to upload into it.';
+    else if (visible.length) msg = 'No matches';
+    libraryList.innerHTML = `<div class="empty">${msg}</div>`;
+  } else {
+    libraryList.innerHTML = folders.map((f) => folderRowHtml(f, !!q)).join('')
+      + items.map((m) => mediaRowHtml(m, !!q)).join('');
+  }
+
+  const input = libraryList.querySelector('input.rename');
+  if (input) {
+    input.focus();
+    // Select the name without its extension, like a file manager
+    const dot = renaming.kind === 'media' ? input.value.lastIndexOf('.') : -1;
+    input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
+  }
 }
 
 function renderCues() {
@@ -658,6 +772,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === ' ' && !isTyping(e.target) && !e.repeat) {
     e.preventDefault();
     if (!btnGo.disabled) btnGo.click();
+  } else if (e.key === 'Escape' && !libraryMenu.hidden) {
+    closeMenu();
   } else if (e.key === 'Escape' && selectedCueId) {
     selectCue(null);
   }
@@ -673,7 +789,9 @@ document.querySelectorAll('.tab').forEach((tab) => {
 
 $('btnUpload').addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', () => {
-  if (fileInput.files.length) uploadFiles(fileInput.files, '/upload');
+  if (fileInput.files.length) {
+    uploadFiles(fileInput.files, currentFolderId ? `/upload?folder=${encodeURIComponent(currentFolderId)}` : '/upload');
+  }
   fileInput.value = '';
 });
 librarySearch.addEventListener('input', renderLibrary);
@@ -684,46 +802,260 @@ libraryFilters.addEventListener('click', (e) => {
   renderLibrary();
 });
 
-libraryList.addEventListener('click', (e) => {
-  const add = e.target.closest('.add');
-  const del = e.target.closest('.delete');
-  if (add) addToCues(add.dataset.id);
-  if (del) {
-    const name = getMedia(del.dataset.id)?.originalName ?? 'this file';
-    const used = state.playlist.some((c) => c.mediaId === del.dataset.id);
-    if (confirm(`Delete ${name}?${used ? ' It will also be removed from the cue list.' : ''}`)) {
-      api('DELETE', `/library/${del.dataset.id}`);
+// --- library: rename, move, delete ---
+
+function startRename(kind, id) {
+  closeMenu();
+  renaming = { kind, id };
+  renderLibrary();
+}
+
+function finishRename(save) {
+  if (!renaming) return;
+  const input = libraryList.querySelector('input.rename');
+  const { kind, id } = renaming;
+  renaming = null;
+  const name = input?.value.trim();
+  if (save && name) {
+    const current = kind === 'folder' ? getFolder(id)?.name : getMedia(id)?.originalName;
+    if (name !== current) {
+      // Show the new name right away; the server broadcast confirms it
+      if (kind === 'folder') {
+        state = { ...state, folders: state.folders.map((f) => (f.id === id ? { ...f, name } : f)) };
+        api('PATCH', `/folders/${id}`, { name });
+      } else {
+        state = { ...state, library: state.library.map((m) => (m.id === id ? { ...m, originalName: name } : m)) };
+        api('PATCH', `/library/${id}`, { name });
+      }
     }
+  }
+  renderLibrary();
+}
+
+function moveTo(kind, id, folderId) {
+  folderId = folderId || null;
+  if (kind === 'folder') {
+    if (id === folderId || isInside(folderId, id)) return;
+    if ((getFolder(id)?.parentId || null) === folderId) return;
+    state = { ...state, folders: state.folders.map((f) => (f.id === id ? { ...f, parentId: folderId } : f)) };
+    api('PATCH', `/folders/${id}`, { parentId: folderId });
+  } else {
+    if ((getMedia(id)?.folderId || null) === folderId) return;
+    state = { ...state, library: state.library.map((m) => (m.id === id ? { ...m, folderId } : m)) };
+    api('PATCH', `/library/${id}`, { folderId });
+  }
+  renderLibrary();
+}
+
+function deleteEntry(kind, id) {
+  closeMenu();
+  if (kind === 'media') {
+    const name = getMedia(id)?.originalName ?? 'this file';
+    const used = state.playlist.some((c) => c.mediaId === id);
+    if (confirm(`Delete ${name}?${used ? ' It will also be removed from the cue list.' : ''}`)) {
+      api('DELETE', `/library/${id}`);
+    }
+    return;
+  }
+  const folder = getFolder(id);
+  if (!folder) return;
+  const files = libraryItems().filter((m) => m.folderId && (m.folderId === id || isInside(m.folderId, id)));
+  const cues = state.playlist.filter((c) => files.some((m) => m.id === c.mediaId)).length;
+  let msg = `Delete the folder "${folder.name}"?`;
+  if (files.length) msg += ` ${files.length === 1 ? 'The file' : `All ${files.length} files`} inside will be deleted too`;
+  if (cues) msg += `, and ${cues === 1 ? '1 cue' : `${cues} cues`} using them will be removed`;
+  if (files.length) msg += '.';
+  if (confirm(msg)) api('DELETE', `/folders/${id}`);
+}
+
+function createFolder() {
+  const parentId = currentFolderId;
+  const taken = new Set(state.folders.filter((f) => (f.parentId || null) === parentId).map((f) => f.name));
+  let name = 'New folder';
+  for (let i = 2; taken.has(name); i++) name = `New folder ${i}`;
+  librarySearch.value = '';
+  api('POST', '/folders', { name, parentId })
+    .then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then((folder) => {
+      if (!getFolder(folder.id)) state = { ...state, folders: [...state.folders, folder] };
+      startRename('folder', folder.id);
+    })
+    .catch(() => {});
+}
+
+function closeMenu() {
+  menuTarget = null;
+  libraryMenu.hidden = true;
+}
+
+function openMenu(kind, id, button) {
+  menuTarget = { kind, id };
+  const entry = kind === 'folder' ? getFolder(id) : getMedia(id);
+  const here = kind === 'folder' ? entry?.parentId || null : entry?.folderId || null;
+  // Every folder it can move into, as an indented tree
+  const targets = [];
+  const walk = (parentId, depth) => {
+    state.folders.filter((f) => (f.parentId || null) === parentId)
+      .sort((a, b) => byName(a.name, b.name))
+      .forEach((f) => {
+        if (kind === 'folder' && f.id === id) return; // not into itself or below
+        targets.push({ id: f.id, name: f.name, depth });
+        walk(f.id, depth + 1);
+      });
+  };
+  walk(null, 1);
+  const moveRows = [{ id: '', name: 'Library', depth: 0 }, ...targets]
+    .map((t) => `<button type="button" role="menuitem" data-move="${t.id}" style="--depth:${t.depth}" ${(t.id || null) === here ? 'disabled' : ''}>${t.depth ? ICONS.folder : ''}${escapeHtml(t.name)}</button>`)
+    .join('');
+  libraryMenu.innerHTML = `
+    <button type="button" role="menuitem" data-action="rename">Rename</button>
+    ${kind === 'folder' ? '<button type="button" role="menuitem" data-action="open">Open</button>' : ''}
+    <button type="button" role="menuitem" data-action="delete" class="danger">Delete${kind === 'folder' ? ' folder' : ''}</button>
+    <div class="lib-menu-label">Move to</div>
+    <div class="lib-menu-moves">${moveRows}</div>`;
+  libraryMenu.hidden = false;
+
+  // Open below the button, or above when there's more room there, kept inside the visible workspace
+  const pane = libraryPane.getBoundingClientRect();
+  const btn = button.getBoundingClientRect();
+  const area = (libraryPane.closest('.workspace') || libraryPane).getBoundingClientRect();
+  const minTop = Math.max(0, area.top) + 8;
+  const maxBottom = Math.min(window.innerHeight, area.bottom) - 8;
+  const roomBelow = maxBottom - btn.bottom - 4;
+  const roomAbove = btn.top - 4 - minTop;
+  libraryMenu.style.maxHeight = '';
+  const natural = libraryMenu.offsetHeight;
+  const below = roomBelow >= natural || roomBelow >= roomAbove;
+  const menuH = Math.min(natural, below ? roomBelow : roomAbove);
+  libraryMenu.style.maxHeight = `${menuH}px`;
+  libraryMenu.style.top = `${(below ? btn.bottom + 4 : btn.top - 4 - menuH) - pane.top}px`;
+  libraryMenu.style.right = `${Math.max(8, pane.right - btn.right)}px`;
+}
+
+libraryMenu.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn || !menuTarget) return;
+  const { kind, id } = menuTarget;
+  if (btn.dataset.action === 'rename') startRename(kind, id);
+  else if (btn.dataset.action === 'open') openFolder(id);
+  else if (btn.dataset.action === 'delete') deleteEntry(kind, id);
+  else if (btn.dataset.move !== undefined) {
+    closeMenu();
+    moveTo(kind, id, btn.dataset.move);
+  }
+});
+document.addEventListener('pointerdown', (e) => {
+  if (!libraryMenu.hidden && !libraryMenu.contains(e.target) && !e.target.closest('.menu-btn')) closeMenu();
+});
+libraryList.addEventListener('scroll', closeMenu);
+
+$('btnNewFolder').addEventListener('click', createFolder);
+
+libraryCrumbs.addEventListener('click', (e) => {
+  const crumb = e.target.closest('button.crumb');
+  if (crumb) openFolder(crumb.dataset.folderId);
+});
+
+libraryList.addEventListener('click', (e) => {
+  if (e.target.closest('input.rename')) return;
+  const add = e.target.closest('.add');
+  const more = e.target.closest('.menu-btn');
+  if (add) addToCues(add.dataset.id);
+  else if (more) {
+    const open = menuTarget?.id === more.dataset.id && !libraryMenu.hidden;
+    if (open) closeMenu();
+    else openMenu(more.dataset.kind, more.dataset.id, more);
+  } else {
+    const folder = e.target.closest('.folder-item');
+    if (folder && !renaming) openFolder(folder.dataset.folderId);
   }
 });
 libraryList.addEventListener('dblclick', (e) => {
-  const item = e.target.closest('.media-item');
-  if (item && !e.target.closest('button')) addToCues(item.dataset.id);
+  const item = e.target.closest('.media-item[data-id]');
+  if (item && !e.target.closest('button, input')) addToCues(item.dataset.id);
+});
+libraryList.addEventListener('keydown', (e) => {
+  if (!e.target.matches('input.rename')) return;
+  if (e.key === 'Enter') { e.preventDefault(); finishRename(true); }
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finishRename(false); }
+});
+libraryList.addEventListener('focusout', (e) => {
+  if (e.target.matches('input.rename')) finishRename(true);
 });
 libraryList.addEventListener('dragstart', (e) => {
-  const item = e.target.closest('.media-item');
-  if (!item) return;
-  e.dataTransfer.setData(MEDIA_MIME, item.dataset.id);
-  e.dataTransfer.effectAllowed = 'copy';
+  const folder = e.target.closest('.folder-item');
+  const item = e.target.closest('.media-item[data-id]');
+  closeMenu();
+  if (folder) {
+    libDrag = { kind: 'folder', id: folder.dataset.folderId };
+    e.dataTransfer.setData(FOLDER_MIME, libDrag.id);
+    e.dataTransfer.effectAllowed = 'move';
+  } else if (item) {
+    libDrag = { kind: 'media', id: item.dataset.id };
+    e.dataTransfer.setData(MEDIA_MIME, item.dataset.id);
+    e.dataTransfer.effectAllowed = 'copyMove';
+  }
+});
+libraryList.addEventListener('dragend', () => {
+  libDrag = null;
+  clearFolderDropMarks();
 });
 
 function hasType(e, type) {
   return Array.from(e.dataTransfer.types).includes(type);
 }
 
+function clearFolderDropMarks() {
+  libraryPane.querySelectorAll('.drop-into').forEach((el) => el.classList.remove('drop-into'));
+}
+
+// Folder rows and breadcrumbs take dragged library rows
+function folderDropTarget(e) {
+  if (!libDrag) return null;
+  const el = e.target.closest('.folder-item, .crumb');
+  if (!el) return null;
+  const folderId = el.dataset.folderId || null;
+  if (libDrag.kind === 'folder' && (folderId === libDrag.id || isInside(folderId, libDrag.id))) return null;
+  return { el, folderId };
+}
+
 libraryPane.addEventListener('dragover', (e) => {
+  const target = folderDropTarget(e);
+  if (target) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (!target.el.classList.contains('drop-into')) {
+      clearFolderDropMarks();
+      target.el.classList.add('drop-into');
+    }
+    return;
+  }
+  clearFolderDropMarks();
   if (!hasType(e, 'Files')) return;
   e.preventDefault();
   libraryPane.classList.add('dragover');
 });
 libraryPane.addEventListener('dragleave', (e) => {
-  if (!libraryPane.contains(e.relatedTarget)) libraryPane.classList.remove('dragover');
+  if (!libraryPane.contains(e.relatedTarget)) {
+    libraryPane.classList.remove('dragover');
+    clearFolderDropMarks();
+  }
 });
 libraryPane.addEventListener('drop', (e) => {
+  const target = folderDropTarget(e);
+  if (target) {
+    e.preventDefault();
+    clearFolderDropMarks();
+    moveTo(libDrag.kind, libDrag.id, target.folderId);
+    return;
+  }
   if (!hasType(e, 'Files')) return;
   e.preventDefault();
   libraryPane.classList.remove('dragover');
-  uploadFiles(e.dataTransfer.files, '/upload');
+  // Dropped on a folder row uploads into that folder, otherwise into the open one
+  const folder = e.target.closest('.folder-item, .crumb');
+  const folderId = folder ? folder.dataset.folderId : currentFolderId;
+  uploadFiles(e.dataTransfer.files, folderId ? `/upload?folder=${encodeURIComponent(folderId)}` : '/upload');
 });
 
 // --- events: cues ---
