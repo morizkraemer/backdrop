@@ -10,6 +10,7 @@ const config = require('./config');
 const { MpvController } = require('./mpv-controller');
 const { createStateManager } = require('./state');
 const { analyzeVideo, removeThumbnail } = require('./media-info');
+const { createMatrix } = require('./hdmi-matrix');
 
 const ALLOWED_EXT = [
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
@@ -27,6 +28,15 @@ let isTransitioning = false;
 let wss = null;
 let mpvProcess = null;
 let led = { configured: !!config.novaHost, available: false, brightness: null };
+const matrix = config.hdmiHosts.length ? createMatrix(config.hdmiHosts) : null;
+let hdmi = {
+  configured: !!matrix,
+  available: false,
+  size: matrix?.size ?? 0,
+  routes: [],
+  inputLink: [],
+  outputLink: [],
+};
 
 function getDiskFree() {
   try {
@@ -45,6 +55,7 @@ function broadcastState() {
     isTransitioning,
     mpvConnected: mpv.connected,
     led,
+    hdmi: { ...hdmi, names: s.hdmiNames },
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -711,6 +722,64 @@ if (config.novaHost) {
   }, 10000);
 }
 
+// HDMI matrix routing via the ezcoo EZ-MX44HAS2 (see setup/HDMI-MATRIX.md)
+let hdmiPolling = false;
+
+function setHdmi(patch) {
+  const next = { ...hdmi, ...patch };
+  if (JSON.stringify(next) === JSON.stringify(hdmi)) return;
+  hdmi = next;
+  broadcastState();
+}
+
+async function pollHdmi() {
+  if (!matrix || hdmiPolling) return;
+  hdmiPolling = true;
+  try {
+    const st = await matrix.status();
+    setHdmi({ available: true, ...st });
+  } catch {
+    setHdmi({ available: false });
+  } finally {
+    hdmiPolling = false;
+  }
+}
+
+app.put('/api/hdmi/route', async (req, res) => {
+  if (!matrix) return res.status(501).json({ error: 'HDMI_HOST not configured' });
+  const output = Number(req.body?.output);
+  const input = Number(req.body?.input);
+  if (!Number.isInteger(output) || output < 0 || output > matrix.size
+    || !Number.isInteger(input) || input < 1 || input > matrix.size) {
+    return res.status(400).json({ error: `output must be 0-${matrix.size} and input 1-${matrix.size}` });
+  }
+  try {
+    const routes = await matrix.route(output, input);
+    setHdmi({ available: true, routes: routes.map((r, i) => r ?? hdmi.routes[i] ?? null) });
+    const ok = output === 0 ? routes.every((r) => r === input) : routes[output - 1] === input;
+    if (!ok) return res.status(502).json({ error: 'HDMI matrix did not switch' });
+    res.json(hdmi);
+  } catch (err) {
+    setHdmi({ available: false });
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.put('/api/hdmi/names', (req, res) => {
+  const clean = (a) => (Array.isArray(a) ? a.slice(0, 16).map((x) => String(x ?? '').trim().slice(0, 40)) : []);
+  const names = { inputs: clean(req.body?.inputs), outputs: clean(req.body?.outputs) };
+  state.updateState((s) => ({ ...s, hdmiNames: names }));
+  broadcastState();
+  res.json(names);
+});
+
+if (matrix) {
+  // The matrix never pushes changes (front panel, IR, web UI), so poll while someone is watching
+  setInterval(() => {
+    if (wss && wss.clients.size > 0) pollHdmi();
+  }, 10000);
+}
+
 const server = app.listen(config.port, () => {
   console.log(`backdrop listening on port ${config.port}`);
 });
@@ -723,8 +792,10 @@ wss.on('connection', (ws) => {
     isTransitioning,
     mpvConnected: mpv.connected,
     led,
+    hdmi: { ...hdmi, names: state.getState().hdmiNames },
   }));
   pollLed();
+  pollHdmi();
 });
 
 mpv.on('connected', () => broadcastState());

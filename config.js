@@ -20,4 +20,8 @@ module.exports = {
   btPassword: process.env.BT_PASSWORD || null,
   // NovaStar LED controller (setup/NOVASTAR.md). Set NOVA_HOST= (empty) to disable.
   novaHost: process.env.NOVA_HOST ?? '192.168.178.173',
+  // ezcoo HDMI matrix (setup/HDMI-MATRIX.md): comma-separated hosts, tried in order until
+  // one answers. Set HDMI_HOST= (empty) to disable.
+  hdmiHosts: (process.env.HDMI_HOST ?? 'w550-010203,192.168.178.211')
+    .split(',').map((h) => h.trim()).filter(Boolean),
 };

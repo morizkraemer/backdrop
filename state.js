@@ -10,7 +10,13 @@ const DEFAULT_STATE = {
   playlist: [],
   currentCueIndex: -1,
   playlistLoop: false,
+  hdmiNames: { inputs: [], outputs: [] },
 };
+
+function loadNames(n) {
+  const list = (a) => (Array.isArray(a) ? a.map((x) => (typeof x === 'string' ? x : '')) : []);
+  return { inputs: list(n?.inputs), outputs: list(n?.outputs) };
+}
 
 function load(statePath) {
   try {
@@ -21,6 +27,7 @@ function load(statePath) {
       playlist: parsed.playlist ?? [],
       currentCueIndex: typeof parsed.currentCueIndex === 'number' ? parsed.currentCueIndex : -1,
       playlistLoop: typeof parsed.playlistLoop === 'boolean' ? parsed.playlistLoop : false,
+      hdmiNames: loadNames(parsed.hdmiNames),
     };
   } catch (err) {
     if (err.code === 'ENOENT') return { ...DEFAULT_STATE };
@@ -70,6 +77,7 @@ function createStateManager(statePath) {
         playlist: newState.playlist ?? [],
         currentCueIndex: typeof newState.currentCueIndex === 'number' ? newState.currentCueIndex : -1,
         playlistLoop: typeof newState.playlistLoop === 'boolean' ? newState.playlistLoop : false,
+        hdmiNames: loadNames(newState.hdmiNames ?? state.hdmiNames),
       };
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(persist, DEBOUNCE_MS);

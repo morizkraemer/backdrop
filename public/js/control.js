@@ -427,6 +427,7 @@ function renderInspector() {
 function render() {
   renderHeader();
   renderLed();
+  renderHdmi();
   renderTransport();
   renderLibrary();
   renderCues();
@@ -852,6 +853,136 @@ $('ledPresets').addEventListener('click', (e) => {
   if (!b) return;
   ledSlider.value = b.dataset.value;
   sendLed(Number(b.dataset.value));
+});
+
+// --- HDMI matrix routing (ezcoo matrix, proxied by the server) ---
+
+const hdmiEl = $('hdmi');
+const btnHdmi = $('btnHdmi');
+const hdmiPopover = $('hdmiPopover');
+const hdmiGrid = $('hdmiGrid');
+const hdmiRename = $('hdmiRename');
+let hdmiPending = null; // { output, input } sent but not yet confirmed
+let hdmiError = null;
+let hdmiRenaming = false;
+
+function hdmiName(kind, i) {
+  const name = state.hdmi?.names?.[kind]?.[i];
+  return name || `${kind === 'inputs' ? 'In' : 'Out'} ${i + 1}`;
+}
+
+function linkDot(on) {
+  if (on == null) return '';
+  return `<span class="sig${on ? ' on' : ''}" title="${on ? 'Signal' : 'No signal'}"></span>`;
+}
+
+function renderHdmi() {
+  const h = state.hdmi || {};
+  hdmiEl.hidden = !h.configured;
+  if (!h.configured) return;
+  const online = !!h.available;
+  const size = h.size || 4;
+  btnHdmi.classList.toggle('offline', !online);
+  $('hdmiText').textContent = online ? 'HDMI' : 'HDMI offline';
+  hdmiRename.classList.toggle('active', hdmiRenaming);
+  hdmiRename.setAttribute('aria-pressed', String(hdmiRenaming));
+  hdmiRename.textContent = hdmiRenaming ? 'Done' : 'Rename';
+
+  const status = $('hdmiStatus');
+  status.classList.toggle('error', !!hdmiError || !online);
+  status.textContent = !online ? 'Matrix unreachable'
+    : hdmiError ? hdmiError
+    : hdmiPending ? 'Switching…'
+    : '';
+
+  // Don't rebuild under the cursor while a name is being typed
+  if (hdmiPopover.hidden || (hdmiGrid.contains(document.activeElement) && document.activeElement.tagName === 'INPUT')) return;
+
+  const label = (kind, i, dot) => (hdmiRenaming
+    ? `<input type="text" maxlength="40" data-kind="${kind}" data-i="${i}" value="${escapeHtml(state.hdmi?.names?.[kind]?.[i] ?? '')}" placeholder="${kind === 'inputs' ? 'In' : 'Out'} ${i + 1}" aria-label="${kind === 'inputs' ? 'Input' : 'Output'} ${i + 1} name">`
+    : `${dot}<span>${escapeHtml(hdmiName(kind, i))}</span>`);
+
+  const routes = h.routes || [];
+  let html = `<div class="hdmi-corner">In →</div>`;
+  for (let i = 0; i < size; i++) {
+    html += `<div class="hdmi-in" title="${escapeHtml(hdmiName('inputs', i))}">${label('inputs', i, linkDot(h.inputLink?.[i]))}</div>`;
+  }
+  const cell = (out, inp, active) => {
+    const pending = hdmiPending && hdmiPending.output === out && hdmiPending.input === inp;
+    const name = out === 0 ? 'all outputs' : hdmiName('outputs', out - 1);
+    return `<button type="button" class="hdmi-cell${active ? ' active' : ''}${pending ? ' pending' : ''}" data-out="${out}" data-in="${inp}" aria-pressed="${active}" ${online ? '' : 'disabled'} aria-label="${escapeHtml(hdmiName('inputs', inp - 1))} to ${escapeHtml(name)}">${inp}</button>`;
+  };
+  for (let o = 0; o < size; o++) {
+    html += `<div class="hdmi-out" title="${escapeHtml(hdmiName('outputs', o))}">${label('outputs', o, linkDot(h.outputLink?.[o]))}</div>`;
+    for (let i = 1; i <= size; i++) html += cell(o + 1, i, routes[o] === i);
+  }
+  html += `<div class="hdmi-out hdmi-all">All</div>`;
+  for (let i = 1; i <= size; i++) html += cell(0, i, routes.length > 0 && routes.every((r) => r === i));
+  hdmiGrid.style.setProperty('--hdmi-cols', size);
+  hdmiGrid.innerHTML = html;
+}
+
+function sendHdmiRoute(output, input) {
+  hdmiPending = { output, input };
+  hdmiError = null;
+  renderHdmi();
+  api('PUT', '/hdmi/route', { output, input })
+    .then(async (r) => {
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not switch');
+    })
+    .catch((err) => { hdmiError = err.message; })
+    .finally(() => {
+      if (hdmiPending?.output === output && hdmiPending?.input === input) hdmiPending = null;
+      renderHdmi();
+    });
+}
+
+function saveHdmiNames() {
+  const names = { inputs: [], outputs: [] };
+  for (const kind of ['inputs', 'outputs']) {
+    names[kind] = [...(state.hdmi?.names?.[kind] || [])];
+    hdmiGrid.querySelectorAll(`input[data-kind="${kind}"]`).forEach((el) => {
+      names[kind][Number(el.dataset.i)] = el.value.trim();
+    });
+  }
+  state.hdmi = { ...state.hdmi, names };
+  api('PUT', '/hdmi/names', names).catch(() => {});
+}
+
+function setHdmiOpen(open) {
+  hdmiPopover.hidden = !open;
+  btnHdmi.setAttribute('aria-expanded', String(open));
+  if (!open && hdmiRenaming) {
+    saveHdmiNames();
+    hdmiRenaming = false;
+  }
+  if (open) renderHdmi();
+}
+
+btnHdmi.addEventListener('click', () => setHdmiOpen(hdmiPopover.hidden));
+document.addEventListener('click', (e) => {
+  // composedPath: the clicked cell may already be replaced by a re-render
+  if (!hdmiPopover.hidden && !e.composedPath().includes(hdmiEl)) setHdmiOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !hdmiPopover.hidden) setHdmiOpen(false);
+});
+
+hdmiGrid.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-out]');
+  if (!b || b.disabled) return;
+  sendHdmiRoute(Number(b.dataset.out), Number(b.dataset.in));
+});
+hdmiGrid.addEventListener('change', (e) => {
+  if (e.target.matches('input[data-kind]')) saveHdmiNames();
+});
+hdmiGrid.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches('input[data-kind]')) e.target.blur();
+});
+hdmiRename.addEventListener('click', () => {
+  if (hdmiRenaming) saveHdmiNames();
+  hdmiRenaming = !hdmiRenaming;
+  renderHdmi();
 });
 
 connectWs();
