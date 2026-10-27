@@ -86,7 +86,7 @@ function sanitizeFilename(name) {
   return base.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').slice(0, 200) || 'unnamed';
 }
 
-// Adds a finished remote upload to the library, inside a root folder of that
+// Adds a finished phone upload to the library, inside a root folder of that
 // name (created on first use so phone uploads don't mix into the root)
 function addRemoteUpload({ filename, originalName, size }, folderName) {
   let folder = state.getState().folders.find((f) => !f.parentId && f.name === folderName);
@@ -322,7 +322,7 @@ const remoteUpload = config.remoteUploadPort
   })
   : null;
 if (remoteUpload) app.use('/api/remote-upload', remoteUpload.controlRouter);
-else app.get('/api/remote-upload', (req, res) => res.json({ configured: false, disabled: true }));
+else app.get('/api/remote-upload', (req, res) => res.json({ disabled: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get(/^\/uploads\/.+/, (req, res) => {
   const requested = req.path.replace(/^\/uploads\/?/, '') || '';
@@ -976,11 +976,11 @@ const server = app.listen(config.port, () => {
   console.log(`backdrop listening on port ${config.port}`);
 });
 
-// Only this listener is meant for the Cloudflare Tunnel; it serves nothing but the upload page
+// Upload-only listener for the QR code (LAN, or a Cloudflare Tunnel); it serves nothing but the upload page
 if (remoteUpload) {
   remoteUpload.publicApp.listen(config.remoteUploadPort, config.remoteUploadHost, () => {
-    console.log(`remote uploads listening on ${config.remoteUploadHost}:${config.remoteUploadPort}`);
-  }).on('error', (err) => console.warn('Remote upload server failed:', err.message));
+    console.log(`phone uploads listening on ${config.remoteUploadHost}:${config.remoteUploadPort}`);
+  }).on('error', (err) => console.warn('Phone upload server failed:', err.message));
 }
 
 wss = new WebSocketServer({ server, path: '/ws' });

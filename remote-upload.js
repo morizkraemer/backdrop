@@ -1,10 +1,12 @@
 /**
- * Remote uploads: a second, upload-only web server meant to sit behind a
- * Cloudflare Tunnel (setup/REMOTE-UPLOAD.md). It serves one page and the
- * upload endpoints, all under /u/<token>, and nothing else, so the control UI
- * is never reachable from outside even if the tunnel points at the wrong path.
+ * Phone uploads (setup/REMOTE-UPLOAD.md): a second, upload-only web server on
+ * its own port. It serves one page and the upload endpoints, all under
+ * /u/<token>, and nothing else, so people who scan the QR code never get the
+ * control UI. By default the QR points at this port on the LAN; it can also
+ * sit behind a Cloudflare Tunnel (REMOTE_UPLOAD_URL) to work from outside.
  *
- * Files arrive in chunks because Cloudflare rejects request bodies over 100 MB.
+ * Files arrive in chunks: a dropped Wi-Fi connection resumes instead of
+ * starting over, and Cloudflare rejects request bodies over 100 MB.
  */
 const crypto = require('crypto');
 const express = require('express');
@@ -60,8 +62,11 @@ function createRemoteUpload({ config, allowedExt, getDiskFree, sanitizeFilename,
     fs.renameSync(tmp, settingsPath);
   }
 
-  function linkUrl() {
-    return publicUrl ? `${publicUrl}/u/${settings.token}` : null;
+  // Without a public URL, use the address the control UI was opened with,
+  // on the upload port: phones on the same network can reach that
+  function linkUrl(req) {
+    const base = publicUrl || `http://${req.hostname.includes(':') ? `[${req.hostname}]` : req.hostname}:${config.remoteUploadPort}`;
+    return `${base}/u/${settings.token}`;
   }
 
   // Leftovers from a restart or abandoned phones
@@ -89,13 +94,15 @@ function createRemoteUpload({ config, allowedExt, getDiskFree, sanitizeFilename,
 
   // --- control API (LAN app only) ---
 
-  async function status() {
-    const url = linkUrl();
+  async function status(req) {
+    const url = linkUrl(req);
     return {
-      configured: !!url,
       enabled: settings.enabled,
       url,
-      qr: url ? await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' }) : null,
+      public: !!publicUrl,
+      // Opened as localhost, the QR would point phones at themselves
+      localOnly: !publicUrl && /^(localhost|127\.|::1$)/.test(req.hostname),
+      qr: await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' }),
       folderName: config.remoteUploadFolder,
     };
   }
@@ -103,7 +110,7 @@ function createRemoteUpload({ config, allowedExt, getDiskFree, sanitizeFilename,
   const controlRouter = express.Router();
 
   controlRouter.get('/', async (req, res) => {
-    res.json(await status());
+    res.json(await status(req));
   });
 
   controlRouter.put('/', async (req, res) => {
@@ -111,7 +118,7 @@ function createRemoteUpload({ config, allowedExt, getDiskFree, sanitizeFilename,
     settings = { ...settings, enabled: req.body.enabled };
     saveSettings(settings);
     if (!settings.enabled) dropAllPending();
-    res.json(await status());
+    res.json(await status(req));
   });
 
   // A new link makes every printed or shared QR code stop working
@@ -119,10 +126,10 @@ function createRemoteUpload({ config, allowedExt, getDiskFree, sanitizeFilename,
     settings = { ...settings, token: newToken() };
     saveSettings(settings);
     dropAllPending();
-    res.json(await status());
+    res.json(await status(req));
   });
 
-  // --- public app (behind the tunnel) ---
+  // --- upload-only app (its own port) ---
 
   const publicApp = express();
   publicApp.disable('x-powered-by');

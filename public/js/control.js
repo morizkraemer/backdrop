@@ -1489,7 +1489,7 @@ hdmiSources.addEventListener('click', (e) => {
   if (b && !b.disabled) sendHdmiSource(Number(b.dataset.input));
 });
 
-// --- Remote uploads (QR code for the Cloudflare Tunnel upload page) ---
+// --- Phone uploads (QR code for the upload-only page) ---
 
 const qrBackdrop = $('qrBackdrop');
 const qrBody = $('qrBody');
@@ -1505,17 +1505,14 @@ function renderRemoteUpload() {
     return;
   }
   if (r.disabled) {
-    qrBody.innerHTML = '<p class="qr-note">Remote uploads are turned off on this server (REMOTE_UPLOAD_PORT=0).</p>';
-    return;
-  }
-  if (!r.configured) {
-    qrBody.innerHTML = `<p class="qr-note">Not set up yet. Once the Cloudflare Tunnel is running, set <code>REMOTE_UPLOAD_URL</code> in the server's .env and restart. Steps are in <code>setup/REMOTE-UPLOAD.md</code>.</p>`;
+    qrBody.innerHTML = '<p class="qr-note">Phone uploads are turned off on this server (REMOTE_UPLOAD_PORT=0).</p>';
     return;
   }
   qrBody.innerHTML = `
     <div class="qr-code${r.enabled ? '' : ' closed'}">${r.qr}${r.enabled ? '' : '<span>Closed</span>'}</div>
     <div class="qr-url"><span>${escapeHtml(r.url)}</span><button type="button" class="btn-secondary" id="qrCopy">Copy</button></div>
-    <p class="qr-note">Anyone with this code can send photos and videos from anywhere. They land in the “${escapeHtml(r.folderName)}” folder.</p>
+    ${r.localOnly ? '<p class="qr-note error">This page is open as localhost, so the code points at the phone itself. Open the control UI by its network address to get a working code.</p>' : ''}
+    <p class="qr-note">${r.public ? 'Anyone with this code can send photos and videos from anywhere.' : 'Phones on the same Wi-Fi as backdrop can send photos and videos with this code.'} They land in the “${escapeHtml(r.folderName)}” folder.</p>
     <label class="qr-toggle">
       <input type="checkbox" id="qrEnabled" ${r.enabled ? 'checked' : ''} ${remoteUploadBusy ? 'disabled' : ''}>
       <span>Accept uploads</span>

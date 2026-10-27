@@ -58,7 +58,7 @@ intentionally still say `screenview`.
 - Secrets: `.env` in the repo dir (`BT_HOST`, `BT_USER`, `BT_PASSWORD` for the Bluetooth Pi), loaded by `screenview.service`
 - LED brightness: the server talks to the NovaStar controller at `192.168.178.173` by default ([NOVASTAR.md](NOVASTAR.md)). Override with `NOVA_HOST` in `.env`, or set `NOVA_HOST=` (empty) to hide the control.
 - LED wall source: the server switches matrix output 1 between backdrop, FOH, Stage and Balkon. It talks to the ezcoo matrix over TCP port 23 ([HDMI-MATRIX.md](HDMI-MATRIX.md)). It tries `w550-010203` (its DHCP hostname) and then `192.168.178.211`. Override with `HDMI_HOST` in `.env` (comma-separated, first that answers wins), or set `HDMI_HOST=` (empty) to hide the control.
-- Remote uploads: a second, upload-only listener on `127.0.0.1:3100` sits behind a Cloudflare Tunnel so people can send files from outside the LAN by QR code ([REMOTE-UPLOAD.md](REMOTE-UPLOAD.md)). Set `REMOTE_UPLOAD_URL` in `.env` to the tunnel's public address; `REMOTE_UPLOAD_PORT=0` turns it off.
+- Phone uploads: Library → QR button. The code opens an upload-only page on its own port (`3100`), so phones on the Wi-Fi can send files without reaching the control UI ([REMOTE-UPLOAD.md](REMOTE-UPLOAD.md)). Optionally a Cloudflare Tunnel plus `REMOTE_UPLOAD_URL` makes it work from outside; `REMOTE_UPLOAD_PORT=0` turns it off.
 - `/etc/sudoers.d/screenview` (from `setup/sudoers-screenview`) lets `screenview` run `systemctl restart screenview.service`, which the deploy job needs.
 
 Run git as `screenview`, not root: git refuses the repo as root ("dubious ownership").
