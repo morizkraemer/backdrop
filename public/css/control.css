@@ -396,6 +396,7 @@ svg {
 }
 
 .screen img,
+.screen video,
 .thumb img {
   position: absolute;
   inset: 0;

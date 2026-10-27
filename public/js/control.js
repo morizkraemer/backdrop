@@ -173,6 +173,52 @@ function renderHeader() {
   connText.textContent = wsConnected ? 'Connected' : 'Reconnecting…';
 }
 
+// The Live monitor plays the live video itself, muted and kept in step with
+// mpv's position, so the preview moves smoothly without streaming the panel.
+const PREVIEW_SYNC_MS = 2000;
+const PREVIEW_MAX_DRIFT = 0.3; // seconds
+const PREVIEW_FIT = { fill: 'cover', centered: 'contain', stretch: 'fill' };
+let previewTimer = null;
+
+function previewKey(cue, media) {
+  const st = cue.settings || {};
+  return `${cue.id}:${media.id}:${!!st.loop}:${st.displayMode ?? 'fill'}`;
+}
+
+async function syncPreview(video) {
+  if (!video.isConnected) return;
+  try {
+    const startedAt = performance.now();
+    const { position } = await (await api('GET', '/position')).json();
+    if (position == null || !video.isConnected) return;
+    const target = position + (performance.now() - startedAt) / 2000;
+    if (Math.abs(video.currentTime - target) > PREVIEW_MAX_DRIFT) video.currentTime = target;
+    if (video.paused) video.play().catch(() => {});
+  } catch {
+    // Keep playing on our own clock until the next sync
+  }
+}
+
+function stopPreview() {
+  clearInterval(previewTimer);
+  previewTimer = null;
+}
+
+function renderLivePreview(screen, cue, media) {
+  const key = previewKey(cue, media);
+  if (screen.dataset.preview === key) return;
+  stopPreview();
+  screen.dataset.preview = key;
+  const poster = thumbSrc(media);
+  screen.innerHTML = `<video muted playsinline autoplay preload="auto"${poster ? ` poster="${poster}"` : ''}></video>`;
+  const video = screen.querySelector('video');
+  video.loop = !!cue.settings?.loop;
+  video.style.objectFit = PREVIEW_FIT[cue.settings?.displayMode ?? 'fill'];
+  video.src = `/uploads/${encodeURIComponent(media.filename)}`;
+  video.addEventListener('loadedmetadata', () => syncPreview(video), { once: true });
+  previewTimer = setInterval(() => syncPreview(video), PREVIEW_SYNC_MS);
+}
+
 function renderMonitor(root, index, isNow) {
   const cue = state.playlist[index];
   const media = cue && getMedia(cue.mediaId);
@@ -182,7 +228,15 @@ function renderMonitor(root, index, isNow) {
     ? media?.originalName ?? '?'
     : isNow ? (state.isTransitioning ? 'Loading…' : 'Nothing playing') : (state.playlist.length ? 'End of list' : '—');
   root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : '';
-  screen.innerHTML = cue ? thumbHtml(media) : '';
+  if (isNow && cue && media?.type === 'video') {
+    renderLivePreview(screen, cue, media);
+  } else {
+    if (isNow) {
+      stopPreview();
+      delete screen.dataset.preview;
+    }
+    screen.innerHTML = cue ? thumbHtml(media) : '';
+  }
   if (isNow) {
     root.classList.toggle('playing', !!cue);
     const tag = $('nowTag');

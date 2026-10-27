@@ -324,6 +324,17 @@ app.delete('/api/library/:id', (req, res) => {
 app.get('/api/playlist', (req, res) => res.json(state.getState().playlist));
 app.get('/api/state', (req, res) => res.json({ ...state.getState(), diskFree: getDiskFree() }));
 
+// Playback position of the live video, for the control page's preview to follow
+app.get('/api/position', async (req, res) => {
+  if (!mpv.connected) return res.json({ position: null });
+  try {
+    const position = await mpv.getProperty('time-pos');
+    res.json({ position: typeof position === 'number' ? position : null });
+  } catch {
+    res.json({ position: null }); // idle: mpv has no time-pos
+  }
+});
+
 app.put('/api/settings', (req, res) => {
   const { playlistLoop } = req.body;
   if (typeof playlistLoop !== 'boolean') return res.status(400).json({ error: 'playlistLoop must be boolean' });
