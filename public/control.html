@@ -113,6 +113,9 @@
       <aside class="pane library" id="libraryPane">
         <div class="pane-header">
           <h2>Library</h2>
+          <button type="button" class="btn-secondary" id="btnNewFolder" title="New folder" aria-label="New folder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5"/><path d="M9.5 13.5h5"/></svg>
+          </button>
           <button type="button" class="btn-secondary" id="btnUpload">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 20h16"/></svg>
             Upload
@@ -124,7 +127,9 @@
           <input type="search" id="librarySearch" placeholder="Search media" aria-label="Search media library">
         </label>
         <div class="filters" id="libraryFilters" role="group" aria-label="Filter by type"></div>
+        <nav class="crumbs" id="libraryCrumbs" aria-label="Folder"></nav>
         <div class="library-list" id="libraryList"></div>
+        <div class="lib-menu" id="libraryMenu" role="menu" hidden></div>
       </aside>
 
       <main class="pane cues" id="cuesPane">

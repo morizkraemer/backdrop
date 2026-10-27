@@ -7,6 +7,7 @@ const path = require('path');
 
 const DEFAULT_STATE = {
   library: [],
+  folders: [],
   playlist: [],
   currentCueIndex: -1,
   playlistLoop: false,
@@ -18,6 +19,7 @@ function load(statePath) {
     const parsed = JSON.parse(data);
     return {
       library: parsed.library ?? [],
+      folders: parsed.folders ?? [],
       playlist: parsed.playlist ?? [],
       currentCueIndex: typeof parsed.currentCueIndex === 'number' ? parsed.currentCueIndex : -1,
       playlistLoop: typeof parsed.playlistLoop === 'boolean' ? parsed.playlistLoop : false,
@@ -67,6 +69,7 @@ function createStateManager(statePath) {
     replaceState(newState) {
       state = {
         library: newState.library ?? [],
+        folders: newState.folders ?? [],
         playlist: newState.playlist ?? [],
         currentCueIndex: typeof newState.currentCueIndex === 'number' ? newState.currentCueIndex : -1,
         playlistLoop: typeof newState.playlistLoop === 'boolean' ? newState.playlistLoop : false,
