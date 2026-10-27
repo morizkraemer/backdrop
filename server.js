@@ -93,6 +93,35 @@ function isValidDisplayMode(m) {
   return ['stretch', 'centered', 'fill'].includes(m);
 }
 
+const FRAMING_LIMITS = { offset: 2, minScale: 0.1, maxScale: 4 };
+
+// Moving and resizing only applies to centered clips; fill and stretch always cover the panel
+function getCueFraming(settings = {}) {
+  if ((settings.displayMode ?? 'fill') !== 'centered') return { offsetX: 0, offsetY: 0, scale: 1 };
+  return {
+    offsetX: settings.offsetX ?? 0,
+    offsetY: settings.offsetY ?? 0,
+    scale: settings.scale ?? 1,
+  };
+}
+
+// Validates offsetX/offsetY/scale in body; returns { framing } or { error }
+function parseFraming(body) {
+  const framing = {};
+  for (const key of ['offsetX', 'offsetY']) {
+    if (body[key] === undefined) continue;
+    const v = Number(body[key]);
+    if (!Number.isFinite(v) || Math.abs(v) > FRAMING_LIMITS.offset) return { error: `Invalid ${key}` };
+    framing[key] = v;
+  }
+  if (body.scale !== undefined) {
+    const v = Number(body.scale);
+    if (!Number.isFinite(v) || v < FRAMING_LIMITS.minScale || v > FRAMING_LIMITS.maxScale) return { error: 'Invalid scale' };
+    framing.scale = v;
+  }
+  return { framing };
+}
+
 function getCuePlaybackOptions(cue, media) {
   const settings = cue.settings || {};
   return {
@@ -100,6 +129,7 @@ function getCuePlaybackOptions(cue, media) {
     displayMode: settings.displayMode ?? 'fill',
     isImage: media.type === 'image',
     freeze: settings.freeze ?? false,
+    framing: getCueFraming(settings),
   };
 }
 
@@ -476,8 +506,11 @@ app.put('/api/playlist/:cueId', (req, res) => {
   const idx = s.playlist.findIndex((c) => c.id === req.params.cueId);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
   const { loop, displayMode, duration, freeze } = req.body;
+  const { framing, error } = parseFraming(req.body);
+  if (error) return res.status(400).json({ error });
   const cue = { ...s.playlist[idx] };
-  cue.settings = { ...cue.settings };
+  const before = cue.settings || {};
+  cue.settings = { ...before, ...framing };
   if (loop !== undefined) cue.settings.loop = !!loop;
   if (freeze !== undefined) cue.settings.freeze = !!freeze;
   if (displayMode !== undefined) {
@@ -493,7 +526,12 @@ app.put('/api/playlist/:cueId', (req, res) => {
   playlist[idx] = cue;
   state.updateState({ playlist });
 
-  if (idx === s.currentCueIndex) {
+  // Only the framing changed: move the picture in place instead of reloading
+  const needsReload = ['loop', 'freeze', 'displayMode', 'duration']
+    .some((k) => (cue.settings[k] ?? null) !== (before[k] ?? null));
+  if (idx === s.currentCueIndex && !needsReload) {
+    mpv.setFraming(getCueFraming(cue.settings)).catch(console.error);
+  } else if (idx === s.currentCueIndex) {
     const media = s.library.find((m) => m.id === cue.mediaId);
     if (media) {
       const filePath = path.resolve(config.uploadsDir, media.filename);
@@ -504,6 +542,21 @@ app.put('/api/playlist/:cueId', (req, res) => {
   }
   broadcastState();
   res.json(cue);
+});
+
+// Live preview while dragging a clip around: moves the picture on the panel
+// without saving. The final position is saved with PUT /api/playlist/:cueId.
+app.post('/api/playlist/:cueId/framing', (req, res) => {
+  if (!isValidId(req.params.cueId)) return res.status(400).json({ error: 'Invalid cue ID' });
+  const s = state.getState();
+  const cue = s.playlist.find((c) => c.id === req.params.cueId);
+  if (!cue) return res.status(404).json({ error: 'Not found' });
+  const { framing, error } = parseFraming(req.body);
+  if (error) return res.status(400).json({ error });
+  if (s.playlist[s.currentCueIndex]?.id !== cue.id) return res.json({ live: false });
+  mpv.setFraming(getCueFraming({ ...cue.settings, ...framing }))
+    .then(() => res.json({ live: true }))
+    .catch((err) => res.status(502).json({ error: err.message }));
 });
 
 app.delete('/api/playlist/:cueId', (req, res) => {
