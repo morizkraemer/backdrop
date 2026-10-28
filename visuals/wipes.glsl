@@ -1,6 +1,7 @@
 // Wipes: hard-edged shapes wiping the wall from one colour to the other
 // Patterns: 0 diagonal, 1 iris, 2 diamond, 3 clock, 4 split
 // control: pattern
+// category: Minimal
 
 //!PARAM speed
 //!DESC Speed

@@ -1,5 +1,6 @@
 // Shutters: slats opening and closing like venetian blinds, in a wave across the wall
 // control: wave
+// category: Minimal
 
 //!PARAM speed
 //!DESC Speed

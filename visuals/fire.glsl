@@ -1,5 +1,6 @@
 // Fire: flames licking up from the bottom of the wall
 // control: height
+// category: Organic
 
 //!PARAM speed
 //!DESC Speed

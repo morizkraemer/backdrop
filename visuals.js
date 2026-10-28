@@ -44,13 +44,16 @@ function parseVisual(text) {
   let name = null;
   let controlParam = null;
   let controls = null;
+  let category = null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const m = /^\/\/!PARAM\s+(\w+)/.exec(line);
     if (!m) {
       const control = /^\/\/\s*control:\s*(\w+)/.exec(line);
       const many = /^\/\/\s*controls:\s*(.+)$/.exec(line);
+      const cat = /^\/\/\s*category:\s*(.+)$/.exec(line);
       if (control) controlParam = control[1];
+      else if (cat) category = cat[1].trim();
       else if (many) controls = many[1].split(/[\s,]+/).filter(Boolean);
       else if (name === null && /^\/\/\s*\S/.test(line) && !line.startsWith('//!')) {
         name = line.replace(/^\/\/\s*/, '').split(':')[0].trim();
@@ -76,7 +79,7 @@ function parseVisual(text) {
     if (!Number.isFinite(p.default)) p.default = 0;
     params.push(p);
   }
-  return { name, params, body: body.join('\n'), control: controlParam, controls };
+  return { name, params, body: body.join('\n'), control: controlParam, controls, category };
 }
 
 // The slider the DMX "control" channel moves: named by a "// control: <param>"

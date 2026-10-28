@@ -36,15 +36,23 @@ async function loadList() {
   renderDmx();
 }
 
+// The list is grouped by category (a "// category:" line in the shader); the
+// DMX values stay in file order
+const CATEGORIES = ['Minimal', 'Organic', 'Abstract', 'Other', 'Yours'];
+
 function renderList() {
   const air = onAirId();
-  $('visualList').innerHTML = visuals.map((v, i) => `<button type="button" class="lab-item${current?.id === v.id ? ' selected' : ''}${air === v.id ? ' live' : ''}" data-id="${esc(v.id)}">
+  const item = (v, i) => `<button type="button" class="lab-item${current?.id === v.id ? ' selected' : ''}${air === v.id ? ' live' : ''}" data-id="${esc(v.id)}">
     <span class="lab-thumb">${v.thumb ? `<img src="${esc(v.thumb)}" alt="" loading="lazy">` : ''}</span>
     <span class="lab-item-text">
       <span class="lab-item-name">${esc(v.name)}</span>
       <span class="lab-item-sub">DMX ${(i + 1) * DMX_SLOT}${v.builtin ? '' : ' · yours'}${air === v.id ? ' · on wall' : ''}</span>
     </span>
-  </button>`).join('');
+  </button>`;
+  const rank = (c) => (CATEGORIES.includes(c) ? CATEGORIES.indexOf(c) : CATEGORIES.length);
+  const cats = [...new Set(visuals.map((v) => v.category))].sort((a, b) => rank(a) - rank(b));
+  $('visualList').innerHTML = cats.map((c) => `<div class="lab-cat">${esc(c)}</div>${
+    visuals.map((v, i) => (v.category === c ? item(v, i) : '')).join('')}`).join('');
 }
 
 $('visualList').addEventListener('click', (e) => {

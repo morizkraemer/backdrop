@@ -1,4 +1,5 @@
 // Dots: a grid of LED-style dots lit by a travelling wave
+// category: Abstract
 
 //!PARAM speed
 //!DESC Speed

@@ -1,5 +1,6 @@
 // Lava: blobs rising and merging like a lava lamp
 // control: blobs
+// category: Organic
 
 //!PARAM speed
 //!DESC Speed

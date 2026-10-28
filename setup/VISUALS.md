@@ -33,7 +33,6 @@ Shipped in `visuals/`, with 576×192 thumbnails in `visuals/thumbs/`.
 | Scanner | Light bars sweeping back and forth |
 | Smoke | Slow flowing noise, like haze in a beam |
 | Dots | A grid of LED-style dots lit by a travelling wave |
-| Chase | Blocks lighting up in turn: run, bounce, fill, random, alternate |
 | Kaleido | A kaleidoscope of drifting colour, with adjustable mirrors |
 | Rain | Columns of falling glowing code |
 | Fire | Flames licking up from the bottom of the wall |
@@ -43,10 +42,9 @@ Shipped in `visuals/`, with 576×192 thumbnails in `visuals/thumbs/`.
 | Marble | Slow liquid marbling of two colours |
 | Lava | Blobs rising and merging like a lava lamp |
 | Crystal | A kaleidoscope of sharp glassy facets |
-| Bars | Minimal: bars wiping across the wall (wipe, centre out, in from the sides, build up, random) |
+| Bars | Minimal: bars across the wall at any angle: wipe, centre out, in from the sides, build up, random, run, bounce, alternate, scroll |
 | Grid | Minimal: a grid of cells lighting in sequence (reading order, snake, columns, rows, random, checker) |
 | Pulse | Minimal: the whole wall hitting on the beat like a blinder (single, double, swell, left/right, thirds) |
-| Stripes | Minimal: clean lines moving across the wall at any angle |
 | Frames | Minimal: rectangles opening out from (or into) the centre |
 | Shutters | Minimal: slats opening and closing like venetian blinds, in a wave across the wall (or sideways) |
 | Wipes | Minimal: hard-edged wipes from one colour to the other (diagonal, iris, diamond, clock, split) |

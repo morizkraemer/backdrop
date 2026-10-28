@@ -1,6 +1,7 @@
 // Grid: a grid of cells lighting in sequence
 // Patterns: 0 reading order, 1 snake, 2 columns, 3 rows, 4 random, 5 checker
 // control: pattern
+// category: Minimal
 
 //!PARAM speed
 //!DESC Speed

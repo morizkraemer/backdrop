@@ -1,5 +1,6 @@
 // Rain: columns of falling glowing code
 // control: density
+// category: Abstract
 
 //!PARAM speed
 //!DESC Speed

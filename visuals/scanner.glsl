@@ -1,4 +1,5 @@
 // Scanner: light bars sweeping across the wall
+// category: Minimal
 
 //!PARAM speed
 //!DESC Speed

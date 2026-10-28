@@ -1,5 +1,6 @@
 // Frames: rectangles opening out from the centre of the wall
 // control: frames
+// category: Minimal
 
 //!PARAM speed
 //!DESC Speed

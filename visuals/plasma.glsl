@@ -1,4 +1,5 @@
 // Plasma: soft colour clouds drifting across the wall
+// category: Organic
 
 //!PARAM speed
 //!DESC Speed
