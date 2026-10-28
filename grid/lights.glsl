@@ -383,49 +383,48 @@ float sdTriangle(vec2 p, float r) {
     return -length(p) * sign(p.y);
 }
 
-// A light bulb seen from above, lit at level: a clear glass globe with its
-// window reflections, an Edison filament (a star of glowing wires around the
-// stem) that burns white-hot at full and warm when dimmed, light filling the
-// glass and blooming around it. Tone-mapped so bright parts go to white.
+// A Fresnel stage light seen from the front, lit at level: a black housing
+// with bolts, a ringed Fresnel lens that glows from its hot centre, and the
+// diagonal wire safety mesh over it. Tone-mapped so bright parts go to white.
 vec3 bulb(vec2 p, float level, vec3 colour, float aa) {
-    const float R = 0.7;
+    const float LENS = 0.78;
+    const float BODY = 0.95;
     float r = length(p);
     float a = atan(p.y, p.x);
-    float inside = 1.0 - smoothstep(R - aa, R + aa, r);
-    float x = clamp(r / R, 0.0, 1.0);
-    float z = sqrt(1.0 - x * x); // the globe's height, 1 in the middle
-
-    // Light: dimmed filaments glow warmer, like real ones
-    vec3 hue = colour * mix(vec3(1.0, 0.45, 0.12), vec3(1.0), smoothstep(0.0, 0.6, level));
+    vec3 hue = colour * mix(vec3(1.0, 0.5, 0.18), vec3(1.0), smoothstep(0.0, 0.6, level));
     float e = level * level;
+    vec3 col = vec3(0.0);
 
-    // Filament: eight wires from the stem outwards, gently zigzagging
-    float k = 8.0;
-    float sector = (fract(a / (2.0 * PI) * k + 0.5) - 0.5) * 2.0 * PI / k;
-    float wire = abs(r * sin(sector) - 0.012 * sin(r * 70.0));
-    float wires = smoothstep(0.022, 0.0, wire) * smoothstep(0.06, 0.09, r) * smoothstep(0.34, 0.3, r);
-    float stem = smoothstep(0.07, 0.03, r);
-    float fil = max(wires, stem);
-    vec3 light = hue * e * (6.0 * fil + 2.2 * exp(-r * 9.0) + 0.55 * exp(-r * 3.0));
+    // Housing: dark metal, lighter towards the top, with four bolts
+    float body = 1.0 - smoothstep(BODY - aa, BODY + aa, r);
+    float shade = 0.5 - 0.5 * p.y / max(r, 0.001);
+    col += body * vec3(0.03 + 0.05 * shade);
+    col += body * vec3(0.12) * smoothstep(0.025, 0.0, abs(r - BODY + 0.02)) * shade;
+    float bolt = 0.0;
+    for (int k = 0; k < 4; k++) {
+        float ang = PI * 0.25 + float(k) * PI * 0.5;
+        bolt = max(bolt, smoothstep(0.035, 0.02, length(p - 0.87 * vec2(cos(ang), sin(ang)))));
+    }
+    col = mix(col, vec3(0.22), bolt);
 
-    // Glass: a dark globe with a brighter rim (Fresnel), lit from inside when on
-    float fresnel = pow(1.0 - z, 3.0);
-    vec3 glass = vec3(0.02) + vec3(0.12) * fresnel + hue * e * 0.6 * fresnel;
-    // Unlit wires still show, dark against the glass
-    glass += vec3(0.05) * fil * (1.0 - level);
-    // Window reflections: a soft one top left, a small sharp one beside it
-    vec2 h = (p - vec2(-0.27, -0.3)) * vec2(1.0, 1.6);
-    glass += vec3(0.22) * exp(-dot(h, h) * 30.0);
-    vec2 h2 = p - vec2(-0.12, -0.42);
-    glass += vec3(0.5) * smoothstep(0.05, 0.0, length(h2));
-    vec3 col = inside * (glass + light);
+    // The Fresnel lens: concentric steps, each brighter at its outer edge
+    float lens = 1.0 - smoothstep(LENS - aa, LENS + aa, r);
+    float step_ = fract(r * 13.0);
+    float rings = r < 0.1 ? 0.6 : 0.45 + 0.55 * step_ * step_;
+    vec3 glass = vec3(0.07, 0.08, 0.09) + vec3(0.08) * rings * (0.6 + 0.4 * shade);
+    glass += hue * e * (0.35 + 2.4 * exp(-r * 3.0)) * (0.55 + 0.45 * rings);
+    // Wire mesh: two diagonal sets of wires and a hoop at the lens edge
+    vec2 d = vec2(p.x + p.y, p.x - p.y) * 0.7071 * 7.0;
+    vec2 w = abs(fract(d) - 0.5);
+    float wire = smoothstep(0.06, 0.0, min(w.x, w.y) - 0.0) ;
+    wire = max(wire, smoothstep(0.02, 0.0, abs(r - LENS + 0.03)));
+    vec3 wireCol = vec3(0.32) + hue * e * 0.25;
+    glass = mix(glass, wireCol * (1.0 - 0.55 * e), wire * 0.85);
+    col = mix(col, glass, lens);
 
-    // Bloom around the globe, fading before the cell's edge
-    float edge = pow(clamp((1.0 - r) / (1.0 - R), 0.0, 1.0), 2.0);
-    col += hue * e * 0.9 * exp(-(max(r - R, 0.0)) * 7.0) * (1.0 - inside) * edge;
-    // A thin bright edge where the glass curves away
-    col += (vec3(0.1) + hue * e * 0.5) * smoothstep(0.03, 0.0, abs(r - R + 0.015));
-
+    // Glow around the housing, fading before the cell's edge
+    float edge = pow(clamp((1.0 - r) / (1.0 - BODY), 0.0, 1.0), 2.0);
+    col += hue * e * 0.5 * exp(-max(r - BODY, 0.0) * 8.0) * (1.0 - body) * edge;
     return vec3(1.0) - exp(-col * 1.5);
 }
 
