@@ -514,6 +514,12 @@ function renderDmx() {
     row.querySelector('.dmx-bar span').style.width = `${v == null ? 0 : (v * 100) / 255}%`;
     row.querySelector('.dmx-val').textContent = v == null ? '—' : fn.show(v);
   });
+  const startInput = $('dmxStart');
+  startInput.disabled = !d.configured;
+  if (document.activeElement !== startInput) startInput.value = d.start || '';
+  $('dmxStartHint').textContent = d.start
+    ? `Uses channels ${d.start}-${d.start + d.fixtureSize - 1}`
+    : d.configured ? 'Channels set one by one' : '';
   const first = d.channels?.seg1 || 0;
   const cellsInput = $('dmxChannels').querySelector('input[data-cells]');
   cellsInput.disabled = !d.configured;
@@ -533,6 +539,15 @@ function renderDmx() {
     || (!d.configured ? 'DMX is off on this server (DMX_UNIVERSE is empty).'
       : on ? '' : `Waiting for Art-Net on universe ${d.universe ?? 0}`);
 }
+
+$('dmxStart').addEventListener('change', (e) => {
+  const start = Math.round(Number(e.target.value));
+  if (!start) return renderDmx();
+  dmxError = null;
+  api('PUT', '/dmx', { start })
+    .catch((err) => { dmxError = err.message; })
+    .finally(renderDmx);
+});
 
 $('dmxChannels').addEventListener('change', (e) => {
   // The cells always sit on consecutive channels from Cell 1

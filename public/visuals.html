@@ -105,12 +105,17 @@
             <span class="field-label">DMX fixture</span>
             <span class="dmx-state" id="dmxState"></span>
           </div>
+          <label class="lab-start">
+            <span class="field-label">Start address</span>
+            <input type="number" id="dmxStart" min="1" max="512" step="1" inputmode="numeric" placeholder="—" aria-label="Fixture start address">
+            <span class="field-hint" id="dmxStartHint"></span>
+          </label>
           <div class="dmx-channels" id="dmxChannels">
             <div class="dmx-ch dmx-ch-head"><span>Channel</span><span>Function</span><span></span><span>Value</span></div>
           </div>
           <div class="led-status" id="dmxStatus"></div>
           <a class="lab-btn lab-download" href="/api/visuals/dot2.xml" download>Download dot2 fixture</a>
-          <span class="field-hint">Brightness, GO and BACK are set in backdrop. Each fixture channel takes over once its fader moves. Full map in setup/DMX.md.</span>
+          <span class="field-hint">Patch the dot2 fixture at the start address: GO, BACK and the visuals channels follow on from it. Brightness is set in backdrop. Single channels can still be moved below. Each fixture channel takes over once its fader moves. Full map in setup/DMX.md.</span>
         </div>
       </aside>
     </main>
