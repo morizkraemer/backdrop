@@ -983,23 +983,30 @@ app.post('/api/bluetooth/pairing', async (req, res) => {
   }
 });
 
-// Pi speakers source: snapclient (backdrop), raspotify (Spotify Connect) or
-// bluealsa-aplay (Bluetooth). Picking one stops the others, so only the
-// chosen one plays (needs setup/sudoers-pi-audio on the Pi).
+// Pi speakers source: snapclient (backdrop), raspotify (Spotify Connect) and
+// bluealsa-aplay (Bluetooth) all run all the time, each through its own ALSA
+// softvol control on the Pi's sound card (setup/SETUP.md). Picking a source
+// turns its control up and the others to zero, so Spotify stays connected.
+// bhf is in the audio group, so amixer needs no sudo.
 const PI_SOURCES = {
-  backdrop: 'snapclient',
-  spotify: 'raspotify',
-  bluetooth: 'bluealsa-aplay',
+  backdrop: 'Backdrop',
+  spotify: 'Spotify',
+  bluetooth: 'Bluetooth',
 };
+const PI_MIXER = 'amixer -c CODEC';
 
 async function piAudioSource() {
-  // is-active exits non-zero when a unit is inactive, so always succeed
-  const units = Object.values(PI_SOURCES);
-  const out = await sshCommand(`systemctl is-active ${units.join(' ')}; true`);
-  const states = out.split('\n').map((l) => l.trim());
-  const active = Object.keys(PI_SOURCES).filter((_, i) => states[i] === 'active');
-  // several running means they fight over the card: show it as mixed
-  return active.length === 1 ? active[0] : active.length ? 'mixed' : null;
+  // sget fails for a control that doesn't exist yet, so always succeed
+  const out = await sshCommand(Object.values(PI_SOURCES)
+    .map((c) => `echo "${c} $(${PI_MIXER} sget ${c} 2>/dev/null | grep -o '\\[[0-9]*%\\]' | head -1)"`)
+    .join('; '));
+  const on = Object.keys(PI_SOURCES).filter((key) => {
+    const line = out.split('\n').find((l) => l.startsWith(`${PI_SOURCES[key]} `)) || '';
+    const pct = Number((line.match(/\[(\d+)%\]/) || [])[1]);
+    return pct > 0;
+  });
+  // several up means they play over each other: show it as mixed
+  return on.length === 1 ? on[0] : on.length ? 'mixed' : null;
 }
 
 app.get('/api/pi-audio/status', async (req, res) => {
@@ -1013,13 +1020,11 @@ app.get('/api/pi-audio/status', async (req, res) => {
 
 app.post('/api/pi-audio/source', async (req, res) => {
   if (!config.btHost) return res.status(501).json({ error: 'BT_HOST not configured' });
-  const unit = PI_SOURCES[req.body.source];
-  if (!unit) return res.status(400).json({ error: `source must be one of ${Object.keys(PI_SOURCES).join(', ')}` });
-  // one unit per command so each matches a line of the sudoers rule
-  const stops = Object.values(PI_SOURCES).filter((u) => u !== unit)
-    .map((u) => `sudo -n systemctl stop ${u}`);
+  const control = PI_SOURCES[req.body.source];
+  if (!control) return res.status(400).json({ error: `source must be one of ${Object.keys(PI_SOURCES).join(', ')}` });
+  const levels = Object.values(PI_SOURCES).map((c) => `${PI_MIXER} -q sset ${c} ${c === control ? '100%' : '0%'}`);
   try {
-    await sshCommand([...stops, `sudo -n systemctl start ${unit}`].join(' && '));
+    await sshCommand(levels.join(' && '));
     res.json({ source: await piAudioSource() });
   } catch (err) {
     res.status(500).json({ error: err.message });
