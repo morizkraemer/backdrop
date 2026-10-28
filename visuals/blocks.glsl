@@ -1,4 +1,4 @@
-// Blocks: the wall cut into hard rectangles that re-cut on the beat
+// Blocks: the wall cut into hard rectangles flipping on and off one by one, re-cut every few beats
 // control: cuts
 
 //!PARAM speed
@@ -51,7 +51,8 @@
 0.0
 
 vec3 visual(vec2 uv, float t) {
-    float beat = floor(t);
+    // The cut changes every eight beats; the blocks flip on their own beats in between
+    float beat = floor(t / 8.0);
     // Cut the wall in two again and again, keeping the part this pixel is in
     vec2 lo = vec2(0.0);
     vec2 hi = vec2(1.0);
@@ -71,7 +72,8 @@ vec3 visual(vec2 uv, float t) {
         }
         id += r;
     }
-    float h = hash21(vec2(id, beat + 3.3));
+    float own = floor(t + hash21(vec2(id, beat + 7.7)) * 4.0);
+    float h = hash21(vec2(id, own + 3.3));
     // Distance to this block's edges, in wall heights
     vec2 d = min(uv - lo, hi - uv) * vec2(ASPECT, 1.0);
     float inside = step(line * 0.5, min(d.x, d.y));

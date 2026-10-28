@@ -61,10 +61,12 @@ vec3 visual(vec2 uv, float t) {
     float half_ = f.x > f.y ? 1.0 : 0.0;
     vec3 id = vec3(cell, half_);
     float edge = min(min(min(f.x, f.y), min(1.0 - f.x, 1.0 - f.y)), abs(f.x - f.y) * 0.7071);
-    float beat = floor(t * 2.0);
     float lit;
     if (pattern == 0) {
-        lit = step(hash21(id.xy * 1.7 + id.z * 31.3 + beat * 0.137), fill);
+        // Each triangle flips on its own beat, so they change one by one
+        vec2 key = id.xy * 1.7 + id.z * 31.3;
+        float beat = floor(t * 2.0 + hash21(key + 5.1));
+        lit = step(hash21(key + beat * 0.137), fill);
     } else if (pattern == 1) {
         float w = sin(cell.x * 0.5 + cell.y * 0.9 + id.z * 0.4 - t * 3.0);
         lit = step(1.0 - 2.0 * fill, w);
