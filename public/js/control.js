@@ -73,6 +73,7 @@ function connectWs() {
   const ws = new WebSocket(WS_URL);
   ws.onmessage = (e) => {
     state = { ...state, ...JSON.parse(e.data) };
+    wallTabs.follow(state.wallMode);
     if (selectedCueId && !state.playlist.some((c) => c.id === selectedCueId)) selectedCueId = null;
     render();
   };
@@ -157,7 +158,6 @@ function thumbHtml(media, src = thumbSrc(media)) {
 
 function mediaMeta(media) {
   if (!media) return 'Missing file';
-  if (isVisuals(media)) return 'Live visuals: the Visuals lab and the desk pick and drive them';
   const parts = [media.type === 'video' ? 'Video' : 'Image'];
   if (media.type === 'video' && media.duration != null) parts.push(formatDuration(media.duration));
   parts.push(formatBytes(media.size));
@@ -176,17 +176,11 @@ function endLong(cue, media) {
   return st.duration > 0 ? `advances after ${st.duration} s` : 'holds until GO';
 }
 
-// The Visuals cue hands the wall to the Visuals lab and the desk (DMX)
-function isVisuals(media) {
-  return media?.type === 'visuals';
-}
-
-function cueMode(cue, media) {
-  return isVisuals(media) ? 'Visuals' : DISPLAY_LABELS[cue.settings?.displayMode ?? 'fill'];
+function cueMode(cue) {
+  return DISPLAY_LABELS[cue.settings?.displayMode ?? 'fill'];
 }
 
 function cueSummary(cue, media) {
-  if (isVisuals(media)) return `Live visuals · ${endLong(cue, media)}`;
   return `${DISPLAY_LABELS[cue.settings?.displayMode ?? 'fill']} · ${endLong(cue, media)}`;
 }
 
@@ -353,17 +347,11 @@ function renderMonitor(root, index, isNow) {
   const cue = state.playlist[index];
   const media = cue && getMedia(cue.mediaId);
   const screen = root.querySelector('.screen');
-  // The visual on the wall: from the Visuals cue, or a test from the Visuals lab
-  const visual = isNow && (isVisuals(media) || !cue) ? state.visual : null;
-  const labTest = !cue && !!visual?.id;
   root.querySelector('.cue-num').textContent = cue ? `Q${index + 1}` : '';
   root.querySelector('.monitor-name').textContent = cue
-    ? (visual?.name ? `Visuals: ${visual.name}` : media?.originalName ?? '?')
-    : labTest ? `Visuals lab test: ${visual.name}`
+    ? media?.originalName ?? '?'
     : isNow ? (state.isTransitioning ? 'Loading…' : 'Nothing playing') : (state.playlist.length ? 'End of list' : '—');
-  root.querySelector('.monitor-meta').textContent = cue
-    ? (isVisuals(media) ? `The desk and the Visuals lab run the wall · ${endLong(cue, media)}` : cueSummary(cue, media))
-    : labTest ? 'GO returns to the cues' : '';
+  root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : '';
   if (isNow && previewCollapsed()) {
     // Phones keep the live preview behind a tap, so don't stream video nobody sees
     stopPreview();
@@ -400,7 +388,7 @@ function renderMonitor(root, index, isNow) {
       else img.addEventListener('load', place, { once: true });
     }
   }
-  const onAir = !!cue || labTest;
+  const onAir = !!cue;
   if (isNow && !previewCollapsed()) updatePanelShot(screen, onAir);
   if (isNow) {
     root.classList.toggle('playing', onAir);
@@ -622,7 +610,7 @@ function renderCues() {
           <span class="cue-summary">${escapeHtml(cueSummary(cue, media))}</span>
         </span>
         ${tag}
-        <span class="cue-mode">${cueMode(cue, media)}</span>
+        <span class="cue-mode">${cueMode(cue)}</span>
         <span class="cue-end">${endShort(cue, media)}</span>
         <button type="button" class="btn-icon more" data-cue-id="${cue.id}" aria-label="Cue settings">${ICONS.more}</button>
       </div>
@@ -691,8 +679,6 @@ function renderInspector() {
   $('inspMeta').textContent = mediaMeta(media);
   renderStage(cue, media);
   setSegment(segDisplay, st.displayMode ?? 'fill');
-  $('displayField').hidden = isVisuals(media);
-  if (isVisuals(media)) $('framingField').hidden = true;
 
   const endOptions = isVideo
     ? [['end', 'Next cue'], ['freeze', 'Freeze frame'], ['loop', 'Loop']]
@@ -1589,8 +1575,10 @@ function renderDmx() {
     row.querySelector('.dmx-val').textContent = v == null ? '—' : fn.show(v);
   });
   // The Visuals fixture is set up in the Visuals lab
-  const vis = d.fixtures?.visuals;
-  $('dmxFixture').innerHTML = `Visuals fixture${vis?.start ? `: channels ${vis.start}-${vis.start + vis.size - 1}` : ''}, set up in the <a href="/visuals">Visuals lab</a>`;
+  const at = (f) => (f?.start ? `: channels ${f.start}-${f.start + f.size - 1}` : '');
+  // Their pages are the wall's tabs, so opening one would switch the wall: no links
+  $('dmxFixture').textContent = `Visuals fixture${at(d.fixtures?.visuals)} and Grid fixture${at(d.fixtures?.grid)}, `
+    + 'set up on the Visuals and Grid tabs.';
   const ctl = d.fixtures?.control;
   const startInput = $('dmxStart');
   if (document.activeElement !== startInput) startInput.value = ctl?.start || '';

@@ -1,12 +1,11 @@
 /**
- * Visuals lab (setup/VISUALS.md): live shader visuals for the LED wall, kept
- * apart from backdrop's cue list. The lab page (/visuals) lists, previews,
- * edits and plays visuals; DMX plays them through a 16-channel fixture.
+ * Visuals lab (setup/VISUALS.md): live shader visuals for the LED wall. The
+ * lab page (/visuals) lists, previews, edits and plays visuals; DMX plays them
+ * through the 10-channel Visuals fixture.
  *
- * Visuals reach the wall through backdrop's "Visuals" cue: while it is live
- * (enterCue), the lab and the desk pick and drive the visual; any other cue
- * or stop ends it (release). The lab can also try a visual on the wall
- * outside the cue list (takeScreen); the desk only acts during the cue.
+ * Visuals are on the wall while the wall mode is Visuals (server.js
+ * setWallMode, enter); another mode ends it (release). Playing a visual from
+ * the lab switches the wall to Visuals (takeScreen); the desk only acts then.
  */
 const express = require('express');
 const fs = require('fs');
@@ -43,19 +42,27 @@ function dmxChannel(coarse, attribute, feature, preset, sets = [], phys = [0, 1]
 				</ChannelType>`;
 }
 
-function maFixtureType(name, channels) {
+// cells: { name, channel, count } adds count subfixtures of one channel each
+// (dot2 shows them as Name.1, .2, ...) right after the main channels
+function maFixtureType(name, channels, cells = null) {
+  const modules = cells ? `
+			<Module name="${xmlEsc(cells.name)}" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${cells.channel}
+			</Module>` : '';
+  const instances = cells ? Array.from({ length: cells.count }, (_, i) => `
+			<Instance module_index="1" patch="${channels.length + 1 + i}" locked="true" />`).join('') : '';
+  const size = channels.length + (cells ? cells.count : 0);
   return `<?xml version="1.0" encoding="utf-8"?>
 <MA xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.malighting.de/grandma2/xml/MA http://schemas.malighting.de/grandma2/xml/2.8.123/MA.xsd" major_vers="2" minor_vers="8" stream_vers="123" xmlns="http://schemas.malighting.de/grandma2/xml/MA">
-	<FixtureType name="${name}" mode="${channels.length}ch">
+	<FixtureType name="${name}" mode="${size}ch">
 		<short_name>${name}</short_name>
 		<manufacturer>backdrop</manufacturer>
 		<short_manufacturer>backdrop</short_manufacturer>
 		<Modules>
 			<Module name="Main" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${channels.join('')}
-			</Module>
+			</Module>${modules}
 		</Modules>
 		<Instances>
-			<Instance module_index="0" patch="1" locked="true" />
+			<Instance module_index="0" patch="1" locked="true" />${instances}
 		</Instances>
 		<Wheels />
 	</FixtureType>
@@ -196,14 +203,18 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
 
   // --- the wall ---
 
-  // True while backdrop's Visuals cue is live: only then does the desk act
+  // True while the wall mode is Visuals: only then does the desk act
   let active = false;
 
   async function play(id, values) {
     const v = find(id);
     if (!v) throw new Error('Visual not found');
-    // A test from the lab outside the cue: it takes the wall from the cues
-    if (!active) takeScreen();
+    // Played from the lab while the wall shows something else: the wall goes to Visuals
+    if (!active) {
+      takeScreen();
+      active = true;
+      resetEngaged();
+    }
     const shaderPath = visuals.writeShader(v.file, cacheDir, v.id, config.visualSize);
     const vals = visuals.paramValues(v.params, values ?? settings.values[v.id]);
     const clock = { clock_t0: 0, clock_ta: 0 };
@@ -223,9 +234,9 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     }
   }
 
-  // The Visuals cue went live: the last visual played (else the first) starts,
+  // The wall mode went to Visuals: the last visual played (else the first) starts,
   // and desk faders count again once they move
-  function enterCue() {
+  function enter() {
     active = true;
     resetEngaged();
     const all = list();
@@ -234,16 +245,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     return play(v.id);
   }
 
-  // Ends a test from the lab (the Visuals cue ends with the next cue instead)
-  function stop() {
-    if (!onAir || active) return;
-    active = false;
-    onAir = null;
-    mpv.stop().catch(() => {});
-    broadcast();
-  }
-
-  // Another cue (or stop) took the wall
+  // The wall went to another mode
   function release() {
     if (!active && !onAir) return;
     active = false;
@@ -251,7 +253,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     broadcast();
   }
 
-  // cue: the Visuals cue is live (else it's a test from the lab)
+  // cue: the wall mode is Visuals
   function status() {
     if (!onAir) return active ? { id: null, name: null, values: {}, cue: true } : null;
     const v = find(onAir.id);
@@ -323,7 +325,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
   // Select plays a visual; RGB and strobe lie over it; RGB, speed, colour and
   // Control 1-3 move its sliders (controlsFor). Each
   // follows only once it moved.
-  // Only while the Visuals cue is live.
+  // Only while the wall mode is Visuals.
   function applyDmx(values, prev) {
     if (!active) return;
     for (const fn of DMX_FUNCTIONS) {
@@ -481,11 +483,6 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     }
   });
 
-  router.post('/stop', (req, res) => {
-    stop();
-    res.status(204).send();
-  });
-
   // Create (POST) or overwrite (PUT) one of the lab's own visuals.
   // Built-ins can't be changed here: save a copy instead.
   function writeUserVisual(id, source) {
@@ -540,9 +537,9 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     release,
     status,
     slots,
-    enterCue,
+    enter,
     isOnAir: () => !!onAir,
   };
 }
 
-module.exports = { createVisualsLab, DMX_FUNCTIONS, dot2Fixture, dot2ControlFixture };
+module.exports = { createVisualsLab, DMX_FUNCTIONS, dot2Fixture, dot2ControlFixture, maFixtureType, dmxChannel, dmxSet };

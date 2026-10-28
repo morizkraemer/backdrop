@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grid · backdrop</title>
+  <meta name="theme-color" content="#111214">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+  <link rel="stylesheet" href="css/control.css">
+  <link rel="stylesheet" href="css/visuals.css">
+  <link rel="stylesheet" href="css/grid.css">
+</head>
+<body>
+  <div class="lab">
+    <header class="lab-header">
+      <div class="lab-title">
+        <h1>backdrop</h1>
+        <nav class="wall-tabs" id="wallTabs" data-page="grid" aria-label="What the wall shows">
+          <a href="/control" data-mode="cues">Cues</a>
+          <a href="/visuals" data-mode="visuals">Visuals</a>
+          <a href="/grid" data-mode="grid" aria-current="page">Grid</a>
+        </nav>
+      </div>
+      <div class="lab-air">
+        <span class="lab-air-text" id="airText"></span>
+      </div>
+    </header>
+
+    <main class="lab-main grid-main">
+      <section class="lab-stage">
+        <div class="lab-preview">
+          <canvas id="preview" width="1152" height="384"></canvas>
+          <span class="lab-preview-tag">On the wall</span>
+          <pre class="lab-error" id="previewError" hidden></pre>
+        </div>
+
+        <details class="lab-panel lab-desk" id="deskPanel">
+          <summary class="field-label">Virtual desk</summary>
+          <span class="field-hint">Plays the Grid fixture from here, to try it without the desk. Click cells to switch them on and off. Close this to hand back to the desk.</span>
+          <div class="grid-desk-top">
+            <div class="segmented" id="deskShape" role="group" aria-label="Shape"></div>
+            <span>
+              <button type="button" class="btn-link" id="deskAllOn">All on</button>
+              <button type="button" class="btn-link" id="deskAllOff">All off</button>
+            </span>
+          </div>
+          <div class="grid-cells" id="deskCells"></div>
+          <div class="lab-desk-faders" id="deskFaders"></div>
+        </details>
+      </section>
+
+      <aside class="lab-dmx" aria-label="DMX fixture">
+        <div class="lab-panel">
+          <div class="field-row">
+            <span class="field-label">Grid fixture</span>
+            <span class="dmx-state" id="dmxState"></span>
+          </div>
+          <label class="dmx-start">
+            <span class="field-label">Start address</span>
+            <input type="number" id="dmxStart" min="1" max="512" step="1" inputmode="numeric" placeholder="—" aria-label="Grid fixture start address">
+            <span class="field-hint" id="dmxStartHint"></span>
+          </label>
+          <div class="dmx-channels" id="dmxChannels"></div>
+          <div class="led-status" id="dmxStatus"></div>
+          <a class="lab-btn lab-download" href="/api/grid/dot2.xml" download>Download Grid fixture (dot2)</a>
+          <span class="field-hint">52 channels from the start address: Shape (0-63 square, 64-127 circle, 128-191 triangle, 192-255 lightbulb), Red, Green, Blue, then a dimmer for each of the 48 cells, row by row from the top left. On the dot2 the cells are subfixtures Grid.1-48. Full map in setup/DMX.md.</span>
+        </div>
+      </aside>
+    </main>
+  </div>
+  <script src="js/wall-tabs.js"></script>
+  <script src="js/grid.js"></script>
+</body>
+</html>

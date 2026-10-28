@@ -1,0 +1,72 @@
+/* Grid page (public/grid.html); the rest comes from control.css and visuals.css */
+
+.grid-main {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+.grid-desk-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.grid-desk-top .segmented {
+  grid-template-columns: repeat(4, minmax(72px, 1fr));
+}
+
+.grid-desk-top > span {
+  display: flex;
+  gap: 14px;
+}
+
+/* 12 x 4, like the wall */
+.grid-cells {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 4px;
+  max-width: 600px;
+}
+
+.grid-cells button {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid #2e3036;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.grid-cells button.on {
+  background: var(--live);
+  border-color: var(--live);
+  color: var(--live-ink);
+}
+
+.grid-levels {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.grid-levels span {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  background: #1c1d21;
+}
+
+@media (max-width: 1100px) {
+  .grid-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.dmx-num {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}

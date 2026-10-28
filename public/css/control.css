@@ -2165,8 +2165,17 @@ button.crumb:hover {
 
 /* Phones: keep the header to one row of icons so the page never scrolls sideways */
 @media (max-width: 480px) {
-  #playerText {
+  #playerText,
+  .header h1 {
     display: none;
+  }
+
+  .header-left {
+    gap: 10px;
+  }
+
+  .wall-tabs a {
+    padding: 0 10px;
   }
 }
 
@@ -2307,4 +2316,36 @@ button.crumb:hover {
 .qr-hint {
   font-size: 12px;
   color: var(--text-dim);
+}
+
+/* What the wall shows: the tabs at the top of every page (js/wall-tabs.js) */
+.wall-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #2e3036;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.wall-tabs a {
+  height: 26px;
+  padding: 0 14px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.wall-tabs a:not([aria-current]):hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.wall-tabs a[aria-current="page"] {
+  background: var(--live);
+  color: var(--live-ink);
 }

@@ -1,15 +1,21 @@
 # Live visuals
 
-Generative visuals for the LED wall, rendered by mpv itself on the box's Intel GPU. A visual is a GLSL shader with sliders. They live in the **Visuals lab** (`/visuals`, linked as "Visuals" in backdrop's header), so backdrop stays simple for everyday shows. A 10-channel DMX fixture (setup/DMX.md) picks visuals and sets their colour, speed, strobe and three per-visual controls from the desk.
+Generative visuals for the LED wall, rendered by mpv itself on the box's Intel GPU. A visual is a GLSL shader with sliders. They live in the **Visuals lab** (`/visuals`, the **Visuals** tab at the top of every page). A 10-channel DMX fixture (setup/DMX.md) picks visuals and sets their colour, speed, strobe and three per-visual controls from the desk.
 
-## The Visuals cue
+## What the wall shows: the tabs
 
-Visuals reach the wall only through the **Visuals** item in backdrop's library: put it in the cue list like any clip. While that cue is live, the wall shows the last visual played (the first one the very first time) and the desk's fixture and the Visuals lab pick and drive it. GO, BACK or any other cue moves on as usual and ends the visuals; when the Visuals cue isn't live, the fixture channels do nothing. Like a still, the cue holds until GO or auto-advances after its seconds.
+Every page has three tabs at the top: **Cues**, **Visuals** and **Grid**. The tab that's picked is what the wall shows, for everyone: picking one switches the wall, and every open page (phone, FOH laptop) follows to it. The choice is saved, so it survives a restart.
+
+- **Cues**: backdrop's cue list as always. Coming back to it plays the current cue again from the start (or leaves the wall dark when nothing was playing).
+- **Visuals**: the last visual played (the first one the very first time); the Visuals fixture and the lab pick and drive it. The cue list waits where it is.
+- **Grid**: a 12×4 grid of lights played by the Grid fixture (setup/DMX.md).
+
+GO or BACK (on a page or from the desk's Control fixture) always brings the wall back to Cues and plays the next or previous cue. The Visuals and Grid fixtures only act while their tab is on the wall.
 
 ## The Visuals lab
 
 - **Preview**: the selected visual runs in the browser (WebGL2) with the same code, so you can try sliders and edits without touching the wall.
-- **Send to wall** puts it on the LED wall and the sliders then move it live. While the Visuals cue is live this just switches visuals; otherwise it's a test outside the cue list, which **Stop**, GO or any cue ends.
+- **Send to wall** puts it on the LED wall and the sliders then move it live.
 - **Save as default** stores the sliders as the values DMX and Send to wall start with (`visuals.json`, `VISUALS_SETTINGS`).
 - **Desk faders**: which sliders the fixture's Control 1-3 move for this visual, saved right away. Speed, RGB and Colour always move the `speed`, `hue` and `hue2` (else `spread`) sliders.
 - **Shader code**: edit and **Run preview** (Ctrl/Cmd+Enter); compile errors show over the preview with line numbers of the file. Built-ins are read-only: **Save as copy** makes your own, stored in `uploads/visuals/`. **New** starts from a template.
