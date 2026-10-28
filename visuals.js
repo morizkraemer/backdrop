@@ -19,19 +19,12 @@ const path = require('path');
 const BUILTIN_DIR = path.join(__dirname, 'visuals');
 const FPS = 60;
 const CLOCK_PARAMS = ['clock_t0', 'clock_ta'];
-// The wall split into a grid of cells for desk chases, numbered in reading order
-const SEG_COLS = 12;
-const SEG_ROWS = 4;
-const SEGMENTS = SEG_COLS * SEG_ROWS;
 // Desk-style controls laid over every visual (DMX, setup/DMX.md), neutral by default:
-// dimmer, saturation (from the desk's RGB), strobe in Hz (0 = off)
-// and intensities for the grid cells (mask 1)
+// dimmer and saturation (from the desk's RGB), strobe in Hz (0 = off)
 const FX_NEUTRAL = {
   fx_dimmer: 1,
   fx_sat: 1,
   fx_strobe: 0,
-  fx_mask: 0,
-  ...Object.fromEntries(Array.from({ length: SEGMENTS }, (_, i) => [`fx_s${i}`, 1])),
 };
 const HIDDEN = (name) => CLOCK_PARAMS.includes(name) || name.startsWith('fx_');
 
@@ -159,7 +152,6 @@ function buildShader(visual, width, height) {
   const hasSpeed = params.some((p) => p.name === 'speed');
   const hidden = [...CLOCK_PARAMS.map((name) => [name, 0]), ...Object.entries(FX_NEUTRAL)]
     .map(([name, v]) => `//!PARAM ${name}\n//!TYPE DYNAMIC float\n${Number(v).toFixed(1)}`);
-  const segments = Array.from({ length: SEGMENTS }, (_, i) => `    if (i == ${i}) return fx_s${i};`).join('\n');
   const time = hasSpeed ? 'clock_t0 + (src_t - clock_ta) * speed' : 'src_t';
   return [
     ...params.map((p) => p.raw.join('\n')),
@@ -176,11 +168,6 @@ function buildShader(visual, width, height) {
     '#line 1',
     visual.body,
     '',
-    'float fx_segment(int i) {',
-    segments,
-    '    return 1.0;',
-    '}',
-    '',
     'vec4 hook() {',
     '    vec3 c = floor(HOOKED_tex(vec2(0.5)).rgb * 255.0 + 0.5);',
     `    float src_t = (c.r + c.g * 256.0 + c.b * 65536.0) / ${FPS.toFixed(1)};`,
@@ -189,8 +176,6 @@ function buildShader(visual, width, height) {
     '    vec3 col = clamp(visual(uv, t), 0.0, 1.0);',
     '    // Desk colour: its hue goes to the visual\'s hue slider, its saturation here',
     '    col = mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, fx_sat);',
-    `    if (fx_mask > 0.5) col *= fx_segment(int(min(floor(uv.y * ${SEG_ROWS}.0), ${SEG_ROWS - 1}.0)) * ${SEG_COLS}`
-      + ` + int(min(floor(uv.x * ${SEG_COLS}.0), ${SEG_COLS - 1}.0)));`,
     '    if (fx_strobe > 0.0 && fract(src_t * fx_strobe) > 0.3) col = vec3(0.0);',
     '    return vec4(col * fx_dimmer, 1.0);',
     '}',
@@ -293,9 +278,6 @@ function shaderOpts(values, clock, fx = FX_NEUTRAL) {
 module.exports = {
   BUILTIN_DIR,
   SOURCE,
-  SEGMENTS,
-  SEG_COLS,
-  SEG_ROWS,
   FX_NEUTRAL,
   CONTROLS,
   controlParam,

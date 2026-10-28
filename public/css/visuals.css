@@ -357,23 +357,6 @@
   font-size: 13px;
 }
 
-.lab-start {
-  display: grid;
-  grid-template-columns: auto 80px 1fr;
-  align-items: center;
-  gap: 10px;
-}
-
-.lab-start input {
-  height: 32px;
-  padding: 0 8px;
-  border-radius: 6px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--mono);
-}
-
 /* --- virtual desk --- */
 
 .lab-desk summary {
@@ -399,24 +382,6 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 10px 20px;
-}
-
-.lab-desk-cells {
-  display: grid;
-  gap: 4px;
-}
-
-.lab-desk-cells button {
-  aspect-ratio: 1;
-  border-radius: 4px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg);
-  padding: 0;
-}
-
-.lab-desk-cells button.on {
-  background: var(--live);
-  border-color: var(--live);
 }
 
 /* --- code --- */
@@ -478,21 +443,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.dmx-cells {
-  display: grid;
-  gap: 2px;
-}
-
-.dmx-cells span {
-  height: 6px;
-  border-radius: 1px;
-  background: #1c1d21;
-}
-
-.dmx-cells span.lit {
-  background: var(--live);
 }
 
 @media (max-width: 1100px) {

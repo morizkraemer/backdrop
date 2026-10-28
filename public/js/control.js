@@ -1553,10 +1553,11 @@ const dmxEl = $('dmx');
 const btnDmx = $('btnDmx');
 const dmxPopover = $('dmxPopover');
 const dmxChannels = $('dmxChannels');
+// backdrop's Control fixture on the desk, in channel order (server.js DMX_FIXTURES)
 const DMX_FUNCTIONS = [
-  { key: 'brightness', name: 'Brightness', show: (v) => `${Math.round((v * 100) / 255)}%` },
   { key: 'go', name: 'GO', show: (v) => (v >= 128 ? 'On' : 'Off') },
   { key: 'back', name: 'BACK', show: (v) => (v >= 128 ? 'On' : 'Off') },
+  { key: 'brightness', name: 'Brightness', show: (v) => `${Math.round((v * 100) / 255)}%` },
 ];
 let dmxError = null;
 
@@ -1587,16 +1588,23 @@ function renderDmx() {
     row.querySelector('.dmx-bar span').style.width = `${v == null ? 0 : (v * 100) / 255}%`;
     row.querySelector('.dmx-val').textContent = v == null ? '—' : fn.show(v);
   });
-  // The visuals fixture's channels follow BACK; they're set up in the Visuals lab
-  const fixture = Object.entries(d.channels || {}).filter(([fn]) => !DMX_FUNCTIONS.some((f) => f.key === fn) && d.channels[fn]);
-  const chans = fixture.map(([, ch]) => ch);
-  $('dmxFixture').innerHTML = chans.length
-    ? `Visuals fixture: channels ${Math.min(...chans)}-${Math.max(...chans)}, set up in the <a href="/visuals">Visuals lab</a>`
-    : '';
+  // The Visuals fixture is set up in the Visuals lab
+  const vis = d.fixtures?.visuals;
+  $('dmxFixture').innerHTML = `Visuals fixture${vis?.start ? `: channels ${vis.start}-${vis.start + vis.size - 1}` : ''}, set up in the <a href="/visuals">Visuals lab</a>`;
+  const ctl = d.fixtures?.control;
+  const startInput = $('dmxStart');
+  if (document.activeElement !== startInput) startInput.value = ctl?.start || '';
+  $('dmxStartHint').textContent = ctl?.start ? `Channels ${ctl.start}-${ctl.start + ctl.size - 1}` : 'Set one by one';
   const status = $('dmxStatus');
   status.classList.toggle('error', !!dmxError);
   status.textContent = dmxError || (on ? '' : `Waiting for Art-Net on universe ${d.universe ?? 0}`);
 }
+
+$('dmxStart').addEventListener('change', (e) => {
+  const start = Math.round(Number(e.target.value));
+  if (start) sendDmxConfig({ fixture: 'control', start });
+  else renderDmx();
+});
 
 function sendDmxConfig(patch) {
   dmxError = null;

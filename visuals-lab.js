@@ -16,71 +16,80 @@ const visuals = require('./visuals');
 const ID_RE = /^[a-z0-9-]{1,64}$/;
 const MAX_SOURCE = 256 * 1024;
 
-// DMX functions of the visuals fixture, in channel order after brightness/GO/BACK
-const SEGMENT_FNS = Array.from({ length: visuals.SEGMENTS }, (_, i) => `seg${i + 1}`);
+// DMX functions of the Visuals fixture, in channel order (GO, BACK and the wall's
+// brightness are backdrop's own Control fixture, server.js)
 const CONTROL_FNS = Array.from({ length: visuals.CONTROLS }, (_, i) => `control${i + 1}`);
-const DMX_FUNCTIONS = ['visual', 'dimmer', 'red', 'green', 'blue', 'colour', 'speed', 'strobe', ...CONTROL_FNS, ...SEGMENT_FNS];
+const DMX_FUNCTIONS = ['visual', 'red', 'green', 'blue', 'colour', 'speed', 'strobe', ...CONTROL_FNS];
 const DMX_SLOT = 5; // visual select: 5-9 = first visual, 10-14 = second, ... (50 visuals)
-const DMX_MASK_HOLD_MS = 2000; // cells all at 0 this long = whole wall again
 
 const xmlEsc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /**
- * The fixture as an MA fixture type (grandMA2 XML, which dot2 imports from
- * USB: dot2/library): GO and BACK, then the visuals channels, so it
- * patches at backdrop's GO channel. dot2 only knows its own attributes, so
- * each function sits on the nearest one (setup/DMX.md); channel sets name the
- * visuals and ranges. The grid cells are sub-fixtures with their own dimmer,
- * so the desk's effects can chase across them.
+ * MA fixture types (grandMA2 XML, which dot2 imports from USB: dot2/library),
+ * one file each: backdrop's Control fixture (GO, BACK, brightness) and the
+ * Visuals fixture. dot2 only knows its own attributes, so each function sits
+ * on the nearest one (setup/DMX.md); channel sets name the visuals and ranges.
  */
-function dot2Fixture(slots) {
-  const set = (name, from, to) => `<ChannelSet name="${xmlEsc(name)}" from_dmx="${from}" to_dmx="${to}" />`;
-  const channel = (coarse, attribute, feature, preset, sets = [], range = [0, 100]) => `
+const dmxSet = (name, from, to) => `<ChannelSet name="${xmlEsc(name)}" from_dmx="${from}" to_dmx="${to}" />`;
+
+// MA shows a channel as its physical value x 100 %, so physto 1 reads 0-100 %
+// (physto 100 showed 10000 %); the strobe's physical unit is Hz
+function dmxChannel(coarse, attribute, feature, preset, sets = [], phys = [0, 1]) {
+  return `
 				<ChannelType attribute="${attribute}" feature="${feature}" preset="${preset}" coarse="${coarse}">
-					<ChannelFunction from="${range[0]}" to="${range[1]}" min_dmx_24="0" max_dmx_24="16777215" physfrom="${range[0]}" physto="${range[1]}" subattribute="${attribute}" attribute="${attribute}" feature="${feature}" preset="${preset}">
+					<ChannelFunction from="0" to="100" min_dmx_24="0" max_dmx_24="16777215" physfrom="${phys[0]}" physto="${phys[1]}" subattribute="${attribute}" attribute="${attribute}" feature="${feature}" preset="${preset}">
 						${sets.join('\n\t\t\t\t\t\t')}
 					</ChannelFunction>
 				</ChannelType>`;
-  const visualSets = [
-    set('Keep', 0, DMX_SLOT - 1),
-    ...slots.map((s) => set(s.name, s.value, s.value + DMX_SLOT - 1)),
-  ];
-  const main = [
-    channel(1, 'PRISMA1', 'BEAM', 'BEAM', [set('Rest', 0, 127), set('GO', 128, 255)], [0, 255]),
-    channel(2, 'PRISMA2', 'BEAM', 'BEAM', [set('Rest', 0, 127), set('BACK', 128, 255)], [0, 255]),
-    channel(3, 'GOBO1', 'GOBO', 'GOBO', visualSets, [0, 255]),
-    channel(4, 'DIM', 'DIMMER', 'DIMMER', [set('Closed', 0, 0), set('Open', 255, 255)]),
-    channel(5, 'COLORRGB1', 'RGB', 'COLOR'),
-    channel(6, 'COLORRGB2', 'RGB', 'COLOR'),
-    channel(7, 'COLORRGB3', 'RGB', 'COLOR'),
-    channel(8, 'COLOR1', 'COLOR', 'COLOR', [set('Second colour', 0, 255)], [0, 255]),
-    channel(9, 'GOBO1_POS', 'GOBO', 'GOBO', [set('Speed slow', 0, 0), set('Speed fast', 255, 255)]),
-    channel(10, 'SHUTTER', 'SHUTTER', 'BEAM', [set('Open', 0, 9), set('Strobe 1-20 Hz', 10, 255)], [0, 20]),
-    channel(11, 'GOBO2', 'GOBO', 'GOBO', [set('Control 1', 0, 255)], [0, 255]),
-    channel(12, 'GOBO2_POS', 'GOBO', 'GOBO', [set('Control 2', 0, 255)], [0, 255]),
-    channel(13, 'GOBO3', 'GOBO', 'GOBO', [set('Control 3', 0, 255)], [0, 255]),
-  ].join('');
-  const cells = SEGMENT_FNS.map((_, i) => `
-			<Instance module_index="1" patch="${14 + i}" locked="true" />`).join('');
+}
+
+function maFixtureType(name, channels) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <MA xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.malighting.de/grandma2/xml/MA http://schemas.malighting.de/grandma2/xml/2.8.123/MA.xsd" major_vers="2" minor_vers="8" stream_vers="123" xmlns="http://schemas.malighting.de/grandma2/xml/MA">
-	<FixtureType name="Visuals" mode="${13 + SEGMENT_FNS.length}ch">
-		<short_name>Visuals</short_name>
+	<FixtureType name="${name}" mode="${channels.length}ch">
+		<short_name>${name}</short_name>
 		<manufacturer>backdrop</manufacturer>
 		<short_manufacturer>backdrop</short_manufacturer>
 		<Modules>
-			<Module name="Main" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${main}
-			</Module>
-			<Module name="Cell" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${channel(1, 'DIM', 'DIMMER', 'DIMMER', [set('Closed', 0, 0), set('Open', 255, 255)])}
+			<Module name="Main" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${channels.join('')}
 			</Module>
 		</Modules>
 		<Instances>
-			<Instance module_index="0" patch="1" locked="true" />${cells}
+			<Instance module_index="0" patch="1" locked="true" />
 		</Instances>
 		<Wheels />
 	</FixtureType>
 </MA>
 `;
+}
+
+// GO, BACK and the LED wall's brightness (server.js CONTROL_FNS)
+function dot2ControlFixture() {
+  return maFixtureType('Control', [
+    dmxChannel(1, 'PRISMA1', 'BEAM', 'BEAM', [dmxSet('Rest', 0, 127), dmxSet('GO', 128, 255)]),
+    dmxChannel(2, 'PRISMA2', 'BEAM', 'BEAM', [dmxSet('Rest', 0, 127), dmxSet('BACK', 128, 255)]),
+    dmxChannel(3, 'DIM', 'DIMMER', 'DIMMER', [dmxSet('Closed', 0, 0), dmxSet('Open', 255, 255)]),
+  ]);
+}
+
+// The Visuals fixture (DMX_FUNCTIONS), with the visuals named on select
+function dot2Fixture(slots) {
+  const visualSets = [
+    dmxSet('Keep', 0, DMX_SLOT - 1),
+    ...slots.map((s) => dmxSet(s.name, s.value, s.value + DMX_SLOT - 1)),
+  ];
+  return maFixtureType('Visuals', [
+    dmxChannel(1, 'GOBO1', 'GOBO', 'GOBO', visualSets),
+    dmxChannel(2, 'COLORRGB1', 'RGB', 'COLOR'),
+    dmxChannel(3, 'COLORRGB2', 'RGB', 'COLOR'),
+    dmxChannel(4, 'COLORRGB3', 'RGB', 'COLOR'),
+    dmxChannel(5, 'COLOR1', 'COLOR', 'COLOR', [dmxSet('Second colour', 0, 255)]),
+    dmxChannel(6, 'GOBO1_POS', 'GOBO', 'GOBO', [dmxSet('Speed slow', 0, 0), dmxSet('Speed fast', 255, 255)]),
+    dmxChannel(7, 'SHUTTER', 'SHUTTER', 'BEAM', [dmxSet('Open', 0, 9), dmxSet('Strobe 1-20 Hz', 10, 255)], [0, 20]),
+    dmxChannel(8, 'GOBO2', 'GOBO', 'GOBO', [dmxSet('Control 1', 0, 255)]),
+    dmxChannel(9, 'GOBO2_POS', 'GOBO', 'GOBO', [dmxSet('Control 2', 0, 255)]),
+    dmxChannel(10, 'GOBO3', 'GOBO', 'GOBO', [dmxSet('Control 3', 0, 255)]),
+  ]);
 }
 
 // 0-255 RGB to hue, saturation and value, each 0-1
@@ -122,7 +131,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
 
   // The visual on the wall: { id, values, clock } (visuals.clockAfterSpeedChange)
   let onAir = null;
-  // The DMX fixture's dimmer, colour, strobe and grid cells, laid over the visual
+  // The Visuals fixture's saturation (RGB) and strobe, laid over the visual
   let fx = { ...visuals.FX_NEUTRAL };
 
   // --- the visuals: built-ins from visuals/, then the lab's own in uploads/visuals ---
@@ -298,11 +307,9 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
   // --- DMX fixture (setup/DMX.md) ---
 
   let engaged = new Set(); // functions whose fader moved since the last prime
-  let maskDarkSince = null;
 
   function resetEngaged() {
     engaged = new Set();
-    maskDarkSince = null;
     fx = { ...visuals.FX_NEUTRAL };
   }
 
@@ -312,9 +319,9 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     setLive(null);
   }
 
-  // values/prev: { visual, dimmer, ..., seg32 } 0-255 or null for unused.
-  // Select plays a visual; dimmer, colour, strobe and the grid cells lie over
-  // it; speed, colour and Control 1-3 move its sliders (controlsFor). Each
+  // values/prev: { visual, red, ..., control3 } 0-255 or null for unused.
+  // Select plays a visual; RGB and strobe lie over it; RGB, speed, colour and
+  // Control 1-3 move its sliders (controlsFor). Each
   // follows only once it moved.
   // Only while the Visuals cue is live.
   function applyDmx(values, prev) {
@@ -331,7 +338,6 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     }
 
     const nextFx = { ...visuals.FX_NEUTRAL };
-    if (on('dimmer')) nextFx.fx_dimmer = level('dimmer');
     // RGB picks the visual's colour like a colour mix on a fixture: its hue turns the
     // visual's hue slider (below), saturation and brightness apply on top
     const rgbOn = on('red') || on('green') || on('blue');
@@ -342,18 +348,6 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     }
     // 0-9 open, then 1-20 flashes per second
     if (on('strobe') && values.strobe >= 10) nextFx.fx_strobe = Math.round((1 + ((values.strobe - 10) * 19) / 245) * 10) / 10;
-    // The cells mask the wall once one is up, and let go only after all have
-    // sat at 0 for a while, so a chase passing through dark doesn't flash the wall
-    const segs = SEGMENT_FNS.filter(on);
-    if (segs.length) {
-      const lit = segs.some((fn) => values[fn] > 0);
-      if (lit) maskDarkSince = null;
-      else maskDarkSince ??= Date.now();
-      if (lit || (fx.fx_mask && Date.now() - maskDarkSince < DMX_MASK_HOLD_MS)) {
-        nextFx.fx_mask = 1;
-        SEGMENT_FNS.forEach((fn, i) => { nextFx[`fx_s${i}`] = on(fn) ? level(fn) : 0; });
-      }
-    }
 
     const patch = {};
     const v = onAir && find(onAir.id);
@@ -416,6 +410,12 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     res.type('application/xml');
     res.attachment('backdrop_visuals.xml');
     res.send(dot2Fixture(slots()));
+  });
+
+  router.get('/dot2-control.xml', (req, res) => {
+    res.type('application/xml');
+    res.attachment('backdrop_control.xml');
+    res.send(dot2ControlFixture());
   });
 
   // Parse a shader without saving it: its sliders and preview (lab editor)
@@ -545,4 +545,4 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
   };
 }
 
-module.exports = { createVisualsLab, DMX_FUNCTIONS, dot2Fixture };
+module.exports = { createVisualsLab, DMX_FUNCTIONS, dot2Fixture, dot2ControlFixture };
