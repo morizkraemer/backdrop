@@ -1020,14 +1020,8 @@ app.post('/api/pi-audio/source', async (req, res) => {
   // one unit per command so each matches a line of the sudoers rule
   const stops = Object.values(PI_SOURCES).filter((u) => u !== unit)
     .map((u) => `sudo -n systemctl stop ${u}`);
-  // The USB card pops when one player lets go and the next opens it, so mute
-  // it around the switch and unmute once the new player is running, even if
-  // the switch failed
-  const mixer = 'amixer -q -c CODEC sset PCM';
-  const cmd = `${mixer} mute; ${[...stops, `sudo -n systemctl start ${unit}`].join(' && ')}; rc=$?; `
-    + `sleep 1; ${mixer} unmute; exit $rc`;
   try {
-    await sshCommand(cmd);
+    await sshCommand([...stops, `sudo -n systemctl start ${unit}`].join(' && '));
     res.json({ source: await piAudioSource() });
   } catch (err) {
     res.status(500).json({ error: err.message });
