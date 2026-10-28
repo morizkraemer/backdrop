@@ -383,48 +383,76 @@ float sdTriangle(vec2 p, float r) {
     return -length(p) * sign(p.y);
 }
 
-// Shape 3. A Fresnel stage light seen from the front, lit at level: a black housing
-// with bolts, a ringed Fresnel lens that glows from its hot centre, and the
-// diagonal wire safety mesh over it. Tone-mapped so bright parts go to white.
+// Shape 3. An old theatre Fresnel seen from the front: a worn housing with
+// patina and four bolts, a ringed lens with the lamp glowing through it, and a
+// diagonal wire safety mesh that shows bright when dark and stands out black
+// against the lit lens. Dim levels go tungsten orange. Tone-mapped.
 vec3 fresnel(vec2 p, float level, vec3 colour, float aa) {
-    const float LENS = 0.78;
+    const float LENS = 0.76;
     const float BODY = 0.95;
+    const float MESH = 7.0;
+    float px = aa * 0.5;
     float r = length(p);
-    float a = atan(p.y, p.x);
-    vec3 hue = colour * mix(vec3(1.0, 0.5, 0.18), vec3(1.0), smoothstep(0.0, 0.6, level));
-    float e = level * level;
-    vec3 col = vec3(0.0);
+    vec2 n = p / max(r, 1e-4);
+    float e = pow(level, 2.2);
+    vec3 hue = colour * mix(vec3(1.0, 0.3, 0.05), vec3(1.0), smoothstep(0.0, 0.8, level));
+    float grain = hash21(floor(p * 96.0) + 11.0);
+    float up = 0.5 - 0.5 * n.y;
 
-    // Housing: dark metal, lighter towards the top, with four bolts
-    float body = 1.0 - smoothstep(BODY - aa, BODY + aa, r);
-    float shade = 0.5 - 0.5 * p.y / max(r, 0.001);
-    col += body * vec3(0.03 + 0.05 * shade);
-    col += body * vec3(0.12) * smoothstep(0.025, 0.0, abs(r - BODY + 0.02)) * shade;
-    float bolt = 0.0;
+    // Housing: worn black paint, bare metal showing through at the rim
+    float body = 1.0 - smoothstep(BODY - px, BODY + px, r);
+    float wear = smoothstep(0.55, 0.8, noise(p * 9.0 + 3.0)) * smoothstep(LENS + 0.05, BODY, r);
+    vec3 metal = mix(vec3(0.045, 0.043, 0.04), vec3(0.16, 0.14, 0.12), wear) * (0.8 + 0.4 * grain);
+    metal *= 0.6 + 0.8 * up;
+    metal += vec3(0.16) * pow(up, 3.0) * smoothstep(0.03, 0.0, abs(r - BODY + 0.025));
+    metal *= mix(1.0, 0.45, smoothstep(LENS + 0.05, LENS, r));
     for (int k = 0; k < 4; k++) {
         float ang = PI * 0.25 + float(k) * PI * 0.5;
-        bolt = max(bolt, smoothstep(0.035, 0.02, length(p - 0.87 * vec2(cos(ang), sin(ang)))));
+        vec2 b = p - 0.865 * vec2(cos(ang), sin(ang));
+        float bd = length(b);
+        vec3 bolt = vec3(0.2, 0.19, 0.17) * (0.4 + 0.9 * (0.5 - 0.5 * b.y / max(bd, 1e-4)));
+        metal = mix(metal, vec3(0.0), smoothstep(0.045, 0.03, bd) * 0.5);
+        metal = mix(metal, bolt, smoothstep(0.034, 0.024, bd));
     }
-    col = mix(col, vec3(0.22), bolt);
+    vec3 col = metal * body;
 
-    // The Fresnel lens: concentric steps, each brighter at its outer edge
-    float lens = 1.0 - smoothstep(LENS - aa, LENS + aa, r);
-    float step_ = fract(r * 13.0);
-    float rings = r < 0.1 ? 0.6 : 0.45 + 0.55 * step_ * step_;
-    vec3 glass = vec3(0.07, 0.08, 0.09) + vec3(0.08) * rings * (0.6 + 0.4 * shade);
-    glass += hue * e * (0.35 + 2.4 * exp(-r * 3.0)) * (0.55 + 0.45 * rings);
-    // Wire mesh: two diagonal sets of wires and a hoop at the lens edge
-    vec2 d = vec2(p.x + p.y, p.x - p.y) * 0.7071 * 7.0;
-    vec2 w = abs(fract(d) - 0.5);
-    float wire = smoothstep(0.06, 0.0, min(w.x, w.y) - 0.0) ;
-    wire = max(wire, smoothstep(0.02, 0.0, abs(r - LENS + 0.03)));
-    vec3 wireCol = vec3(0.32) + hue * e * 0.25;
-    glass = mix(glass, wireCol * (1.0 - 0.55 * e), wire * 0.85);
+    // Lens
+    float lens = 1.0 - smoothstep(LENS - px, LENS + px, r);
+    float q = r / LENS * 10.0;
+    float f = fract(q);
+    float riser = smoothstep(2.0 * px * 10.0 / LENS, 0.0, f) * step(0.6, q);
+    float stip = 0.8 + 0.4 * noise(p * 150.0);
+    vec3 glass = vec3(0.05, 0.055, 0.05) * (0.75 + 0.5 * f);
+    glass += vec3(0.07) * riser * up;
+    vec2 fp = p / LENS;
+    float beam = 0.5 + 1.5 * exp(-dot(fp, fp) * 5.0) + 2.4 * exp(-dot(fp, fp) * 35.0);
+    vec3 light = hue * e * beam * stip * (0.75 + 0.35 * f) + hue * e * 0.6 * riser;
+    glass += light;
+    glass *= mix(0.5, 1.0, smoothstep(LENS, LENS - 0.06, r));
+
+    // Wire mesh in front of the lens: lit from above when dark, a silhouette
+    // with the light wrapping round it when lit
+    vec2 d = vec2(p.x + p.y, p.x - p.y) * 0.7071 * MESH;
+    vec2 wd = abs(fract(d) - 0.5) / MESH;
+    float hw = 0.007;
+    float wireA = 1.0 - smoothstep(hw - px, hw + px, wd.x);
+    float wireB = 1.0 - smoothstep(hw - px, hw + px, wd.y);
+    float wire = max(wireA, wireB);
+    float hoop = 1.0 - smoothstep(0.012 - px, 0.012 + px, abs(r - LENS + 0.02));
+    wire = max(wire, hoop);
+    float shine = 0.5 + 0.5 * (wireA > wireB ? -sign(fract(d.x) - 0.5) : -sign(fract(d.y) - 0.5)) * 0.4;
+    vec3 wireCol = vec3(0.22, 0.21, 0.19) * (0.6 + 0.6 * up) * shine;
+    wireCol += light * 0.12;
+    glass = mix(glass, wireCol, wire * (1.0 - 0.45 * smoothstep(0.0, 1.5, dot(light, vec3(0.33)))));
+    // Faint shadow of the mesh on the glass, down and right of each wire
+    vec2 ds = vec2(p.x + p.y - 0.04, p.x - p.y) * 0.7071 * MESH;
+    vec2 ws = abs(fract(ds) - 0.5) / MESH;
+    glass *= 1.0 - 0.25 * (1.0 - smoothstep(0.0, 0.02, min(ws.x, ws.y))) * (1.0 - wire) * (1.0 - e);
     col = mix(col, glass, lens);
 
-    // Glow around the housing, fading before the cell's edge
+    // Glow, fading before the cell's edge
     float edge = pow(clamp((1.0 - r) / (1.0 - BODY), 0.0, 1.0), 2.0);
-    col += hue * e * 0.5 * exp(-max(r - BODY, 0.0) * 8.0) * (1.0 - body) * edge;
+    col += hue * e * 0.4 * exp(-max(r - LENS, 0.0) * 8.0) * (1.0 - lens) * edge;
     return vec3(1.0) - exp(-col * 1.5);
 }
 
