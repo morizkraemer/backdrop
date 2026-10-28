@@ -210,21 +210,18 @@ $('deskFaders').addEventListener('input', (e) => {
 
 // --- live state from backdrop ---
 
-function renderAir() {
-  $('airText').textContent = state.grid?.live ? 'On the wall' : '';
-  $('airText').classList.toggle('live', !!state.grid?.live);
-}
-
 function connect() {
   const ws = new WebSocket(WS_URL);
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     state = { ...state, ...msg };
-    wallTabs.follow(state.wallMode);
-    renderAir();
+    appHeader.update(state, true);
     if (msg.dmx) renderDmx();
     if (msg.grid) draw();
   };
-  ws.onclose = () => setTimeout(connect, 2000);
+  ws.onclose = () => {
+    appHeader.update(state, false);
+    setTimeout(connect, 2000);
+  };
 }
 connect();

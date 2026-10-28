@@ -27,11 +27,6 @@ let saveStatus = null; // null | 'saving' | 'saved' | error message
 
 const $ = (id) => document.getElementById(id);
 const appEl = $('app');
-const playerPill = $('playerPill');
-const playerText = $('playerText');
-const diskSpace = $('diskSpace');
-const connStatus = $('connStatus');
-const connText = $('connText');
 const monitorNow = $('monitorNow');
 const btnGo = $('btnGo');
 const btnStop = $('btnStop');
@@ -73,7 +68,6 @@ function connectWs() {
   const ws = new WebSocket(WS_URL);
   ws.onmessage = (e) => {
     state = { ...state, ...JSON.parse(e.data) };
-    wallTabs.follow(state.wallMode);
     if (selectedCueId && !state.playlist.some((c) => c.id === selectedCueId)) selectedCueId = null;
     render();
   };
@@ -197,16 +191,6 @@ function isTyping(el) {
 }
 
 // --- render ---
-
-function renderHeader() {
-  const online = state.mpvConnected !== false;
-  playerPill.classList.toggle('offline', !online);
-  playerPill.querySelector('.dot').className = `dot ${online ? 'on' : 'off'}`;
-  playerText.textContent = online ? 'LED panel · 2304×768 · player online' : 'Player offline';
-  diskSpace.textContent = `${formatBytes(state.diskFree)} free`;
-  connStatus.querySelector('.dot').className = `dot ${wsConnected ? 'on' : 'off'}`;
-  connText.textContent = wsConnected ? 'Connected' : 'Reconnecting…';
-}
 
 // --- framing: moving and resizing a centered clip on the panel ---
 // Offsets use mpv's video-pan units (a fraction of the scaled picture's size),
@@ -703,10 +687,7 @@ function renderInspector() {
 }
 
 function render() {
-  renderHeader();
-  renderLed();
-  renderHdmi();
-  renderDmx();
+  appHeader.update(state, wsConnected);
   renderTransport();
   renderLibrary();
   renderCues();
@@ -1342,288 +1323,6 @@ $('inspRemove').addEventListener('click', () => {
   api('DELETE', `/playlist/${id}`);
 });
 $('inspClose').addEventListener('click', () => selectCue(null));
-
-// --- Bluetooth pairing (only shown when the server has BT_HOST configured) ---
-
-const btnBluetooth = $('btnBluetooth');
-let btDiscoverable = false;
-
-function renderBluetooth(available) {
-  btnBluetooth.hidden = !available;
-  btnBluetooth.classList.toggle('active', btDiscoverable);
-  btnBluetooth.setAttribute('aria-pressed', String(btDiscoverable));
-  $('btText').textContent = btDiscoverable ? 'BT pairing on' : 'BT pairing';
-}
-
-api('GET', '/bluetooth/status')
-  .then((r) => (r.ok ? r.json() : null))
-  .then((data) => {
-    if (!data) return;
-    btDiscoverable = !!data.discoverable;
-    renderBluetooth(!!data.available);
-  })
-  .catch(() => {});
-
-btnBluetooth.addEventListener('click', () => {
-  api('POST', '/bluetooth/pairing', { enabled: !btDiscoverable })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((data) => {
-      if (data) btDiscoverable = !!data.discoverable;
-      renderBluetooth(true);
-    })
-    .catch(() => {});
-});
-
-// --- LED panel brightness (NovaStar controller, proxied by the server) ---
-
-const ledEl = $('led');
-const btnLed = $('btnLed');
-const ledPopover = $('ledPopover');
-const ledSlider = $('ledSlider');
-let ledDragging = false;
-let ledPending = null; // value sent but not yet confirmed
-let ledError = null;
-let ledSendTimer = null;
-
-function renderLed() {
-  const led = state.led || {};
-  ledEl.hidden = !led.configured;
-  const online = !!led.available;
-  const shown = ledDragging || ledPending !== null ? Number(ledSlider.value) : led.brightness;
-  btnLed.classList.toggle('offline', !online);
-  $('ledText').textContent = online && shown != null ? `${shown}%` : 'LED offline';
-  $('ledValue').textContent = shown != null ? `${shown}%` : '—';
-  if (!ledDragging && ledPending === null && led.brightness != null) ledSlider.value = led.brightness;
-  ledSlider.disabled = !online;
-  $('ledPresets').querySelectorAll('button').forEach((b) => {
-    b.disabled = !online;
-    b.classList.toggle('active', Number(b.dataset.value) === shown);
-  });
-  const status = $('ledStatus');
-  status.classList.toggle('error', !!ledError || !online);
-  status.textContent = !online ? 'Controller unreachable'
-    : ledError ? ledError
-    : ledPending !== null ? 'Applying…'
-    : '';
-}
-
-function sendLed(value) {
-  ledPending = value;
-  ledError = null;
-  renderLed();
-  api('PUT', '/led/brightness', { brightness: value })
-    .then(async (r) => {
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not set brightness');
-    })
-    .catch((err) => { ledError = err.message; })
-    .finally(() => {
-      if (ledPending === value) ledPending = null;
-      renderLed();
-    });
-}
-
-function setLedOpen(open) {
-  ledPopover.hidden = !open;
-  btnLed.setAttribute('aria-expanded', String(open));
-  if (open) renderLed();
-}
-
-btnLed.addEventListener('click', () => setLedOpen(ledPopover.hidden));
-document.addEventListener('click', (e) => {
-  if (!ledPopover.hidden && !ledEl.contains(e.target)) setLedOpen(false);
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !ledPopover.hidden) setLedOpen(false);
-});
-
-// Sends while dragging (throttled) so the panel follows the slider
-ledSlider.addEventListener('input', () => {
-  ledDragging = true;
-  renderLed();
-  if (!ledSendTimer) {
-    ledSendTimer = setTimeout(() => {
-      ledSendTimer = null;
-      if (ledDragging) sendLed(Number(ledSlider.value));
-    }, 250);
-  }
-});
-ledSlider.addEventListener('change', () => {
-  ledDragging = false;
-  clearTimeout(ledSendTimer);
-  ledSendTimer = null;
-  sendLed(Number(ledSlider.value));
-});
-$('ledPresets').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-value]');
-  if (!b) return;
-  ledSlider.value = b.dataset.value;
-  sendLed(Number(b.dataset.value));
-});
-
-// --- LED wall source (HDMI matrix output, proxied by the server) ---
-
-const hdmiEl = $('hdmi');
-const btnHdmi = $('btnHdmi');
-const hdmiPopover = $('hdmiPopover');
-const hdmiSources = $('hdmiSources');
-let hdmiPending = null; // input sent but not yet confirmed
-let hdmiError = null;
-
-function renderHdmi() {
-  const h = state.hdmi || {};
-  hdmiEl.hidden = !h.configured;
-  if (!h.configured) return;
-  const online = !!h.available;
-  const sources = h.sources || [];
-  const current = sources[h.current - 1];
-  btnHdmi.classList.toggle('offline', !online);
-  // Input 1 is backdrop itself; anything else means the wall isn't showing the cues
-  btnHdmi.classList.toggle('external', online && h.current > 1);
-  $('hdmiText').textContent = !online ? 'Source offline' : current ? current.name : '—';
-
-  const status = $('hdmiStatus');
-  status.classList.toggle('error', !!hdmiError || !online);
-  status.textContent = !online ? 'HDMI matrix unreachable'
-    : hdmiError ? hdmiError
-    : hdmiPending ? 'Switching…'
-    : '';
-
-  hdmiSources.innerHTML = sources.map((src, i) => {
-    const input = i + 1;
-    const active = h.current === input;
-    const signal = src.signal == null ? ''
-      : `<span class="sig${src.signal ? ' on' : ''}"></span><span class="hdmi-signal">${src.signal ? 'Signal' : 'No signal'}</span>`;
-    return `<button type="button" role="radio" aria-checked="${active}" data-input="${input}" class="${active ? 'active' : ''}${hdmiPending === input ? ' pending' : ''}" ${online ? '' : 'disabled'}>
-      <span class="hdmi-name">${escapeHtml(src.name)}</span>${signal}
-    </button>`;
-  }).join('');
-}
-
-function sendHdmiSource(input) {
-  hdmiPending = input;
-  hdmiError = null;
-  renderHdmi();
-  api('PUT', '/hdmi/source', { input })
-    .then(async (r) => {
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not switch');
-    })
-    .catch((err) => { hdmiError = err.message; })
-    .finally(() => {
-      if (hdmiPending === input) hdmiPending = null;
-      renderHdmi();
-    });
-}
-
-function setHdmiOpen(open) {
-  hdmiPopover.hidden = !open;
-  btnHdmi.setAttribute('aria-expanded', String(open));
-  if (open) renderHdmi();
-}
-
-btnHdmi.addEventListener('click', () => setHdmiOpen(hdmiPopover.hidden));
-document.addEventListener('click', (e) => {
-  // composedPath: the clicked button may already be replaced by a re-render
-  if (!hdmiPopover.hidden && !e.composedPath().includes(hdmiEl)) setHdmiOpen(false);
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !hdmiPopover.hidden) setHdmiOpen(false);
-});
-hdmiSources.addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-input]');
-  if (b && !b.disabled) sendHdmiSource(Number(b.dataset.input));
-});
-
-// --- DMX control (Art-Net input; channels are saved on the server) ---
-
-const dmxEl = $('dmx');
-const btnDmx = $('btnDmx');
-const dmxPopover = $('dmxPopover');
-const dmxChannels = $('dmxChannels');
-// backdrop's Control fixture on the desk, in channel order (server.js DMX_FIXTURES)
-const DMX_FUNCTIONS = [
-  { key: 'go', name: 'GO', show: (v) => (v >= 128 ? 'On' : 'Off') },
-  { key: 'back', name: 'BACK', show: (v) => (v >= 128 ? 'On' : 'Off') },
-  { key: 'brightness', name: 'Brightness', show: (v) => `${Math.round((v * 100) / 255)}%` },
-];
-let dmxError = null;
-
-dmxChannels.insertAdjacentHTML('beforeend', DMX_FUNCTIONS.map((fn) => `<div class="dmx-ch">
-  <input type="number" data-fn="${fn.key}" min="0" max="512" step="1" inputmode="numeric" placeholder="off" aria-label="${fn.name} channel">
-  <span class="dmx-name">${fn.name}</span>
-  <span class="dmx-bar"><span></span></span>
-  <span class="dmx-val">—</span>
-</div>`).join(''));
-
-function renderDmx() {
-  const d = state.dmx || {};
-  dmxEl.hidden = !d.configured;
-  if (!d.configured) return;
-  const on = !!d.receiving;
-  btnDmx.classList.toggle('offline', !on);
-  $('dmxSig').classList.toggle('on', on);
-  btnDmx.title = on ? 'DMX: receiving' : 'DMX: no signal';
-  $('dmxState').textContent = on ? 'Receiving' : 'No signal';
-  $('dmxState').classList.toggle('on', on);
-  DMX_FUNCTIONS.forEach((fn) => {
-    const row = dmxChannels.querySelector(`input[data-fn="${fn.key}"]`).closest('.dmx-ch');
-    const input = row.querySelector('input');
-    const ch = d.channels?.[fn.key] || 0;
-    if (document.activeElement !== input) input.value = ch || '';
-    const v = on && ch ? d.values?.[fn.key] : null;
-    row.classList.toggle('unused', !ch);
-    row.querySelector('.dmx-bar span').style.width = `${v == null ? 0 : (v * 100) / 255}%`;
-    row.querySelector('.dmx-val').textContent = v == null ? '—' : fn.show(v);
-  });
-  // The Visuals fixture is set up in the Visuals lab
-  const at = (f) => (f?.start ? `: channels ${f.start}-${f.start + f.size - 1}` : '');
-  // Their pages are the wall's tabs, so opening one would switch the wall: no links
-  $('dmxFixture').textContent = `Visuals fixture${at(d.fixtures?.visuals)} and Grid fixture${at(d.fixtures?.grid)}, `
-    + 'set up on the Visuals and Grid tabs.';
-  const ctl = d.fixtures?.control;
-  const startInput = $('dmxStart');
-  if (document.activeElement !== startInput) startInput.value = ctl?.start || '';
-  $('dmxStartHint').textContent = ctl?.start ? `Channels ${ctl.start}-${ctl.start + ctl.size - 1}` : 'Set one by one';
-  const status = $('dmxStatus');
-  status.classList.toggle('error', !!dmxError);
-  status.textContent = dmxError || (on ? '' : `Waiting for Art-Net on universe ${d.universe ?? 0}`);
-}
-
-$('dmxStart').addEventListener('change', (e) => {
-  const start = Math.round(Number(e.target.value));
-  if (start) sendDmxConfig({ fixture: 'control', start });
-  else renderDmx();
-});
-
-function sendDmxConfig(patch) {
-  dmxError = null;
-  api('PUT', '/dmx', patch)
-    .then(async (r) => {
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not save');
-    })
-    .catch((err) => { dmxError = err.message; })
-    .finally(renderDmx);
-}
-
-dmxChannels.addEventListener('change', (e) => {
-  const input = e.target.closest('input[data-fn]');
-  if (!input) return;
-  const ch = Math.max(0, Math.round(Number(input.value) || 0));
-  sendDmxConfig({ channels: { [input.dataset.fn]: ch } });
-});
-
-function setDmxOpen(open) {
-  dmxPopover.hidden = !open;
-  btnDmx.setAttribute('aria-expanded', String(open));
-  if (open) renderDmx();
-}
-
-btnDmx.addEventListener('click', () => setDmxOpen(dmxPopover.hidden));
-document.addEventListener('click', (e) => {
-  if (!dmxPopover.hidden && !dmxEl.contains(e.target)) setDmxOpen(false);
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !dmxPopover.hidden) setDmxOpen(false);
-});
 
 // --- Phone uploads (QR code for the upload-only page) ---
 
