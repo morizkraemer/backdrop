@@ -994,8 +994,10 @@ async function piAudioSource() {
   // is-active exits non-zero when a unit is inactive, so always echo
   const out = await sshCommand('systemctl is-active snapclient raspotify; true');
   const [snap, spotify] = out.split('\n').map((l) => l.trim());
-  if (snap === 'active') return 'backdrop';
+  // raspotify grabs the card whenever someone picks the Pi in Spotify, so
+  // with both running the speakers are Spotify's
   if (spotify === 'active') return 'spotify';
+  if (snap === 'active') return 'backdrop';
   return null;
 }
 
