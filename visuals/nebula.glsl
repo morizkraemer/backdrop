@@ -44,7 +44,8 @@
 0.6
 
 vec3 visual(vec2 uv, float t) {
-    vec2 p = vec2(uv.x * ASPECT, uv.y) * scale;
+    // From the middle, so Detail zooms around the centre of the wall
+    vec2 p = (uv - 0.5) * vec2(ASPECT, 1.0) * scale;
     vec2 drift = vec2(t * 0.05, t * 0.02);
     float a = fbm(p * 1.2 + drift + fbm(p * 0.8 - drift) * 1.5);
     float b = fbm(p * 2.3 - drift * 1.7 + 4.0);
