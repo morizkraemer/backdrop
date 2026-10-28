@@ -1,8 +1,8 @@
 // Grid: 12x4 lights for the Grid fixture (setup/DMX.md), one colour, a level per cell
-// Shape: 0 square, 1 circle, 2 triangle, 3 lightbulb
+// Shape: 0 square, 1 circle, 2 triangle, 3 Fresnel stage light
 
 //!PARAM shape
-//!DESC Shape: square, circle, triangle, lightbulb
+//!DESC Shape: square, circle, triangle, Fresnel
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
 //!MAXIMUM 3.0
@@ -383,29 +383,49 @@ float sdTriangle(vec2 p, float r) {
     return -length(p) * sign(p.y);
 }
 
-// A light bulb lit at level: glass, filament and a halo in the colour, a grey screw base
-vec3 bulb(vec2 p, float level, vec3 colour, float aa) {
-    vec2 g = p - vec2(0.0, -0.18);
-    float r = length(g);
-    float glass = 1.0 - smoothstep(0.6 - aa, 0.6 + aa, r);
+// Shape 3. A Fresnel stage light seen from the front, lit at level: a black housing
+// with bolts, a ringed Fresnel lens that glows from its hot centre, and the
+// diagonal wire safety mesh over it. Tone-mapped so bright parts go to white.
+vec3 fresnel(vec2 p, float level, vec3 colour, float aa) {
+    const float LENS = 0.78;
+    const float BODY = 0.95;
+    float r = length(p);
+    float a = atan(p.y, p.x);
+    vec3 hue = colour * mix(vec3(1.0, 0.5, 0.18), vec3(1.0), smoothstep(0.0, 0.6, level));
+    float e = level * level;
     vec3 col = vec3(0.0);
-    // Unlit glass still shows faintly
-    col += vec3(0.07) * smoothstep(0.035, 0.0, abs(r - 0.6));
-    // Glow inside the glass and a halo around it
-    col += colour * level * glass * (0.25 + 0.75 * exp(-r * 3.0));
-    float edge = smoothstep(1.0, 0.75, max(abs(p.x), abs(p.y)));
-    col += colour * level * (1.0 - glass) * 0.45 * exp(-(r - 0.6) * 7.0) * edge;
-    // Filament: a small loop, nearly white when it's bright
-    vec2 f = g - vec2(0.0, 0.08);
-    float fd = abs(length(f * vec2(1.0, 1.6)) - 0.14);
-    col += mix(colour, vec3(1.0), 0.7 * level) * level * smoothstep(0.035, 0.0, fd) * step(f.y, 0.02);
-    // Screw base with threads
-    vec2 b = p - vec2(0.0, 0.62);
-    float base = (1.0 - smoothstep(0.24 - aa, 0.24 + aa, abs(b.x) + max(0.0, abs(b.y) - 0.18) * 4.0))
-        * step(abs(b.y), 0.2);
-    float threads = 0.5 + 0.5 * sin(b.y * 60.0);
-    col = mix(col, vec3(0.12 + 0.1 * threads), base);
-    return col;
+
+    // Housing: dark metal, lighter towards the top, with four bolts
+    float body = 1.0 - smoothstep(BODY - aa, BODY + aa, r);
+    float shade = 0.5 - 0.5 * p.y / max(r, 0.001);
+    col += body * vec3(0.03 + 0.05 * shade);
+    col += body * vec3(0.12) * smoothstep(0.025, 0.0, abs(r - BODY + 0.02)) * shade;
+    float bolt = 0.0;
+    for (int k = 0; k < 4; k++) {
+        float ang = PI * 0.25 + float(k) * PI * 0.5;
+        bolt = max(bolt, smoothstep(0.035, 0.02, length(p - 0.87 * vec2(cos(ang), sin(ang)))));
+    }
+    col = mix(col, vec3(0.22), bolt);
+
+    // The Fresnel lens: concentric steps, each brighter at its outer edge
+    float lens = 1.0 - smoothstep(LENS - aa, LENS + aa, r);
+    float step_ = fract(r * 13.0);
+    float rings = r < 0.1 ? 0.6 : 0.45 + 0.55 * step_ * step_;
+    vec3 glass = vec3(0.07, 0.08, 0.09) + vec3(0.08) * rings * (0.6 + 0.4 * shade);
+    glass += hue * e * (0.35 + 2.4 * exp(-r * 3.0)) * (0.55 + 0.45 * rings);
+    // Wire mesh: two diagonal sets of wires and a hoop at the lens edge
+    vec2 d = vec2(p.x + p.y, p.x - p.y) * 0.7071 * 7.0;
+    vec2 w = abs(fract(d) - 0.5);
+    float wire = smoothstep(0.06, 0.0, min(w.x, w.y) - 0.0) ;
+    wire = max(wire, smoothstep(0.02, 0.0, abs(r - LENS + 0.03)));
+    vec3 wireCol = vec3(0.32) + hue * e * 0.25;
+    glass = mix(glass, wireCol * (1.0 - 0.55 * e), wire * 0.85);
+    col = mix(col, glass, lens);
+
+    // Glow around the housing, fading before the cell's edge
+    float edge = pow(clamp((1.0 - r) / (1.0 - BODY), 0.0, 1.0), 2.0);
+    col += hue * e * 0.5 * exp(-max(r - BODY, 0.0) * 8.0) * (1.0 - body) * edge;
+    return vec3(1.0) - exp(-col * 1.5);
 }
 
 vec3 visual(vec2 uv, float t) {
@@ -417,7 +437,7 @@ vec3 visual(vec2 uv, float t) {
     vec2 p = fract(g) * 2.0 - 1.0;
     float aa = 2.0 * COLS * 2.0 / RES.x;
     int s = int(floor(shape + 0.5));
-    if (s == 3) return bulb(p, level, colour, aa);
+    if (s == 3) return fresnel(p, level, colour, aa);
     float d;
     if (s == 1) d = length(p) - 0.85;
     else if (s == 2) d = sdTriangle(p, 0.8);
