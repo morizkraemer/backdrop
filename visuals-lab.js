@@ -18,19 +18,20 @@ const MAX_SOURCE = 256 * 1024;
 
 // DMX functions of the visuals fixture, in channel order after brightness/GO/BACK
 const SEGMENT_FNS = Array.from({ length: visuals.SEGMENTS }, (_, i) => `seg${i + 1}`);
-const DMX_FUNCTIONS = ['visual', 'dimmer', 'red', 'green', 'blue', 'speed', 'strobe', 'control', ...SEGMENT_FNS];
-const DMX_SLOT = 10; // visual select: 10-19 = first visual, 20-29 = second, ...
-const DMX_MASK_HOLD_MS = 2000; // strips all at 0 this long = whole wall again
+const CONTROL_FNS = Array.from({ length: visuals.CONTROLS }, (_, i) => `control${i + 1}`);
+const DMX_FUNCTIONS = ['visual', 'dimmer', 'red', 'green', 'blue', 'colour', 'speed', 'strobe', ...CONTROL_FNS, ...SEGMENT_FNS];
+const DMX_SLOT = 5; // visual select: 5-9 = first visual, 10-14 = second, ... (50 visuals)
+const DMX_MASK_HOLD_MS = 2000; // cells all at 0 this long = whole wall again
 
 const xmlEsc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /**
  * The fixture as an MA fixture type (grandMA2 XML, which dot2 imports from
- * USB: dot2/library): GO and BACK, then the 16 visuals channels, so it
+ * USB: dot2/library): GO and BACK, then the visuals channels, so it
  * patches at backdrop's GO channel. dot2 only knows its own attributes, so
  * each function sits on the nearest one (setup/DMX.md); channel sets name the
- * visuals and ranges. The 8 strips are sub-fixtures with their own dimmer, so
- * the desk's effects can chase across them.
+ * visuals and ranges. The grid cells are sub-fixtures with their own dimmer,
+ * so the desk's effects can chase across them.
  */
 function dot2Fixture(slots) {
   const set = (name, from, to) => `<ChannelSet name="${xmlEsc(name)}" from_dmx="${from}" to_dmx="${to}" />`;
@@ -52,31 +53,54 @@ function dot2Fixture(slots) {
     channel(5, 'COLORRGB1', 'RGB', 'COLOR'),
     channel(6, 'COLORRGB2', 'RGB', 'COLOR'),
     channel(7, 'COLORRGB3', 'RGB', 'COLOR'),
-    channel(8, 'GOBO1_POS', 'GOBO', 'GOBO', [set('Speed slow', 0, 0), set('Speed fast', 255, 255)]),
-    channel(9, 'SHUTTER', 'SHUTTER', 'BEAM', [set('Open', 0, 9), set('Strobe 1-20 Hz', 10, 255)], [0, 20]),
-    channel(10, 'GOBO2', 'GOBO', 'GOBO', [set('Control min', 0, 0), set('Control max', 255, 255)]),
+    channel(8, 'COLOR1', 'COLOR', 'COLOR', [set('Second colour', 0, 255)], [0, 255]),
+    channel(9, 'GOBO1_POS', 'GOBO', 'GOBO', [set('Speed slow', 0, 0), set('Speed fast', 255, 255)]),
+    channel(10, 'SHUTTER', 'SHUTTER', 'BEAM', [set('Open', 0, 9), set('Strobe 1-20 Hz', 10, 255)], [0, 20]),
+    channel(11, 'GOBO2', 'GOBO', 'GOBO', [set('Control 1', 0, 255)], [0, 255]),
+    channel(12, 'GOBO2_POS', 'GOBO', 'GOBO', [set('Control 2', 0, 255)], [0, 255]),
+    channel(13, 'GOBO3', 'GOBO', 'GOBO', [set('Control 3', 0, 255)], [0, 255]),
   ].join('');
-  const strips = SEGMENT_FNS.map((_, i) => `
-			<Instance module_index="1" patch="${11 + i}" locked="true" />`).join('');
+  const cells = SEGMENT_FNS.map((_, i) => `
+			<Instance module_index="1" patch="${14 + i}" locked="true" />`).join('');
   return `<?xml version="1.0" encoding="utf-8"?>
 <MA xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.malighting.de/grandma2/xml/MA http://schemas.malighting.de/grandma2/xml/2.8.123/MA.xsd" major_vers="2" minor_vers="8" stream_vers="123" xmlns="http://schemas.malighting.de/grandma2/xml/MA">
-	<FixtureType name="Visuals" mode="18ch">
+	<FixtureType name="Visuals" mode="${13 + SEGMENT_FNS.length}ch">
 		<short_name>Visuals</short_name>
 		<manufacturer>backdrop</manufacturer>
 		<short_manufacturer>backdrop</short_manufacturer>
 		<Modules>
 			<Module name="Main" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${main}
 			</Module>
-			<Module name="Strip" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${channel(1, 'DIM', 'DIMMER', 'DIMMER', [set('Closed', 0, 0), set('Open', 255, 255)])}
+			<Module name="Cell" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${channel(1, 'DIM', 'DIMMER', 'DIMMER', [set('Closed', 0, 0), set('Open', 255, 255)])}
 			</Module>
 		</Modules>
 		<Instances>
-			<Instance module_index="0" patch="1" locked="true" />${strips}
+			<Instance module_index="0" patch="1" locked="true" />${cells}
 		</Instances>
 		<Wheels />
 	</FixtureType>
 </MA>
 `;
+}
+
+// 0-255 RGB to hue, saturation and value, each 0-1
+function toHsv(r, g, b) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d) {
+    if (max === r) h = ((g - b) / d + 6) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+  }
+  return { h: h / 6, s: max ? d / max : 0, v: max / 255 };
+}
+
+// The slider the Colour channel moves: a second colour, else the colour spread
+const SECOND_COLOUR = ['hue2', 'spread'];
+function secondColour(v) {
+  return SECOND_COLOUR.find((n) => v.params.some((p) => p.name === n)) ?? null;
 }
 
 function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
@@ -98,7 +122,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
 
   // The visual on the wall: { id, values, clock } (visuals.clockAfterSpeedChange)
   let onAir = null;
-  // The DMX fixture's dimmer, colour, strobe and strips, laid over the visual
+  // The DMX fixture's dimmer, colour, strobe and grid cells, laid over the visual
   let fx = { ...visuals.FX_NEUTRAL };
 
   // --- the visuals: built-ins from visuals/, then the lab's own in uploads/visuals ---
@@ -113,6 +137,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
         name: v.name || id,
         params: visuals.publicParams(v.params),
         control: visuals.controlParam(v),
+        defaultControls: visuals.controlParams(v),
         thumb: builtin && fs.existsSync(path.join(visuals.BUILTIN_DIR, 'thumbs', `${id}.jpg`))
           ? `/visuals/thumbs/${id}.jpg` : null,
       };
@@ -143,6 +168,17 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
 
   function slots() {
     return list().map((v, i) => ({ value: (i + 1) * DMX_SLOT, id: v.id, name: v.name }));
+  }
+
+  // The sliders Control 1-3 move for a visual: as set in the lab, else its defaults
+  function controlsFor(v) {
+    const names = v.params.map((p) => p.name);
+    const saved = settings.controls?.[v.id];
+    return v.defaultControls.map((d, i) => {
+      const c = saved?.[i];
+      if (c === null) return null;
+      return c && names.includes(c) ? c : d;
+    });
   }
 
   function savedValues(v) {
@@ -276,9 +312,10 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     setLive(null);
   }
 
-  // values/prev: { visual, dimmer, ..., seg8 } 0-255 or null for unused.
-  // Select plays a visual; dimmer, colour, strobe and the 8 strips lie over
-  // it; speed and control move its sliders. Each follows only once it moved.
+  // values/prev: { visual, dimmer, ..., seg32 } 0-255 or null for unused.
+  // Select plays a visual; dimmer, colour, strobe and the grid cells lie over
+  // it; speed, colour and Control 1-3 move its sliders (controlsFor). Each
+  // follows only once it moved.
   // Only while the Visuals cue is live.
   function applyDmx(values, prev) {
     if (!active) return;
@@ -295,15 +332,17 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
 
     const nextFx = { ...visuals.FX_NEUTRAL };
     if (on('dimmer')) nextFx.fx_dimmer = level('dimmer');
-    if (on('red') || on('green') || on('blue')) {
-      nextFx.fx_tint = 1;
-      nextFx.fx_r = (values.red ?? 0) / 255;
-      nextFx.fx_g = (values.green ?? 0) / 255;
-      nextFx.fx_b = (values.blue ?? 0) / 255;
+    // RGB picks the visual's colour like a colour mix on a fixture: its hue turns the
+    // visual's hue slider (below), saturation and brightness apply on top
+    const rgbOn = on('red') || on('green') || on('blue');
+    const rgb = rgbOn ? toHsv(values.red ?? 0, values.green ?? 0, values.blue ?? 0) : null;
+    if (rgb) {
+      nextFx.fx_sat = rgb.s;
+      nextFx.fx_dimmer *= rgb.v;
     }
     // 0-9 open, then 1-20 flashes per second
     if (on('strobe') && values.strobe >= 10) nextFx.fx_strobe = Math.round((1 + ((values.strobe - 10) * 19) / 245) * 10) / 10;
-    // The strips mask the wall once one is up, and let go only after all have
+    // The cells mask the wall once one is up, and let go only after all have
     // sat at 0 for a while, so a chase passing through dark doesn't flash the wall
     const segs = SEGMENT_FNS.filter(on);
     if (segs.length) {
@@ -321,8 +360,16 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     const param = (name) => v?.params.find((p) => p.name === name);
     const scaled = (p, fn) => p.min + (p.max - p.min) * level(fn);
     if (on('speed') && values.speed !== prev.speed && param('speed')) patch.speed = scaled(param('speed'), 'speed');
-    if (on('control') && values.control !== prev.control && v?.control && param(v.control)) {
-      patch[v.control] = scaled(param(v.control), 'control');
+    const moved = (fn) => on(fn) && values[fn] !== prev[fn];
+    const rgbMoved = moved('red') || moved('green') || moved('blue');
+    // Grey has no hue: leave the slider where it is
+    if (rgbMoved && rgb.s > 0.02 && param('hue')) patch.hue = param('hue').min + (param('hue').max - param('hue').min) * rgb.h;
+    const second = v && secondColour(v);
+    if (moved('colour') && second) patch[second] = scaled(param(second), 'colour');
+    if (v) {
+      controlsFor(v).forEach((name, i) => {
+        if (name && moved(CONTROL_FNS[i]) && param(name)) patch[name] = scaled(param(name), CONTROL_FNS[i]);
+      });
     }
 
     const fxChanged = Object.keys(nextFx).some((k) => nextFx[k] !== fx[k]);
@@ -356,6 +403,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
       source: fs.readFileSync(v.file, 'utf8'),
       preview: visuals.buildPreview(parsed, width, height),
       values: savedValues(v),
+      controls: controlsFor(v),
     };
   }
 
@@ -379,6 +427,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     res.json({
       params: visuals.publicParams(parsed.params),
       control: visuals.controlParam(parsed),
+      defaultControls: visuals.controlParams(parsed),
       preview: visuals.buildPreview(parsed, width, height),
     });
   });
@@ -398,6 +447,20 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     settings.values[v.id] = visuals.paramValues(v.params, values);
     saveSettings();
     res.json(settings.values[v.id]);
+  });
+
+  // Which sliders the desk's Control 1-3 faders move (null = none)
+  router.put('/:id/controls', (req, res) => {
+    const v = find(req.params.id);
+    if (!v) return res.status(404).json({ error: 'Not found' });
+    const c = req.body.controls;
+    const names = v.params.map((p) => p.name);
+    if (!Array.isArray(c) || c.length !== visuals.CONTROLS || c.some((n) => n !== null && !names.includes(n))) {
+      return res.status(400).json({ error: `controls must be ${visuals.CONTROLS} slider names or null` });
+    }
+    settings.controls = { ...settings.controls, [v.id]: c };
+    saveSettings();
+    res.json({ controls: controlsFor(v) });
   });
 
   // Move sliders on the wall without saving

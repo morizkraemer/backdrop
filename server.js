@@ -206,7 +206,7 @@ function playCue(index) {
   const s = state.getState();
   const cue = s.playlist[index];
   if (!cue) {
-    mpv.stop();
+    mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
     state.updateState({ currentCueIndex: -1 });
     broadcastState();
     return;
@@ -264,7 +264,7 @@ function advance() {
     } else if (s.playlistLoop && s.playlist.length > 0) {
       playCue(0);
     } else {
-      mpv.stop();
+      mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
       state.updateState({ currentCueIndex: -1 });
       broadcastState();
       clearDurationTimer();
@@ -476,7 +476,7 @@ function removeMedia(ids, extra = {}) {
     if (nextIdx < playlist.length) {
       playCue(nextIdx);
     } else {
-      mpv.stop();
+      mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
       clearDurationTimer();
     }
   } else {
@@ -806,7 +806,7 @@ app.delete('/api/playlist/:cueId', (req, res) => {
       currentCueIndex = -1;
       playCue(Math.min(idx, playlist.length - 1));
     } else {
-      mpv.stop();
+      mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
       clearDurationTimer();
       currentCueIndex = -1;
     }
@@ -827,7 +827,7 @@ function goNext() {
       playCue(0);
     } else {
       lab.release();
-      mpv.stop();
+      mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
       clearDurationTimer();
       state.updateState({ currentCueIndex: -1 });
     }
@@ -871,7 +871,7 @@ app.post('/api/go/:cueId', (req, res) => {
 
 app.post('/api/stop', (req, res) => {
   lab.release();
-  mpv.stop();
+  mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
   clearDurationTimer();
   state.updateState({ currentCueIndex: -1 });
   broadcastState();
@@ -1094,7 +1094,15 @@ let dmxUiTimer = null;
 
 function getDmxConfig() {
   const a = config.dmxAddress;
-  const saved = state.getState().dmxConfig?.channels ?? {};
+  let saved = state.getState().dmxConfig?.channels ?? {};
+  // Saved before the fixture had Colour and Control 1-3: lay the visuals channels out
+  // again from the saved select channel, in the new order
+  if ('control' in saved && !('colour' in saved)) {
+    const { control, ...rest } = saved;
+    saved = rest;
+    if (saved.visual) lab.DMX_FUNCTIONS.forEach((fn, i) => { saved[fn] = Math.min(512, saved.visual + i); });
+    else lab.DMX_FUNCTIONS.forEach((fn) => delete saved[fn]);
+  }
   const channels = {};
   // Unsaved functions default to consecutive channels from DMX_ADDRESS
   DMX_FUNCTIONS.forEach((fn, i) => { channels[fn] = saved[fn] ?? Math.min(512, a + i); });
@@ -1116,6 +1124,11 @@ function handleDmxFrame(universe, data) {
   dmxLastPacket = Date.now();
   const values = {};
   for (const fn of DMX_FUNCTIONS) values[fn] = channels[fn] ? data[channels[fn] - 1] ?? 0 : null;
+  handleDmxValues(values);
+}
+
+// values: { brightness, go, back, visual, ... } 0-255, or null for unused
+function handleDmxValues(values) {
   const prev = dmxLast;
   dmxLast = values;
   if (!dmx.receiving || DMX_FUNCTIONS.some((fn) => values[fn] !== dmx.values?.[fn])) {
@@ -1132,21 +1145,37 @@ function handleDmxFrame(universe, data) {
   lab.applyDmx(values, prev);
 }
 
+// Art-Net or the virtual desk going quiet puts the fixture back to neutral
+setInterval(() => {
+  if (dmx.receiving && Date.now() - dmxLastPacket > DMX_TIMEOUT_MS) {
+    setDmx({ receiving: false, values: null });
+    dmxLast = null;
+    lab.resetDmx();
+  }
+}, 1000);
+
 if (dmx.configured) {
   listenArtNet({
     onFrame: handleDmxFrame,
     onError: (err) => console.warn('Art-Net:', err.message),
   });
-  setInterval(() => {
-    if (dmx.receiving && Date.now() - dmxLastPacket > DMX_TIMEOUT_MS) {
-      setDmx({ receiving: false, values: null });
-      dmxLast = null;
-      lab.resetDmx();
-    }
-  }, 1000);
   const { universe, channels } = getDmxConfig();
   console.log(`DMX: Art-Net universe ${universe}, channels`, JSON.stringify(channels));
 }
+
+// Virtual desk in the Visuals lab: the fixture's values without Art-Net, handled
+// like a frame from the desk. The lab repeats them every second, so they time out
+// like a desk that goes away.
+app.post('/api/dmx/desk', (req, res) => {
+  const values = {};
+  for (const fn of DMX_FUNCTIONS) {
+    const v = req.body?.values?.[fn];
+    values[fn] = Number.isInteger(v) && v >= 0 && v <= 255 ? v : null;
+  }
+  dmxLastPacket = Date.now();
+  handleDmxValues(values);
+  res.json({ ok: true });
+});
 
 // Channels 1-512, or 0 for unused
 app.put('/api/dmx', (req, res) => {

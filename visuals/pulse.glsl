@@ -1,6 +1,6 @@
 // Pulse: the whole wall hitting on the beat, like a blinder
 // Patterns: 0 single hit, 1 double hit, 2 swell, 3 left/right, 4 thirds
-// control: decay
+// controls: pattern, decay, floor_
 
 //!PARAM speed
 //!DESC Speed

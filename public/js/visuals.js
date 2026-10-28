@@ -4,6 +4,7 @@ const API = '/api';
 const WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
 
 const $ = (id) => document.getElementById(id);
+const DMX_SLOT = 5; // visual select values per visual (visuals-lab.js)
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 let state = {}; // backdrop's state over the WebSocket: visual (on air), dmx
@@ -41,7 +42,7 @@ function renderList() {
     <span class="lab-thumb">${v.thumb ? `<img src="${esc(v.thumb)}" alt="" loading="lazy">` : ''}</span>
     <span class="lab-item-text">
       <span class="lab-item-name">${esc(v.name)}</span>
-      <span class="lab-item-sub">DMX ${(i + 1) * 10}${v.builtin ? '' : ' · yours'}${air === v.id ? ' · on wall' : ''}</span>
+      <span class="lab-item-sub">DMX ${(i + 1) * DMX_SLOT}${v.builtin ? '' : ' · yours'}${air === v.id ? ' · on wall' : ''}</span>
     </span>
   </button>`).join('');
 }
@@ -173,10 +174,8 @@ function render() {
   if (!current) return;
   $('visualName').textContent = current.name;
   const i = visuals.findIndex((v) => v.id === current.id);
-  const control = current.params.find((p) => p.name === current.control);
   $('visualSub').textContent = [
-    i >= 0 ? `DMX select ${(i + 1) * 10}` : null,
-    control ? `Control fader: ${control.desc || control.name}` : null,
+    i >= 0 ? `DMX select ${(i + 1) * DMX_SLOT}` : null,
     current.builtin ? 'built-in' : 'yours',
   ].filter(Boolean).join(' · ');
   $('previewTag').textContent = isOnAir() ? 'Preview · on the wall' : 'Preview';
@@ -187,12 +186,13 @@ function render() {
   $('btnDelete').hidden = current.builtin;
 
   renderParams();
+  renderControls();
 }
 
 // Rebuilt only when the params change, so a slider being dragged stays put
 let paramsKey = null;
 function renderParams() {
-  const key = JSON.stringify([current.id, current.control, current.params]);
+  const key = JSON.stringify([current.id, current.controls, current.params]);
   if (key === paramsKey) {
     $('params').querySelectorAll('input[data-param]').forEach((input) => {
       const p = current.params.find((x) => x.name === input.dataset.param);
@@ -205,12 +205,51 @@ function renderParams() {
   paramsKey = key;
   $('params').innerHTML = current.params.length
     ? current.params.map((p) => `<label class="lab-param">
-      <span class="lab-param-name">${esc(p.desc || p.name)}${current.control === p.name ? ' <em>DMX control</em>' : ''}${p.name === 'speed' ? ' <em>DMX speed</em>' : ''}</span>
+      <span class="lab-param-name">${esc(p.desc || p.name)}${paramTag(p.name)}</span>
       <input type="range" data-param="${esc(p.name)}" min="${p.min}" max="${p.max}" step="${p.int ? 1 : (p.max - p.min) / 500}" value="${values[p.name]}">
       <span class="lab-param-val">${fmt(p, values[p.name])}</span>
     </label>`).join('')
     : '<span class="field-hint">This visual has no sliders.</span>';
 }
+
+// Which desk fader moves a slider: speed, hue (RGB) and the second colour
+// (hue2, else spread) are fixed, Control 1-3 are picked per visual
+function paramTag(name) {
+  const tags = [];
+  const second = ['hue2', 'spread'].find((n) => current.params.some((p) => p.name === n));
+  if (name === 'speed') tags.push('DMX speed');
+  if (name === 'hue') tags.push('DMX RGB');
+  if (name === second) tags.push('DMX colour');
+  current.controls.forEach((c, i) => { if (c === name) tags.push(`Control ${i + 1}`); });
+  return tags.map((t) => ` <em>${t}</em>`).join('');
+}
+
+function renderControls() {
+  const options = current.params.filter((p) => p.name !== 'speed' && p.name !== 'hue');
+  $('controls').innerHTML = current.controls.map((c, i) => `<label class="lab-control">
+    <span>Control ${i + 1}</span>
+    <select data-control="${i}">
+      <option value="">Nothing</option>
+      ${options.map((p) => `<option value="${esc(p.name)}"${p.name === c ? ' selected' : ''}>${esc(p.desc || p.name)}</option>`).join('')}
+    </select>
+  </label>`).join('');
+}
+
+$('controls').addEventListener('change', async (e) => {
+  const sel = e.target.closest('select[data-control]');
+  if (!sel) return;
+  const controls = [...current.controls];
+  controls[Number(sel.dataset.control)] = sel.value || null;
+  current.controls = controls;
+  render();
+  try {
+    const r = await api('PUT', `/visuals/${encodeURIComponent(current.id)}/controls`, { controls });
+    current.controls = r.controls;
+    render();
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+});
 
 // Slider moves reach the wall at most every 50 ms while this visual is on it
 let liveTimer = null;
@@ -318,7 +357,13 @@ async function runPreview() {
   if (!current) return;
   try {
     const r = await api('POST', '/visuals/preview', { source: $('code').value });
-    current = { ...current, params: r.params, control: r.control };
+    // Keep the picked controls that still exist; the rest fall back like on the server
+    const names = r.params.map((p) => p.name);
+    const controls = r.defaultControls.map((d, i) => {
+      const c = current.controls[i];
+      return c === null ? null : names.includes(c) ? c : d;
+    });
+    current = { ...current, params: r.params, controls };
     values = Object.fromEntries(r.params.map((p) => [p.name, values[p.name] ?? p.default]));
     const ok = compile(r.preview);
     setStatus(ok ? 'Preview updated (not saved)' : 'Shader error, see the preview', !ok);
@@ -413,16 +458,21 @@ $('btnNew').addEventListener('click', () => {
 
 // --- DMX fixture channels ---
 
+// The wall's grid of cells (visuals.js SEG_COLS x SEG_ROWS), on consecutive channels
+const CELL_COLS = 12;
+const CELL_ROWS = 4;
+const CELL_FNS = Array.from({ length: CELL_COLS * CELL_ROWS }, (_, i) => `seg${i + 1}`);
+
 const DMX_FUNCTIONS = [
   { key: 'visual', name: 'Visual select', show: (v) => slotName(v) },
   { key: 'dimmer', name: 'Dimmer', show: pct },
   { key: 'red', name: 'Red', show: pct },
   { key: 'green', name: 'Green', show: pct },
   { key: 'blue', name: 'Blue', show: pct },
+  { key: 'colour', name: 'Colour', show: pct },
   { key: 'speed', name: 'Speed', show: pct },
   { key: 'strobe', name: 'Strobe', show: (v) => (v < 10 ? 'Off' : `${(1 + ((v - 10) * 19) / 245).toFixed(1)} Hz`) },
-  { key: 'control', name: 'Control', show: pct },
-  ...Array.from({ length: 8 }, (_, i) => ({ key: `seg${i + 1}`, name: `Strip ${i + 1}`, show: pct })),
+  ...Array.from({ length: 3 }, (_, i) => ({ key: `control${i + 1}`, name: `Control ${i + 1}`, show: pct })),
 ];
 
 function pct(v) {
@@ -430,7 +480,7 @@ function pct(v) {
 }
 
 function slotName(v) {
-  const s = slots.find((x) => v >= x.value && v < x.value + 10);
+  const s = slots.find((x) => v >= x.value && v < x.value + DMX_SLOT);
   return s ? s.name : '—';
 }
 
@@ -439,7 +489,12 @@ $('dmxChannels').insertAdjacentHTML('beforeend', DMX_FUNCTIONS.map((fn) => `<div
   <span class="dmx-name">${fn.name}</span>
   <span class="dmx-bar"><span></span></span>
   <span class="dmx-val">—</span>
-</div>`).join(''));
+</div>`).join('') + `<div class="dmx-ch" id="dmxCellsRow">
+  <input type="number" data-cells min="0" max="512" step="1" inputmode="numeric" placeholder="off" aria-label="Cell 1 channel">
+  <span class="dmx-name">Cells 1-${CELL_COLS * CELL_ROWS}</span>
+  <span class="dmx-cells" id="dmxCells" style="grid-template-columns: repeat(${CELL_COLS}, 1fr)">${'<span></span>'.repeat(CELL_COLS * CELL_ROWS)}</span>
+  <span class="dmx-val">—</span>
+</div>`);
 
 let dmxError = null;
 
@@ -459,6 +514,19 @@ function renderDmx() {
     row.querySelector('.dmx-bar span').style.width = `${v == null ? 0 : (v * 100) / 255}%`;
     row.querySelector('.dmx-val').textContent = v == null ? '—' : fn.show(v);
   });
+  const first = d.channels?.seg1 || 0;
+  const cellsInput = $('dmxChannels').querySelector('input[data-cells]');
+  cellsInput.disabled = !d.configured;
+  if (document.activeElement !== cellsInput) cellsInput.value = first || '';
+  const cellsRow = $('dmxCellsRow');
+  cellsRow.classList.toggle('unused', !first);
+  const cellVals = CELL_FNS.map((fn) => (on && d.channels?.[fn] ? d.values?.[fn] : null));
+  [...$('dmxCells').children].forEach((c, i) => {
+    c.style.opacity = cellVals[i] == null ? '' : String(0.15 + (0.85 * cellVals[i]) / 255);
+    c.classList.toggle('lit', cellVals[i] != null);
+  });
+  const known = cellVals.filter((v) => v != null);
+  cellsRow.querySelector('.dmx-val').textContent = known.length ? `${known.filter((v) => v > 0).length} on` : '—';
   const status = $('dmxStatus');
   status.classList.toggle('error', !!dmxError);
   status.textContent = dmxError
@@ -467,6 +535,15 @@ function renderDmx() {
 }
 
 $('dmxChannels').addEventListener('change', (e) => {
+  // The cells always sit on consecutive channels from Cell 1
+  if (e.target.matches('input[data-cells]')) {
+    const first = Math.max(0, Math.min(512 - CELL_FNS.length + 1, Math.round(Number(e.target.value) || 0)));
+    dmxError = null;
+    api('PUT', '/dmx', { channels: Object.fromEntries(CELL_FNS.map((fn, i) => [fn, first ? first + i : 0])) })
+      .catch((err) => { dmxError = err.message; })
+      .finally(renderDmx);
+    return;
+  }
   const input = e.target.closest('input[data-fn]');
   if (!input) return;
   const ch = Math.max(0, Math.min(512, Math.round(Number(input.value) || 0)));
@@ -474,6 +551,109 @@ $('dmxChannels').addEventListener('change', (e) => {
   api('PUT', '/dmx', { channels: { [input.dataset.fn]: ch } })
     .catch((err) => { dmxError = err.message; })
     .finally(renderDmx);
+});
+
+// --- virtual desk: the fixture's faders in the page (POST /api/dmx/desk) ---
+
+const DESK_FADERS = [
+  ['dimmer', 'Dimmer', 255], ['red', 'Red', 255], ['green', 'Green', 255], ['blue', 'Blue', 255],
+  ['colour', 'Colour', 0], ['speed', 'Speed', 0], ['strobe', 'Strobe', 0],
+  ['control1', 'Control 1', 0], ['control2', 'Control 2', 0], ['control3', 'Control 3', 0],
+];
+const desk = { go: 0, back: 0, visual: 0, ...Object.fromEntries(DESK_FADERS.map(([k, , v]) => [k, v])) };
+CELL_FNS.forEach((fn) => { desk[fn] = 0; });
+let deskTimer = null;
+let deskBeat = null;
+let deskChase = null;
+
+$('deskFaders').innerHTML = DESK_FADERS.map(([k, name]) => `<label class="lab-param">
+  <span class="lab-param-name">${name}</span>
+  <input type="range" data-desk="${k}" min="0" max="255" step="1" value="${desk[k]}">
+  <span class="lab-param-val">${desk[k]}</span>
+</label>`).join('');
+$('deskCells').style.gridTemplateColumns = `repeat(${CELL_COLS}, 1fr)`;
+$('deskCells').innerHTML = CELL_FNS.map((fn, i) => `<button type="button" data-cell="${fn}" aria-label="Cell ${i + 1}"></button>`).join('');
+
+function renderDeskSelect() {
+  const sel = $('deskVisual');
+  const want = String(desk.visual);
+  sel.innerHTML = '<option value="0">Keep (0)</option>'
+    + slots.map((s) => `<option value="${s.value}">${esc(s.name)} (${s.value})</option>`).join('');
+  sel.value = [...sel.options].some((o) => o.value === want) ? want : '0';
+}
+
+function renderDeskCells() {
+  $('deskCells').querySelectorAll('button').forEach((b) => b.classList.toggle('on', desk[b.dataset.cell] > 0));
+}
+
+// Like a desk: send on change (at most every 50 ms) and repeat every second
+function sendDesk() {
+  if (deskTimer) return;
+  deskTimer = setTimeout(() => {
+    deskTimer = null;
+    api('POST', '/dmx/desk', { values: desk }).catch(() => {});
+  }, 50);
+}
+
+function setDesk(patch) {
+  Object.assign(desk, patch);
+  renderDeskCells();
+  sendDesk();
+}
+
+function stopChase() {
+  clearInterval(deskChase);
+  deskChase = null;
+  $('deskChase').textContent = 'Chase';
+}
+
+$('deskPanel').addEventListener('toggle', () => {
+  clearInterval(deskBeat);
+  deskBeat = null;
+  if ($('deskPanel').open) {
+    renderDeskSelect();
+    sendDesk();
+    deskBeat = setInterval(sendDesk, 1000);
+  } else {
+    stopChase();
+  }
+});
+
+$('deskFaders').addEventListener('input', (e) => {
+  const input = e.target.closest('input[data-desk]');
+  if (!input) return;
+  input.parentElement.querySelector('.lab-param-val').textContent = input.value;
+  setDesk({ [input.dataset.desk]: Number(input.value) });
+});
+
+$('deskVisual').addEventListener('change', (e) => setDesk({ visual: Number(e.target.value) }));
+
+// GO and BACK fire on the rise past half, so press and let go
+function deskButton(fn) {
+  setDesk({ [fn]: 255 });
+  setTimeout(() => setDesk({ [fn]: 0 }), 300);
+}
+$('deskGo').addEventListener('click', () => deskButton('go'));
+$('deskBack').addEventListener('click', () => deskButton('back'));
+
+$('deskCells').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-cell]');
+  if (!b) return;
+  stopChase();
+  setDesk({ [b.dataset.cell]: desk[b.dataset.cell] ? 0 : 255 });
+});
+$('deskAll').addEventListener('click', () => { stopChase(); setDesk(Object.fromEntries(CELL_FNS.map((fn) => [fn, 255]))); });
+$('deskNone').addEventListener('click', () => { stopChase(); setDesk(Object.fromEntries(CELL_FNS.map((fn) => [fn, 0]))); });
+
+// A column sweeping left to right, like a simple desk chase
+$('deskChase').addEventListener('click', () => {
+  if (deskChase) return stopChase();
+  let step = 0;
+  $('deskChase').textContent = 'Stop chase';
+  deskChase = setInterval(() => {
+    const col = step++ % CELL_COLS;
+    setDesk(Object.fromEntries(CELL_FNS.map((fn, i) => [fn, i % CELL_COLS === col ? 255 : 0])));
+  }, 150);
 });
 
 // --- live state from backdrop ---

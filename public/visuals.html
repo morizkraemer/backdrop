@@ -57,8 +57,33 @@
             </span>
           </div>
           <div class="lab-params" id="params"></div>
+          <div class="field-row">
+            <span class="field-label">Desk faders</span>
+          </div>
+          <div class="lab-controls" id="controls"></div>
+          <span class="field-hint">While the Visuals cue is live, the desk's RGB sets the colour (hue), Colour the second colour or colour spread, Speed the speed, and Control 1-3 the sliders picked here.</span>
           <span class="field-hint" id="paramsHint">The preview runs in this browser. Send to wall tries it on the wall (GO or any cue in backdrop takes the wall back); the sliders move it while it's there.</span>
         </div>
+
+        <details class="lab-panel lab-desk" id="deskPanel">
+          <summary class="field-label">Virtual desk</summary>
+          <span class="field-hint">Plays the dot2 fixture from here, to try it without the desk. Like the desk it only drives the wall while backdrop's Visuals cue is live: GO into it first. Close this to hand back to the desk.</span>
+          <div class="lab-desk-top">
+            <button type="button" class="lab-btn" id="deskBack">BACK</button>
+            <button type="button" class="lab-btn lab-btn-live" id="deskGo">GO</button>
+            <label class="lab-control"><span>Visual select</span><select id="deskVisual"></select></label>
+          </div>
+          <div class="lab-desk-faders" id="deskFaders"></div>
+          <div class="field-row">
+            <span class="field-label">Cells</span>
+            <span>
+              <button type="button" class="btn-link" id="deskAll">All on</button>
+              <button type="button" class="btn-link" id="deskNone">All off</button>
+              <button type="button" class="btn-link" id="deskChase">Chase</button>
+            </span>
+          </div>
+          <div class="lab-desk-cells" id="deskCells"></div>
+        </details>
 
         <details class="lab-panel lab-code" id="codePanel">
           <summary class="field-label">Shader code</summary>
