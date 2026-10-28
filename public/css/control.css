@@ -1833,6 +1833,7 @@ button.crumb:hover {
 
   .btn-bt span,
   #hdmiText,
+  #piAudioText,
   #ledText,
   #connText {
     display: none;

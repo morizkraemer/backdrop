@@ -81,10 +81,17 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>
       <span id="btText">BT pairing</span>
     </button>
-    <button type="button" class="btn-bt" id="btnPiAudio" hidden title="What the Pi speakers play: backdrop or Spotify">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
-      <span id="piAudioText">Speakers</span>
-    </button>
+    <div class="hdmi" id="piAudio" hidden>
+      <button type="button" class="btn-led" id="btnPiAudio" aria-expanded="false" aria-controls="piAudioPopover" title="What the Pi speakers play">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+        <span id="piAudioText">Speakers</span>
+      </button>
+      <div class="hdmi-popover" id="piAudioPopover" hidden>
+        <span class="field-label" id="lblPiAudio">Speakers play</span>
+        <div class="hdmi-sources" id="piAudioSources" role="radiogroup" aria-labelledby="lblPiAudio"></div>
+        <div class="led-status" id="piAudioStatus"></div>
+      </div>
+    </div>
     <span id="diskSpace">—</span>
     <span class="conn" id="connStatus"><span class="dot"></span><span id="connText">Connecting…</span></span>
   </div>`;
@@ -172,43 +179,79 @@
       .catch(() => {});
   });
 
-  // --- Pi speakers: backdrop (snapclient) or Spotify Connect (raspotify).
-  // Only shown when the server has BT_HOST configured ---
+  // --- Pi speakers: which player gets the Pi's sound card. Only shown when
+  // the server has BT_HOST configured ---
 
+  const PI_SOURCES = { backdrop: 'backdrop', spotify: 'Spotify', airplay: 'AirPlay', bluetooth: 'Bluetooth' };
+  const piAudioEl = $('piAudio');
   const btnPiAudio = $('btnPiAudio');
+  const piAudioPopover = $('piAudioPopover');
+  const piAudioSources = $('piAudioSources');
   let piSource = null;
-  let piBusy = false;
+  let piPending = null; // source sent but not yet confirmed
+  let piError = null;
 
-  function renderPiAudio(available) {
-    btnPiAudio.hidden = !available;
-    btnPiAudio.disabled = piBusy;
-    btnPiAudio.classList.toggle('active', piSource === 'spotify');
-    const label = piSource === 'spotify' ? 'Spotify' : piSource === 'backdrop' ? 'backdrop' : 'off';
-    $('piAudioText').textContent = piBusy ? 'Switching…' : `Speakers: ${label}`;
+  function renderPiAudio() {
+    btnPiAudio.classList.toggle('external', !!piSource && piSource !== 'backdrop');
+    $('piAudioText').textContent = piSource === 'mixed' ? 'Speakers: mixed'
+      : piSource ? PI_SOURCES[piSource] : 'Speakers off';
+    const status = $('piAudioStatus');
+    status.classList.toggle('error', !!piError || piSource === 'mixed');
+    status.textContent = piError ? piError
+      : piPending ? 'Switching…'
+      : piSource === 'mixed' ? 'Several players are on and fight over the speakers. Pick one.'
+      : '';
+    piAudioSources.innerHTML = Object.entries(PI_SOURCES).map(([key, name]) => {
+      const active = piSource === key;
+      return `<button type="button" role="radio" aria-checked="${active}" data-source="${key}" class="${active ? 'active' : ''}${piPending === key ? ' pending' : ''}">
+        <span class="hdmi-name">${name}</span>
+      </button>`;
+    }).join('');
   }
 
   api('GET', '/pi-audio/status')
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
-      if (!data) return;
+      if (!data || !data.available) return;
       piSource = data.source;
-      renderPiAudio(!!data.available);
+      piAudioEl.hidden = false;
+      renderPiAudio();
     })
     .catch(() => {});
 
-  btnPiAudio.addEventListener('click', () => {
-    piBusy = true;
-    renderPiAudio(true);
-    api('POST', '/pi-audio/source', { source: piSource === 'backdrop' ? 'spotify' : 'backdrop' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data) piSource = data.source;
+  function sendPiSource(source) {
+    piPending = source;
+    piError = null;
+    renderPiAudio();
+    api('POST', '/pi-audio/source', { source })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || 'Could not switch');
+        piSource = data.source;
       })
-      .catch(() => {})
+      .catch((err) => { piError = err.message; })
       .finally(() => {
-        piBusy = false;
-        renderPiAudio(true);
+        if (piPending === source) piPending = null;
+        renderPiAudio();
       });
+  }
+
+  function setPiAudioOpen(open) {
+    piAudioPopover.hidden = !open;
+    btnPiAudio.setAttribute('aria-expanded', String(open));
+    if (open) renderPiAudio();
+  }
+
+  btnPiAudio.addEventListener('click', () => setPiAudioOpen(piAudioPopover.hidden));
+  document.addEventListener('click', (e) => {
+    if (!piAudioPopover.hidden && !e.composedPath().includes(piAudioEl)) setPiAudioOpen(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !piAudioPopover.hidden) setPiAudioOpen(false);
+  });
+  piAudioSources.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-source]');
+    if (b && !piPending) sendPiSource(b.dataset.source);
   });
 
   // --- LED panel brightness (NovaStar controller, proxied by the server) ---

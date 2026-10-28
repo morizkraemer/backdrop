@@ -975,30 +975,33 @@ app.post('/api/bluetooth/pairing', async (req, res) => {
   const { enabled } = req.body;
   const onOff = enabled ? 'on' : 'off';
   try {
-    await sshCommand(`bluetoothctl discoverable ${onOff}`);
+    // pairable too, or new phones see the Pi but can't pair
+    await sshCommand(`bluetoothctl pairable ${onOff} && bluetoothctl discoverable ${onOff}`);
     res.json({ discoverable: !!enabled });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Pi audio source: snapclient (backdrop) and raspotify (Spotify Connect) both
-// open the Pi's USB sound card directly, so only one can play. Switching
-// stops one and starts the other (needs setup/sudoers-pi-audio on the Pi).
+// Pi speakers source: every player on the Pi (snapclient for backdrop,
+// raspotify for Spotify Connect, shairport-sync for AirPlay, bluealsa-aplay
+// for Bluetooth) opens the USB sound card directly, so only one can play.
+// Picking one stops the others (needs setup/sudoers-pi-audio on the Pi).
 const PI_SOURCES = {
-  backdrop: { stop: 'raspotify', start: 'snapclient' },
-  spotify: { stop: 'snapclient', start: 'raspotify' },
+  backdrop: 'snapclient',
+  spotify: 'raspotify',
+  airplay: 'shairport-sync',
+  bluetooth: 'bluealsa-aplay',
 };
 
 async function piAudioSource() {
-  // is-active exits non-zero when a unit is inactive, so always echo
-  const out = await sshCommand('systemctl is-active snapclient raspotify; true');
-  const [snap, spotify] = out.split('\n').map((l) => l.trim());
-  // raspotify grabs the card whenever someone picks the Pi in Spotify, so
-  // with both running the speakers are Spotify's
-  if (spotify === 'active') return 'spotify';
-  if (snap === 'active') return 'backdrop';
-  return null;
+  // is-active exits non-zero when a unit is inactive, so always succeed
+  const units = Object.values(PI_SOURCES);
+  const out = await sshCommand(`systemctl is-active ${units.join(' ')}; true`);
+  const states = out.split('\n').map((l) => l.trim());
+  const active = Object.keys(PI_SOURCES).filter((_, i) => states[i] === 'active');
+  // several running means they fight over the card: show it as mixed
+  return active.length === 1 ? active[0] : active.length ? 'mixed' : null;
 }
 
 app.get('/api/pi-audio/status', async (req, res) => {
@@ -1012,10 +1015,13 @@ app.get('/api/pi-audio/status', async (req, res) => {
 
 app.post('/api/pi-audio/source', async (req, res) => {
   if (!config.btHost) return res.status(501).json({ error: 'BT_HOST not configured' });
-  const target = PI_SOURCES[req.body.source];
-  if (!target) return res.status(400).json({ error: 'source must be backdrop or spotify' });
+  const unit = PI_SOURCES[req.body.source];
+  if (!unit) return res.status(400).json({ error: `source must be one of ${Object.keys(PI_SOURCES).join(', ')}` });
+  // one unit per command so each matches a line of the sudoers rule
+  const stops = Object.values(PI_SOURCES).filter((u) => u !== unit)
+    .map((u) => `sudo -n systemctl stop ${u}`);
   try {
-    await sshCommand(`sudo -n systemctl stop ${target.stop} && sudo -n systemctl start ${target.start}`);
+    await sshCommand([...stops, `sudo -n systemctl start ${unit}`].join(' && '));
     res.json({ source: await piAudioSource() });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -126,20 +126,21 @@ systemctl enable snapclient
 systemctl start snapclient
 ```
 
-### Speakers switch (backdrop / Spotify)
+### Speakers picker (backdrop / Spotify / AirPlay / Bluetooth)
 
-The Pi also runs raspotify (Spotify Connect). snapclient and raspotify both
-open `hw:CODEC` directly, so only one can play; whichever grabs the card
-first wins. The **Speakers** button in backdrop's header switches by
-stopping one and starting the other over SSH (`BT_HOST`/`BT_USER` in
-`.env`). Let `bhf` do that without a password, once, on the Pi:
+The Pi also runs raspotify (Spotify Connect), shairport-sync (AirPlay) and
+bluealsa-aplay (Bluetooth). All of them and snapclient open `hw:CODEC`
+directly, so only one can play; whichever grabs the card first wins. The
+**Speakers** picker in backdrop's header keeps only the chosen one running
+by stopping the others over SSH (`BT_HOST`/`BT_USER` in `.env`). Let `bhf`
+do that without a password, once, on the Pi:
 
 ```bash
 sudo install -m 0440 sudoers-pi-audio /etc/sudoers.d/pi-audio   # from setup/
 ```
 
-In backdrop mode raspotify is stopped, so the Pi disappears from the
-Spotify app until someone switches back.
+A stopped player disappears for phones: with backdrop picked, the Pi isn't
+offered in the Spotify app or as an AirPlay speaker until someone switches.
 
 ## 9. Verification
 

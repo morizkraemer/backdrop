@@ -1,4 +1,5 @@
-# On the audio Pi: lets backdrop (over SSH as bhf) switch the speakers between
-# snapclient (backdrop) and raspotify (Spotify Connect), nothing else.
+# On the audio Pi: lets backdrop (over SSH as bhf) pick which player gets the
+# speakers: snapclient (backdrop), raspotify (Spotify Connect), shairport-sync
+# (AirPlay) or bluealsa-aplay (Bluetooth). Nothing else.
 # Install on the Pi: sudo install -m 0440 sudoers-pi-audio /etc/sudoers.d/pi-audio
-bhf ALL=(root) NOPASSWD: /usr/bin/systemctl stop snapclient, /usr/bin/systemctl start snapclient, /usr/bin/systemctl stop raspotify, /usr/bin/systemctl start raspotify
+bhf ALL=(root) NOPASSWD: /usr/bin/systemctl stop snapclient, /usr/bin/systemctl start snapclient, /usr/bin/systemctl stop raspotify, /usr/bin/systemctl start raspotify, /usr/bin/systemctl stop shairport-sync, /usr/bin/systemctl start shairport-sync, /usr/bin/systemctl stop bluealsa-aplay, /usr/bin/systemctl start bluealsa-aplay
