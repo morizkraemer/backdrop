@@ -1,8 +1,8 @@
 // Grid: 12x4 lights for the Grid fixture (setup/DMX.md), one colour, a level per cell
-// Shape: 0 square, 1 circle, 2 triangle, 3 lightbulb
+// Shape: 0 square, 1 circle, 2 triangle, 3 Fresnel stage light
 
 //!PARAM shape
-//!DESC Shape: square, circle, triangle, lightbulb
+//!DESC Shape: square, circle, triangle, Fresnel
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
 //!MAXIMUM 3.0
@@ -383,10 +383,10 @@ float sdTriangle(vec2 p, float r) {
     return -length(p) * sign(p.y);
 }
 
-// A Fresnel stage light seen from the front, lit at level: a black housing
+// Shape 3. A Fresnel stage light seen from the front, lit at level: a black housing
 // with bolts, a ringed Fresnel lens that glows from its hot centre, and the
 // diagonal wire safety mesh over it. Tone-mapped so bright parts go to white.
-vec3 bulb(vec2 p, float level, vec3 colour, float aa) {
+vec3 fresnel(vec2 p, float level, vec3 colour, float aa) {
     const float LENS = 0.78;
     const float BODY = 0.95;
     float r = length(p);
@@ -437,7 +437,7 @@ vec3 visual(vec2 uv, float t) {
     vec2 p = fract(g) * 2.0 - 1.0;
     float aa = 2.0 * COLS * 2.0 / RES.x;
     int s = int(floor(shape + 0.5));
-    if (s == 3) return bulb(p, level, colour, aa);
+    if (s == 3) return fresnel(p, level, colour, aa);
     float d;
     if (s == 1) d = length(p) - 0.85;
     else if (s == 2) d = sdTriangle(p, 0.8);

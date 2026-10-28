@@ -1,7 +1,7 @@
 /**
  * The Grid (setup/DMX.md): a 12x4 grid of lights on the LED wall, drawn by an
  * mpv shader (grid/lights.glsl) and played from the desk's Grid fixture: Shape
- * (square, circle, triangle, lightbulb), one RGB colour and a dimmer per cell.
+ * (square, circle, triangle, Fresnel), one RGB colour and a dimmer per cell.
  * It's on the wall while the wall mode is Grid (server.js setWallMode). Without
  * the desk every cell shows full white squares; with it the cells follow the
  * fixture exactly.
@@ -15,7 +15,7 @@ const FILE = path.join(__dirname, 'grid', 'lights.glsl');
 const COLS = 12;
 const ROWS = 4;
 const CELLS = COLS * ROWS;
-const SHAPES = ['Square', 'Circle', 'Triangle', 'Lightbulb'];
+const SHAPES = ['Square', 'Circle', 'Triangle', 'Fresnel'];
 const CELL_FNS = Array.from({ length: CELLS }, (_, i) => `cell${i + 1}`);
 const DMX_FUNCTIONS = ['shape', 'grid_red', 'grid_green', 'grid_blue', ...CELL_FNS];
 
@@ -27,7 +27,7 @@ const NEUTRAL = {
   ...Object.fromEntries(CELL_FNS.map((_, i) => [`c${i + 1}`, 1])),
 };
 
-// Shape 0-63 square, 64-127 circle, 128-191 triangle, 192-255 lightbulb
+// Shape 0-63 square, 64-127 circle, 128-191 triangle, 192-255 Fresnel
 const shapeOf = (v) => Math.min(SHAPES.length - 1, Math.floor(v / 64));
 
 // The Grid fixture for the dot2: Shape, RGB, then 48 cells as subfixtures

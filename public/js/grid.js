@@ -6,7 +6,7 @@ const WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.h
 const $ = (id) => document.getElementById(id);
 const CELLS = 48;
 const CELL_FNS = Array.from({ length: CELLS }, (_, i) => `cell${i + 1}`);
-const SHAPES = ['Square', 'Circle', 'Triangle', 'Lightbulb'];
+const SHAPES = ['Square', 'Circle', 'Triangle', 'Fresnel'];
 
 let state = {}; // backdrop's state over the WebSocket: grid (values on the wall), dmx
 let dmxError = null;
