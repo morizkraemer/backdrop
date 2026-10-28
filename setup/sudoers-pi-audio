@@ -1,0 +1,4 @@
+# On the audio Pi: lets backdrop (over SSH as bhf) switch the speakers between
+# snapclient (backdrop) and raspotify (Spotify Connect), nothing else.
+# Install on the Pi: sudo install -m 0440 sudoers-pi-audio /etc/sudoers.d/pi-audio
+bhf ALL=(root) NOPASSWD: /usr/bin/systemctl stop snapclient, /usr/bin/systemctl start snapclient, /usr/bin/systemctl stop raspotify, /usr/bin/systemctl start raspotify

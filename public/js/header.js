@@ -1,6 +1,6 @@
 // The header at the top of every page (control, visuals and grid.html): the
 // player, the tabs for what the wall shows (server.js setWallMode), DMX, the
-// HDMI source, LED brightness, Bluetooth, disk space and the connection. It's
+// HDMI source, LED brightness, Bluetooth, the Pi speakers' source, disk space and the connection. It's
 // the same on every tab, so switching tabs doesn't move anything. Each page
 // fills <header id="appHeader" data-page="..."> by loading this script first,
 // then calls appHeader.update(state, connected) on every WebSocket update.
@@ -80,6 +80,10 @@
     <button type="button" class="btn-bt" id="btnBluetooth" hidden aria-pressed="false" title="Bluetooth pairing mode">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>
       <span id="btText">BT pairing</span>
+    </button>
+    <button type="button" class="btn-bt" id="btnPiAudio" hidden title="What the Pi speakers play: backdrop or Spotify">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+      <span id="piAudioText">Speakers</span>
     </button>
     <span id="diskSpace">—</span>
     <span class="conn" id="connStatus"><span class="dot"></span><span id="connText">Connecting…</span></span>
@@ -166,6 +170,45 @@
         renderBluetooth(true);
       })
       .catch(() => {});
+  });
+
+  // --- Pi speakers: backdrop (snapclient) or Spotify Connect (raspotify).
+  // Only shown when the server has BT_HOST configured ---
+
+  const btnPiAudio = $('btnPiAudio');
+  let piSource = null;
+  let piBusy = false;
+
+  function renderPiAudio(available) {
+    btnPiAudio.hidden = !available;
+    btnPiAudio.disabled = piBusy;
+    btnPiAudio.classList.toggle('active', piSource === 'spotify');
+    const label = piSource === 'spotify' ? 'Spotify' : piSource === 'backdrop' ? 'backdrop' : 'off';
+    $('piAudioText').textContent = piBusy ? 'Switching…' : `Speakers: ${label}`;
+  }
+
+  api('GET', '/pi-audio/status')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (!data) return;
+      piSource = data.source;
+      renderPiAudio(!!data.available);
+    })
+    .catch(() => {});
+
+  btnPiAudio.addEventListener('click', () => {
+    piBusy = true;
+    renderPiAudio(true);
+    api('POST', '/pi-audio/source', { source: piSource === 'backdrop' ? 'spotify' : 'backdrop' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) piSource = data.source;
+      })
+      .catch(() => {})
+      .finally(() => {
+        piBusy = false;
+        renderPiAudio(true);
+      });
   });
 
   // --- LED panel brightness (NovaStar controller, proxied by the server) ---

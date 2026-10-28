@@ -982,6 +982,44 @@ app.post('/api/bluetooth/pairing', async (req, res) => {
   }
 });
 
+// Pi audio source: snapclient (backdrop) and raspotify (Spotify Connect) both
+// open the Pi's USB sound card directly, so only one can play. Switching
+// stops one and starts the other (needs setup/sudoers-pi-audio on the Pi).
+const PI_SOURCES = {
+  backdrop: { stop: 'raspotify', start: 'snapclient' },
+  spotify: { stop: 'snapclient', start: 'raspotify' },
+};
+
+async function piAudioSource() {
+  // is-active exits non-zero when a unit is inactive, so always echo
+  const out = await sshCommand('systemctl is-active snapclient raspotify; true');
+  const [snap, spotify] = out.split('\n').map((l) => l.trim());
+  if (snap === 'active') return 'backdrop';
+  if (spotify === 'active') return 'spotify';
+  return null;
+}
+
+app.get('/api/pi-audio/status', async (req, res) => {
+  if (!config.btHost) return res.json({ available: false });
+  try {
+    res.json({ available: true, source: await piAudioSource() });
+  } catch {
+    res.json({ available: false });
+  }
+});
+
+app.post('/api/pi-audio/source', async (req, res) => {
+  if (!config.btHost) return res.status(501).json({ error: 'BT_HOST not configured' });
+  const target = PI_SOURCES[req.body.source];
+  if (!target) return res.status(400).json({ error: 'source must be backdrop or spotify' });
+  try {
+    await sshCommand(`sudo -n systemctl stop ${target.stop} && sudo -n systemctl start ${target.start}`);
+    res.json({ source: await piAudioSource() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // LED panel brightness via the NovaStar controller (see setup/NOVASTAR.md)
 let ledTarget = null;
 let ledJob = null;
