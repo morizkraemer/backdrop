@@ -383,28 +383,42 @@ float sdTriangle(vec2 p, float r) {
     return -length(p) * sign(p.y);
 }
 
-// A light bulb lit at level: glass, filament and a halo in the colour, a grey screw base
+// A light bulb seen from above, lit at level: a round glass dome in a dark
+// fitting cup, the filament as a small star of loops around its support post,
+// a glass highlight, and glow spilling into the cup when it's on
 vec3 bulb(vec2 p, float level, vec3 colour, float aa) {
-    vec2 g = p - vec2(0.0, -0.18);
-    float r = length(g);
-    float glass = 1.0 - smoothstep(0.6 - aa, 0.6 + aa, r);
+    float r = length(p);
+    float a = atan(p.y, p.x);
+    const float DOME = 0.66;
+    const float CUP = 0.92;
     vec3 col = vec3(0.0);
-    // Unlit glass still shows faintly
-    col += vec3(0.07) * smoothstep(0.035, 0.0, abs(r - 0.6));
-    // Glow inside the glass and a halo around it
-    col += colour * level * glass * (0.25 + 0.75 * exp(-r * 3.0));
-    float edge = smoothstep(1.0, 0.75, max(abs(p.x), abs(p.y)));
-    col += colour * level * (1.0 - glass) * 0.45 * exp(-(r - 0.6) * 7.0) * edge;
-    // Filament: a small loop, nearly white when it's bright
-    vec2 f = g - vec2(0.0, 0.08);
-    float fd = abs(length(f * vec2(1.0, 1.6)) - 0.14);
-    col += mix(colour, vec3(1.0), 0.7 * level) * level * smoothstep(0.035, 0.0, fd) * step(f.y, 0.02);
-    // Screw base with threads
-    vec2 b = p - vec2(0.0, 0.62);
-    float base = (1.0 - smoothstep(0.24 - aa, 0.24 + aa, abs(b.x) + max(0.0, abs(b.y) - 0.18) * 4.0))
-        * step(abs(b.y), 0.2);
-    float threads = 0.5 + 0.5 * sin(b.y * 60.0);
-    col = mix(col, vec3(0.12 + 0.1 * threads), base);
+
+    // The fitting: a dark cup with a lighter rim, lit by the bulb inside it
+    float cup = 1.0 - smoothstep(CUP - aa, CUP + aa, r);
+    col += cup * (vec3(0.035) + colour * level * 0.3 * exp(-(r - DOME) * 6.0));
+    col += vec3(0.16) * smoothstep(0.03, 0.0, abs(r - CUP)) * (0.6 + 0.4 * -p.y / max(r, 0.001));
+
+    // The glass dome: shaded like a sphere when off, filled with light when on
+    float dome = 1.0 - smoothstep(DOME - aa, DOME + aa, r);
+    float z = sqrt(max(0.0, 1.0 - (r / DOME) * (r / DOME)));
+    vec3 glass = vec3(0.025 + 0.05 * z);
+    glass += colour * level * (0.3 + 0.7 * exp(-r * 3.5));
+    // A hot core around the filament
+    glass += mix(colour, vec3(1.0), 0.5) * level * level * 0.5 * exp(-r * 8.0);
+    // Filament: loops around the post, nearly white when bright
+    float loops = abs(r - 0.15 - 0.045 * sin(a * 6.0));
+    float post = r;
+    float fil = exp(-loops * 70.0) + 0.8 * exp(-post * 30.0);
+    glass += mix(colour, vec3(1.0), 0.75 * level) * (0.06 + 1.4 * level) * fil;
+    // Glass reflection, top left
+    vec2 h = p - vec2(-0.24, -0.26);
+    glass += vec3(0.35) * exp(-dot(h, h) * 55.0) * (1.0 - 0.5 * level);
+    glass += vec3(0.08) * smoothstep(0.035, 0.0, abs(r - DOME + 0.02));
+    col = mix(col, glass, dome);
+
+    // Halo beyond the cup, fading before the cell's edge
+    float edge = smoothstep(1.0, 0.92, max(abs(p.x), abs(p.y)));
+    col += colour * level * (1.0 - cup) * 0.2 * exp(-(r - CUP) * 12.0) * edge;
     return col;
 }
 
