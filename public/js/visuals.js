@@ -454,6 +454,11 @@ $('btnNew').addEventListener('click', () => {
 
 // --- DMX fixture channels ---
 
+// The wall's grid of cells (visuals.js SEG_COLS x SEG_ROWS), on consecutive channels
+const CELL_COLS = 12;
+const CELL_ROWS = 4;
+const CELL_FNS = Array.from({ length: CELL_COLS * CELL_ROWS }, (_, i) => `seg${i + 1}`);
+
 const DMX_FUNCTIONS = [
   { key: 'visual', name: 'Visual select', show: (v) => slotName(v) },
   { key: 'dimmer', name: 'Dimmer', show: pct },
@@ -464,7 +469,6 @@ const DMX_FUNCTIONS = [
   { key: 'speed', name: 'Speed', show: pct },
   { key: 'strobe', name: 'Strobe', show: (v) => (v < 10 ? 'Off' : `${(1 + ((v - 10) * 19) / 245).toFixed(1)} Hz`) },
   ...Array.from({ length: 3 }, (_, i) => ({ key: `control${i + 1}`, name: `Control ${i + 1}`, show: pct })),
-  ...Array.from({ length: 8 }, (_, i) => ({ key: `seg${i + 1}`, name: `Strip ${i + 1}`, show: pct })),
 ];
 
 function pct(v) {
@@ -481,7 +485,12 @@ $('dmxChannels').insertAdjacentHTML('beforeend', DMX_FUNCTIONS.map((fn) => `<div
   <span class="dmx-name">${fn.name}</span>
   <span class="dmx-bar"><span></span></span>
   <span class="dmx-val">—</span>
-</div>`).join(''));
+</div>`).join('') + `<div class="dmx-ch" id="dmxCellsRow">
+  <input type="number" data-cells min="0" max="512" step="1" inputmode="numeric" placeholder="off" aria-label="Cell 1 channel">
+  <span class="dmx-name">Cells 1-${CELL_COLS * CELL_ROWS}</span>
+  <span class="dmx-cells" id="dmxCells" style="grid-template-columns: repeat(${CELL_COLS}, 1fr)">${'<span></span>'.repeat(CELL_COLS * CELL_ROWS)}</span>
+  <span class="dmx-val">—</span>
+</div>`);
 
 let dmxError = null;
 
@@ -501,6 +510,19 @@ function renderDmx() {
     row.querySelector('.dmx-bar span').style.width = `${v == null ? 0 : (v * 100) / 255}%`;
     row.querySelector('.dmx-val').textContent = v == null ? '—' : fn.show(v);
   });
+  const first = d.channels?.seg1 || 0;
+  const cellsInput = $('dmxChannels').querySelector('input[data-cells]');
+  cellsInput.disabled = !d.configured;
+  if (document.activeElement !== cellsInput) cellsInput.value = first || '';
+  const cellsRow = $('dmxCellsRow');
+  cellsRow.classList.toggle('unused', !first);
+  const cellVals = CELL_FNS.map((fn) => (on && d.channels?.[fn] ? d.values?.[fn] : null));
+  [...$('dmxCells').children].forEach((c, i) => {
+    c.style.opacity = cellVals[i] == null ? '' : String(0.15 + (0.85 * cellVals[i]) / 255);
+    c.classList.toggle('lit', cellVals[i] != null);
+  });
+  const known = cellVals.filter((v) => v != null);
+  cellsRow.querySelector('.dmx-val').textContent = known.length ? `${known.filter((v) => v > 0).length} on` : '—';
   const status = $('dmxStatus');
   status.classList.toggle('error', !!dmxError);
   status.textContent = dmxError
@@ -509,6 +531,15 @@ function renderDmx() {
 }
 
 $('dmxChannels').addEventListener('change', (e) => {
+  // The cells always sit on consecutive channels from Cell 1
+  if (e.target.matches('input[data-cells]')) {
+    const first = Math.max(0, Math.min(512 - CELL_FNS.length + 1, Math.round(Number(e.target.value) || 0)));
+    dmxError = null;
+    api('PUT', '/dmx', { channels: Object.fromEntries(CELL_FNS.map((fn, i) => [fn, first ? first + i : 0])) })
+      .catch((err) => { dmxError = err.message; })
+      .finally(renderDmx);
+    return;
+  }
   const input = e.target.closest('input[data-fn]');
   if (!input) return;
   const ch = Math.max(0, Math.min(512, Math.round(Number(input.value) || 0)));
@@ -516,6 +547,109 @@ $('dmxChannels').addEventListener('change', (e) => {
   api('PUT', '/dmx', { channels: { [input.dataset.fn]: ch } })
     .catch((err) => { dmxError = err.message; })
     .finally(renderDmx);
+});
+
+// --- virtual desk: the fixture's faders in the page (POST /api/dmx/desk) ---
+
+const DESK_FADERS = [
+  ['dimmer', 'Dimmer', 255], ['red', 'Red', 255], ['green', 'Green', 255], ['blue', 'Blue', 255],
+  ['colour', 'Colour', 0], ['speed', 'Speed', 0], ['strobe', 'Strobe', 0],
+  ['control1', 'Control 1', 0], ['control2', 'Control 2', 0], ['control3', 'Control 3', 0],
+];
+const desk = { go: 0, back: 0, visual: 0, ...Object.fromEntries(DESK_FADERS.map(([k, , v]) => [k, v])) };
+CELL_FNS.forEach((fn) => { desk[fn] = 0; });
+let deskTimer = null;
+let deskBeat = null;
+let deskChase = null;
+
+$('deskFaders').innerHTML = DESK_FADERS.map(([k, name]) => `<label class="lab-param">
+  <span class="lab-param-name">${name}</span>
+  <input type="range" data-desk="${k}" min="0" max="255" step="1" value="${desk[k]}">
+  <span class="lab-param-val">${desk[k]}</span>
+</label>`).join('');
+$('deskCells').style.gridTemplateColumns = `repeat(${CELL_COLS}, 1fr)`;
+$('deskCells').innerHTML = CELL_FNS.map((fn, i) => `<button type="button" data-cell="${fn}" aria-label="Cell ${i + 1}"></button>`).join('');
+
+function renderDeskSelect() {
+  const sel = $('deskVisual');
+  const want = String(desk.visual);
+  sel.innerHTML = '<option value="0">Keep (0)</option>'
+    + slots.map((s) => `<option value="${s.value}">${esc(s.name)} (${s.value})</option>`).join('');
+  sel.value = [...sel.options].some((o) => o.value === want) ? want : '0';
+}
+
+function renderDeskCells() {
+  $('deskCells').querySelectorAll('button').forEach((b) => b.classList.toggle('on', desk[b.dataset.cell] > 0));
+}
+
+// Like a desk: send on change (at most every 50 ms) and repeat every second
+function sendDesk() {
+  if (deskTimer) return;
+  deskTimer = setTimeout(() => {
+    deskTimer = null;
+    api('POST', '/dmx/desk', { values: desk }).catch(() => {});
+  }, 50);
+}
+
+function setDesk(patch) {
+  Object.assign(desk, patch);
+  renderDeskCells();
+  sendDesk();
+}
+
+function stopChase() {
+  clearInterval(deskChase);
+  deskChase = null;
+  $('deskChase').textContent = 'Chase';
+}
+
+$('deskPanel').addEventListener('toggle', () => {
+  clearInterval(deskBeat);
+  deskBeat = null;
+  if ($('deskPanel').open) {
+    renderDeskSelect();
+    sendDesk();
+    deskBeat = setInterval(sendDesk, 1000);
+  } else {
+    stopChase();
+  }
+});
+
+$('deskFaders').addEventListener('input', (e) => {
+  const input = e.target.closest('input[data-desk]');
+  if (!input) return;
+  input.parentElement.querySelector('.lab-param-val').textContent = input.value;
+  setDesk({ [input.dataset.desk]: Number(input.value) });
+});
+
+$('deskVisual').addEventListener('change', (e) => setDesk({ visual: Number(e.target.value) }));
+
+// GO and BACK fire on the rise past half, so press and let go
+function deskButton(fn) {
+  setDesk({ [fn]: 255 });
+  setTimeout(() => setDesk({ [fn]: 0 }), 300);
+}
+$('deskGo').addEventListener('click', () => deskButton('go'));
+$('deskBack').addEventListener('click', () => deskButton('back'));
+
+$('deskCells').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-cell]');
+  if (!b) return;
+  stopChase();
+  setDesk({ [b.dataset.cell]: desk[b.dataset.cell] ? 0 : 255 });
+});
+$('deskAll').addEventListener('click', () => { stopChase(); setDesk(Object.fromEntries(CELL_FNS.map((fn) => [fn, 255]))); });
+$('deskNone').addEventListener('click', () => { stopChase(); setDesk(Object.fromEntries(CELL_FNS.map((fn) => [fn, 0]))); });
+
+// A column sweeping left to right, like a simple desk chase
+$('deskChase').addEventListener('click', () => {
+  if (deskChase) return stopChase();
+  let step = 0;
+  $('deskChase').textContent = 'Stop chase';
+  deskChase = setInterval(() => {
+    const col = step++ % CELL_COLS;
+    setDesk(Object.fromEntries(CELL_FNS.map((fn, i) => [fn, i % CELL_COLS === col ? 255 : 0])));
+  }, 150);
 });
 
 // --- live state from backdrop ---

@@ -357,6 +357,51 @@
   font-size: 13px;
 }
 
+/* --- virtual desk --- */
+
+.lab-desk summary {
+  cursor: pointer;
+}
+
+.lab-desk[open] {
+  gap: 14px;
+}
+
+.lab-desk-top {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.lab-desk-top .lab-control {
+  flex: 1;
+  min-width: 0;
+}
+
+.lab-desk-faders {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px 20px;
+}
+
+.lab-desk-cells {
+  display: grid;
+  gap: 4px;
+}
+
+.lab-desk-cells button {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  padding: 0;
+}
+
+.lab-desk-cells button.on {
+  background: var(--live);
+  border-color: var(--live);
+}
+
 /* --- code --- */
 
 .lab-code summary {
@@ -416,6 +461,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dmx-cells {
+  display: grid;
+  gap: 2px;
+}
+
+.dmx-cells span {
+  height: 6px;
+  border-radius: 1px;
+  background: #1c1d21;
+}
+
+.dmx-cells span.lit {
+  background: var(--live);
 }
 
 @media (max-width: 1100px) {

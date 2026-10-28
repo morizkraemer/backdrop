@@ -1124,6 +1124,11 @@ function handleDmxFrame(universe, data) {
   dmxLastPacket = Date.now();
   const values = {};
   for (const fn of DMX_FUNCTIONS) values[fn] = channels[fn] ? data[channels[fn] - 1] ?? 0 : null;
+  handleDmxValues(values);
+}
+
+// values: { brightness, go, back, visual, ... } 0-255, or null for unused
+function handleDmxValues(values) {
   const prev = dmxLast;
   dmxLast = values;
   if (!dmx.receiving || DMX_FUNCTIONS.some((fn) => values[fn] !== dmx.values?.[fn])) {
@@ -1140,21 +1145,37 @@ function handleDmxFrame(universe, data) {
   lab.applyDmx(values, prev);
 }
 
+// Art-Net or the virtual desk going quiet puts the fixture back to neutral
+setInterval(() => {
+  if (dmx.receiving && Date.now() - dmxLastPacket > DMX_TIMEOUT_MS) {
+    setDmx({ receiving: false, values: null });
+    dmxLast = null;
+    lab.resetDmx();
+  }
+}, 1000);
+
 if (dmx.configured) {
   listenArtNet({
     onFrame: handleDmxFrame,
     onError: (err) => console.warn('Art-Net:', err.message),
   });
-  setInterval(() => {
-    if (dmx.receiving && Date.now() - dmxLastPacket > DMX_TIMEOUT_MS) {
-      setDmx({ receiving: false, values: null });
-      dmxLast = null;
-      lab.resetDmx();
-    }
-  }, 1000);
   const { universe, channels } = getDmxConfig();
   console.log(`DMX: Art-Net universe ${universe}, channels`, JSON.stringify(channels));
 }
+
+// Virtual desk in the Visuals lab: the fixture's values without Art-Net, handled
+// like a frame from the desk. The lab repeats them every second, so they time out
+// like a desk that goes away.
+app.post('/api/dmx/desk', (req, res) => {
+  const values = {};
+  for (const fn of DMX_FUNCTIONS) {
+    const v = req.body?.values?.[fn];
+    values[fn] = Number.isInteger(v) && v >= 0 && v <= 255 ? v : null;
+  }
+  dmxLastPacket = Date.now();
+  handleDmxValues(values);
+  res.json({ ok: true });
+});
 
 // Channels 1-512, or 0 for unused
 app.put('/api/dmx', (req, res) => {

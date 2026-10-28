@@ -21,17 +21,17 @@ const SEGMENT_FNS = Array.from({ length: visuals.SEGMENTS }, (_, i) => `seg${i +
 const CONTROL_FNS = Array.from({ length: visuals.CONTROLS }, (_, i) => `control${i + 1}`);
 const DMX_FUNCTIONS = ['visual', 'dimmer', 'red', 'green', 'blue', 'colour', 'speed', 'strobe', ...CONTROL_FNS, ...SEGMENT_FNS];
 const DMX_SLOT = 10; // visual select: 10-19 = first visual, 20-29 = second, ...
-const DMX_MASK_HOLD_MS = 2000; // strips all at 0 this long = whole wall again
+const DMX_MASK_HOLD_MS = 2000; // cells all at 0 this long = whole wall again
 
 const xmlEsc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /**
  * The fixture as an MA fixture type (grandMA2 XML, which dot2 imports from
- * USB: dot2/library): GO and BACK, then the 19 visuals channels, so it
+ * USB: dot2/library): GO and BACK, then the visuals channels, so it
  * patches at backdrop's GO channel. dot2 only knows its own attributes, so
  * each function sits on the nearest one (setup/DMX.md); channel sets name the
- * visuals and ranges. The 8 strips are sub-fixtures with their own dimmer, so
- * the desk's effects can chase across them.
+ * visuals and ranges. The grid cells are sub-fixtures with their own dimmer,
+ * so the desk's effects can chase across them.
  */
 function dot2Fixture(slots) {
   const set = (name, from, to) => `<ChannelSet name="${xmlEsc(name)}" from_dmx="${from}" to_dmx="${to}" />`;
@@ -60,22 +60,22 @@ function dot2Fixture(slots) {
     channel(12, 'GOBO2_POS', 'GOBO', 'GOBO', [set('Control 2', 0, 255)], [0, 255]),
     channel(13, 'GOBO3', 'GOBO', 'GOBO', [set('Control 3', 0, 255)], [0, 255]),
   ].join('');
-  const strips = SEGMENT_FNS.map((_, i) => `
+  const cells = SEGMENT_FNS.map((_, i) => `
 			<Instance module_index="1" patch="${14 + i}" locked="true" />`).join('');
   return `<?xml version="1.0" encoding="utf-8"?>
 <MA xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.malighting.de/grandma2/xml/MA http://schemas.malighting.de/grandma2/xml/2.8.123/MA.xsd" major_vers="2" minor_vers="8" stream_vers="123" xmlns="http://schemas.malighting.de/grandma2/xml/MA">
-	<FixtureType name="Visuals" mode="21ch">
+	<FixtureType name="Visuals" mode="${13 + SEGMENT_FNS.length}ch">
 		<short_name>Visuals</short_name>
 		<manufacturer>backdrop</manufacturer>
 		<short_manufacturer>backdrop</short_manufacturer>
 		<Modules>
 			<Module name="Main" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${main}
 			</Module>
-			<Module name="Strip" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${channel(1, 'DIM', 'DIMMER', 'DIMMER', [set('Closed', 0, 0), set('Open', 255, 255)])}
+			<Module name="Cell" class="Conventional" beamtype="Wash" beam_angle="25" beam_intensity="10000">${channel(1, 'DIM', 'DIMMER', 'DIMMER', [set('Closed', 0, 0), set('Open', 255, 255)])}
 			</Module>
 		</Modules>
 		<Instances>
-			<Instance module_index="0" patch="1" locked="true" />${strips}
+			<Instance module_index="0" patch="1" locked="true" />${cells}
 		</Instances>
 		<Wheels />
 	</FixtureType>
@@ -102,7 +102,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
 
   // The visual on the wall: { id, values, clock } (visuals.clockAfterSpeedChange)
   let onAir = null;
-  // The DMX fixture's dimmer, colour, strobe and strips, laid over the visual
+  // The DMX fixture's dimmer, colour, strobe and grid cells, laid over the visual
   let fx = { ...visuals.FX_NEUTRAL };
 
   // --- the visuals: built-ins from visuals/, then the lab's own in uploads/visuals ---
@@ -292,8 +292,8 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     setLive(null);
   }
 
-  // values/prev: { visual, dimmer, ..., seg8 } 0-255 or null for unused.
-  // Select plays a visual; dimmer, colour, strobe and the 8 strips lie over
+  // values/prev: { visual, dimmer, ..., seg32 } 0-255 or null for unused.
+  // Select plays a visual; dimmer, colour, strobe and the grid cells lie over
   // it; speed, colour and Control 1-3 move its sliders (controlsFor). Each
   // follows only once it moved.
   // Only while the Visuals cue is live.
@@ -320,7 +320,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     }
     // 0-9 open, then 1-20 flashes per second
     if (on('strobe') && values.strobe >= 10) nextFx.fx_strobe = Math.round((1 + ((values.strobe - 10) * 19) / 245) * 10) / 10;
-    // The strips mask the wall once one is up, and let go only after all have
+    // The cells mask the wall once one is up, and let go only after all have
     // sat at 0 for a while, so a chase passing through dark doesn't flash the wall
     const segs = SEGMENT_FNS.filter(on);
     if (segs.length) {

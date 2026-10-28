@@ -18,10 +18,13 @@ const path = require('path');
 const BUILTIN_DIR = path.join(__dirname, 'visuals');
 const FPS = 60;
 const CLOCK_PARAMS = ['clock_t0', 'clock_ta'];
-const SEGMENTS = 8;
+// The wall split into a grid of cells for desk chases, numbered in reading order
+const SEG_COLS = 12;
+const SEG_ROWS = 4;
+const SEGMENTS = SEG_COLS * SEG_ROWS;
 // Desk-style controls laid over every visual (DMX, setup/DMX.md), neutral by default:
 // dimmer, a colour that replaces the visual's own (tint 1), strobe in Hz (0 = off)
-// and intensities for 8 vertical strips (mask 1)
+// and intensities for the grid cells (mask 1)
 const FX_NEUTRAL = {
   fx_dimmer: 1,
   fx_tint: 0,
@@ -188,7 +191,8 @@ function buildShader(visual, width, height) {
     '    vec3 col = clamp(visual(uv, t), 0.0, 1.0);',
     '    // Desk colour: keep the brightness, replace the colour',
     '    if (fx_tint > 0.5) col = max(col.r, max(col.g, col.b)) * vec3(fx_r, fx_g, fx_b);',
-    `    if (fx_mask > 0.5) col *= fx_segment(int(min(floor(uv.x * ${SEGMENTS}.0), ${SEGMENTS - 1}.0)));`,
+    `    if (fx_mask > 0.5) col *= fx_segment(int(min(floor(uv.y * ${SEG_ROWS}.0), ${SEG_ROWS - 1}.0)) * ${SEG_COLS}`
+      + ` + int(min(floor(uv.x * ${SEG_COLS}.0), ${SEG_COLS - 1}.0)));`,
     '    if (fx_strobe > 0.0 && fract(src_t * fx_strobe) > 0.3) col = vec3(0.0);',
     '    return vec4(col * fx_dimmer, 1.0);',
     '}',
@@ -282,6 +286,8 @@ module.exports = {
   BUILTIN_DIR,
   SOURCE,
   SEGMENTS,
+  SEG_COLS,
+  SEG_ROWS,
   FX_NEUTRAL,
   CONTROLS,
   controlParam,
