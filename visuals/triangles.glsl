@@ -1,6 +1,7 @@
 // Triangles: a mesh of triangles flipping on and off
 // Patterns: 0 random, 1 wave, 2 sweep
 // control: fill
+// category: Minimal
 
 //!PARAM speed
 //!DESC Speed

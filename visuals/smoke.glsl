@@ -1,4 +1,5 @@
 // Smoke: slow flowing noise, like haze in a beam
+// category: Organic
 
 //!PARAM speed
 //!DESC Speed

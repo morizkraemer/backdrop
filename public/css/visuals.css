@@ -458,3 +458,17 @@
 .lab-actions .lab-air-text {
   margin-left: auto;
 }
+
+/* Category headings in the visual list */
+.lab-cat {
+  margin: 10px 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.lab-cat:first-child {
+  margin-top: 0;
+}

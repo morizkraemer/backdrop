@@ -1,5 +1,6 @@
 // Kaleido: a kaleidoscope of drifting colour
 // control: segments
+// category: Abstract
 
 //!PARAM speed
 //!DESC Speed

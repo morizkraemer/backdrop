@@ -1,5 +1,6 @@
 // Nebula: glowing gas clouds and stars drifting in deep space
 // control: glow
+// category: Organic
 
 //!PARAM speed
 //!DESC Speed

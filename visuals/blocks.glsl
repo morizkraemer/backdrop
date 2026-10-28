@@ -1,5 +1,6 @@
 // Blocks: the wall cut into hard rectangles flipping on and off one by one, re-cut every few beats
 // control: cuts
+// category: Minimal
 
 //!PARAM speed
 //!DESC Speed

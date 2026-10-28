@@ -1,5 +1,6 @@
 // Marble: slow liquid marbling of two colours
 // control: bands
+// category: Organic
 
 //!PARAM speed
 //!DESC Speed

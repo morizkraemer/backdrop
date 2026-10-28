@@ -1,5 +1,6 @@
 // Ink: clouds of ink blooming and curling in water
 // control: warp
+// category: Organic
 
 //!PARAM speed
 //!DESC Speed

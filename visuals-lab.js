@@ -151,6 +151,7 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
         file,
         builtin,
         name: v.name || id,
+        category: v.category || (builtin ? 'Other' : 'Yours'),
         params: visuals.publicParams(v.params),
         control: visuals.controlParam(v),
         defaultControls: visuals.controlParams(v),

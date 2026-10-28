@@ -1,5 +1,6 @@
 // Lines: stacked waveforms, like a sound wave landscape
 // control: amplitude
+// category: Abstract
 
 //!PARAM speed
 //!DESC Speed

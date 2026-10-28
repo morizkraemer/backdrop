@@ -1,5 +1,6 @@
 // Crystal: a kaleidoscope of sharp glassy facets
 // control: facets
+// category: Abstract
 
 //!PARAM speed
 //!DESC Speed
