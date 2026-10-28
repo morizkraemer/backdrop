@@ -1,7 +1,9 @@
 /* Visuals lab and Grid pages (public/visuals.html, grid.html); colours and DMX rows come from control.css */
 
 .lab {
-  min-height: 100%;
+  /* One screen tall like the cue page: the header stays put and the columns scroll on their own */
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -25,7 +27,20 @@
   grid-template-columns: 220px minmax(0, 1fr) 300px;
   gap: 20px;
   padding: 20px;
-  align-items: start;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.lab-main > * {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.lab-main > .lab-stage,
+.lab-main > .lab-dmx {
+  align-self: stretch;
 }
 
 /* --- buttons --- */
@@ -79,11 +94,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* Stays in view and scrolls on its own, so the page doesn't */
-  position: sticky;
-  top: 20px;
-  max-height: calc(100vh - 40px);
-  min-height: 0;
+  overflow: hidden;
 }
 
 .lab-list-head {
@@ -404,8 +415,29 @@
 }
 
 @media (max-width: 1100px) {
+  /* The fixture panel drops below the stage, so the stage and panel scroll together */
   .lab-main {
     grid-template-columns: 200px minmax(0, 1fr);
+    overflow-y: auto;
+    align-items: start;
+    grid-auto-rows: max-content;
+  }
+
+  .lab-main > .lab-stage,
+  .lab-main > .lab-dmx {
+    overflow: visible;
+  }
+
+  .lab-list {
+    position: sticky;
+    top: 0;
+    max-height: calc(100dvh - 56px - 40px);
+    grid-row: 1 / span 2;
+  }
+
+  /* Next to the list, so the sticky list never covers it */
+  .lab-list ~ .lab-dmx {
+    grid-column: 2;
   }
 
   .lab-dmx {
@@ -423,6 +455,16 @@
     order: 1;
     position: static;
     max-height: none;
+    overflow: visible;
+    grid-row: auto;
+  }
+
+  .lab-list ~ .lab-dmx {
+    grid-column: auto;
+  }
+
+  .lab-cat {
+    display: none;
   }
 
   .lab-dmx {
