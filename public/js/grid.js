@@ -6,14 +6,7 @@ const WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.h
 const $ = (id) => document.getElementById(id);
 const CELLS = 48;
 const CELL_FNS = Array.from({ length: CELLS }, (_, i) => `cell${i + 1}`);
-// The Shape channel's ranges, as in grid.js on the server
-const SHAPES = [
-  { name: 'Square', from: 0, to: 63 },
-  { name: 'Circle', from: 64, to: 127 },
-  { name: 'Triangle', from: 128, to: 191 },
-  { name: 'Fresnel', from: 192, to: 223 },
-  { name: 'Fresnel x4', from: 224, to: 255 },
-];
+const SHAPES = ['Square', 'Circle', 'Triangle', 'Fresnel'];
 
 let state = {}; // backdrop's state over the WebSocket: grid (values on the wall), dmx
 let dmxError = null;
@@ -115,7 +108,7 @@ function renderDmx() {
     row.querySelector('.dmx-num').textContent = ch || '—';
     row.querySelector('.dmx-bar span').style.width = `${v == null ? 0 : (v * 100) / 255}%`;
     row.querySelector('.dmx-val').textContent = v == null ? '—'
-      : fn === 'shape' ? SHAPES.find((s) => v <= s.to).name : `${Math.round((v * 100) / 255)}%`;
+      : fn === 'shape' ? SHAPES[Math.min(3, Math.floor(v / 64))] : `${Math.round((v * 100) / 255)}%`;
   }
   const first = d.channels?.cell1;
   const last = d.channels?.[`cell${CELLS}`];
@@ -173,7 +166,7 @@ function setDesk(patch) {
   sendDesk();
 }
 
-$('deskShape').innerHTML = SHAPES.map((s) => `<button type="button" role="radio" data-shape="${s.from}">${s.name}</button>`).join('');
+$('deskShape').innerHTML = SHAPES.map((name, i) => `<button type="button" role="radio" data-shape="${i * 64}">${name}</button>`).join('');
 $('deskCells').innerHTML = CELL_FNS.map((fn, i) => `<button type="button" data-cell="${fn}" aria-label="Cell ${i + 1}">${i + 1}</button>`).join('');
 $('deskFaders').innerHTML = FIXED.slice(1).map(([fn, name]) => `<label class="lab-param">
   <span class="lab-param-name">${name}</span>
@@ -217,21 +210,18 @@ $('deskFaders').addEventListener('input', (e) => {
 
 // --- live state from backdrop ---
 
-function renderAir() {
-  $('airText').textContent = state.grid?.live ? 'On the wall' : '';
-  $('airText').classList.toggle('live', !!state.grid?.live);
-}
-
 function connect() {
   const ws = new WebSocket(WS_URL);
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     state = { ...state, ...msg };
-    wallTabs.follow(state.wallMode);
-    renderAir();
+    appHeader.update(state, true);
     if (msg.dmx) renderDmx();
     if (msg.grid) draw();
   };
-  ws.onclose = () => setTimeout(connect, 2000);
+  ws.onclose = () => {
+    appHeader.update(state, false);
+    setTimeout(connect, 2000);
+  };
 }
 connect();

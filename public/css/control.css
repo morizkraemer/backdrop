@@ -2170,12 +2170,19 @@ button.crumb:hover {
     display: none;
   }
 
-  .header-left {
-    gap: 10px;
+  .header {
+    gap: 8px;
+    padding: 0 12px;
   }
 
-  .wall-tabs a {
-    padding: 0 10px;
+  .header-left,
+  .header-right {
+    gap: 8px;
+  }
+
+  .header .wall-tabs a {
+    padding: 0 8px;
+    font-size: 12px;
   }
 }
 
@@ -2318,7 +2325,7 @@ button.crumb:hover {
   color: var(--text-dim);
 }
 
-/* What the wall shows: the tabs at the top of every page (js/wall-tabs.js) */
+/* What the wall shows: the tabs at the top of every page (js/header.js) */
 .wall-tabs {
   display: flex;
   gap: 2px;

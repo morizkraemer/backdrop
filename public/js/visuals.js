@@ -604,7 +604,7 @@ function connect() {
     const prevValues = JSON.stringify(state.visual?.values);
     const msg = JSON.parse(e.data);
     state = { ...state, ...msg };
-    wallTabs.follow(state.wallMode);
+    appHeader.update(state, true);
     if ('visual' in msg || prevAir !== onAirId()) {
       // DMX moved the sliders of the visual shown here: follow them
       if (isOnAir() && JSON.stringify(state.visual.values) !== prevValues && !liveTimer) {
@@ -619,7 +619,10 @@ function connect() {
       renderDmx();
     }
   };
-  ws.onclose = () => setTimeout(connect, 2000);
+  ws.onclose = () => {
+    appHeader.update(state, false);
+    setTimeout(connect, 2000);
+  };
 }
 
 (async () => {

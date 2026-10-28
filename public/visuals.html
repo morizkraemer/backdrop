@@ -11,19 +11,7 @@
 </head>
 <body>
   <div class="lab">
-    <header class="lab-header">
-      <div class="lab-title">
-        <h1>backdrop</h1>
-        <nav class="wall-tabs" id="wallTabs" data-page="visuals" aria-label="What the wall shows">
-          <a href="/control" data-mode="cues">Cues</a>
-          <a href="/visuals" data-mode="visuals" aria-current="page">Visuals</a>
-          <a href="/grid" data-mode="grid">Grid</a>
-        </nav>
-      </div>
-      <div class="lab-air">
-        <span class="lab-air-text" id="airText"></span>
-      </div>
-    </header>
+    <header id="appHeader" data-page="visuals"></header>
 
     <main class="lab-main">
       <aside class="lab-list" aria-label="Visuals">
@@ -45,6 +33,7 @@
             <h2 id="visualName">—</h2>
             <span class="lab-sub" id="visualSub"></span>
           </div>
+          <span class="lab-air-text" id="airText"></span>
           <button type="button" class="lab-btn lab-btn-live" id="btnPlay">Send to wall</button>
         </div>
 
@@ -112,7 +101,7 @@
       </aside>
     </main>
   </div>
-  <script src="js/wall-tabs.js"></script>
+  <script src="js/header.js"></script>
   <script src="js/visuals.js"></script>
 </body>
 </html>
