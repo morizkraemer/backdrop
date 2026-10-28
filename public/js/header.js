@@ -185,7 +185,7 @@
     $('statusDot').className = `dot ${ok ? 'on' : 'off'}`;
     $('btnStatus').classList.toggle('alert', !ok);
     $('btnStatus').title = !connected ? 'Reconnecting…' : online ? 'Status: all good' : 'Player offline';
-    $('playerText').textContent = online ? 'Online · LED panel 2304×768' : 'Offline';
+    $('playerText').textContent = online ? 'Online' : 'Offline';
     $('connText').textContent = connected ? 'Connected' : 'Reconnecting…';
     $('diskSpace').textContent = state.diskFree != null ? `${formatBytes(state.diskFree)} free` : '—';
   }
