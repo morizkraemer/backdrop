@@ -14,6 +14,7 @@ const { createMatrix } = require('./hdmi-matrix');
 const { listenArtNet } = require('./artnet');
 const { createRemoteUpload } = require('./remote-upload');
 const { createVisualsLab } = require('./visuals-lab');
+const { createGrid, DMX_FUNCTIONS: gridDmxFunctions } = require('./grid');
 const visuals = require('./visuals');
 
 const ALLOWED_EXT = [
@@ -22,9 +23,9 @@ const ALLOWED_EXT = [
 ];
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
 const TRANSITION_TIMEOUT_MS = 2000;
-// The library item of the Visuals cue (visuals-lab.js)
-const VISUALS_ID = 'visuals';
-const VISUALS_TYPE = 'visuals';
+// What the wall shows (the tabs at the top of every page): the cue list, the
+// Visuals lab's visual or the Grid. state.wallMode; see setWallMode.
+const WALL_MODES = ['cues', 'visuals', 'grid'];
 
 const app = express();
 const state = createStateManager(config.statePath);
@@ -42,27 +43,30 @@ let hdmi = {
   sources: config.hdmiSources.map((name) => ({ name, signal: null })),
   current: null, // input number feeding config.hdmiOutput
 };
-// Live shader visuals (setup/VISUALS.md): the "Visuals" cue hands the wall to
-// the Visuals lab and the desk; any other cue or stop takes it back (lab.release()).
-// The lab can also test a visual on the wall outside the cue list (takeScreen).
+// Live shader visuals (setup/VISUALS.md) and the Grid (grid.js): each has the wall
+// while the wall mode is theirs. Playing a visual from the lab switches the wall to
+// Visuals (takeScreen).
 const lab = createVisualsLab({
   config,
   mpv,
   takeScreen: () => {
     clearDurationTimer();
-    if (state.getState().currentCueIndex !== -1) state.updateState({ currentCueIndex: -1 });
+    grid.release();
+    state.updateState({ wallMode: 'visuals' });
   },
   broadcast: () => broadcastState(),
 });
-// DMX functions in display order; each maps to one channel of the universe (0 = unused).
-// After the show controls come the 16 channels of the visuals fixture.
+const grid = createGrid({ config, mpv, broadcast: () => broadcastState() });
 // The dot2 fixtures (setup/DMX.md), each patched from its own start address:
-// backdrop's Control fixture and the Visuals fixture (visuals-lab.js)
+// backdrop's Control fixture, the Visuals fixture (visuals-lab.js) and the Grid
+// (grid.js). DMX_FUNCTIONS lists their functions in order; each maps to one
+// channel of the universe (0 = unused).
 const DMX_FIXTURES = {
   control: ['go', 'back', 'brightness'],
   visuals: lab.DMX_FUNCTIONS,
+  grid: gridDmxFunctions,
 };
-const DMX_FUNCTIONS = [...DMX_FIXTURES.control, ...DMX_FIXTURES.visuals];
+const DMX_FUNCTIONS = Object.values(DMX_FIXTURES).flat();
 let dmx = {
   configured: config.dmxUniverse !== null,
   receiving: false,
@@ -89,6 +93,7 @@ function broadcastState() {
     hdmi,
     dmx: { ...dmx, ...getDmxConfig() },
     visual: lab.status(),
+    grid: grid.status(),
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -204,13 +209,48 @@ function clearTransitionLock() {
   broadcastState();
 }
 
+function wallMode() {
+  return state.getState().wallMode ?? 'cues';
+}
+
+// Puts mode on the wall. Back on the cue list, the current cue plays again
+// from the start (or the wall goes dark when none is current); while the
+// wall shows Visuals or the Grid, the cue list waits where it is.
+function setWallMode(mode) {
+  const s = state.getState();
+  if (mode === wallMode()) return;
+  clearDurationTimer();
+  if (mode !== 'visuals') lab.release();
+  if (mode !== 'grid') grid.release();
+  state.updateState({ wallMode: mode });
+  if (mode === 'visuals') lab.enter().catch((err) => console.warn('Visuals:', err.message));
+  else if (mode === 'grid') grid.enter().catch((err) => console.warn('Grid:', err.message));
+  else if (s.currentCueIndex >= 0 && s.currentCueIndex < s.playlist.length) playCue(s.currentCueIndex);
+  else mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
+  broadcastState();
+}
+
+// A cue action (GO, BACK, a cue picked, STOP) brings the wall back to the cue list
+function toCues() {
+  if (wallMode() === 'cues') return;
+  lab.release();
+  grid.release();
+  state.updateState({ wallMode: 'cues' });
+}
+
 function playCue(index) {
   if (isTransitioning) return;
-  clearDurationTimer();
-  lab.release();
-
   const s = state.getState();
   const cue = s.playlist[index];
+  // Another mode has the wall: the cue list only moves, it plays when the wall
+  // comes back to it
+  if (wallMode() !== 'cues') {
+    state.updateState({ currentCueIndex: cue ? index : -1 });
+    broadcastState();
+    return;
+  }
+  clearDurationTimer();
+
   if (!cue) {
     mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
     state.updateState({ currentCueIndex: -1 });
@@ -224,9 +264,8 @@ function playCue(index) {
     return;
   }
 
-  const isVisuals = media.type === VISUALS_TYPE;
   const filePath = path.resolve(config.uploadsDir, media.filename || '');
-  if (!isVisuals && !fs.existsSync(filePath)) {
+  if (!fs.existsSync(filePath)) {
     advance();
     return;
   }
@@ -236,12 +275,12 @@ function playCue(index) {
 
   const duration = cue.settings?.duration ?? null;
 
-  (isVisuals ? lab.enterCue() : mpv.loadFile(filePath, getCuePlaybackOptions(cue, media)))
+  mpv.loadFile(filePath, getCuePlaybackOptions(cue, media))
     .then(() => {
       state.updateState({ currentCueIndex: index });
       clearTransitionLock();
 
-      // Stills and visuals never end by themselves: advance after their duration
+      // Stills never end by themselves: advance after their duration
       const holds = media.type !== 'video';
       const sec = duration != null && duration > 0 ? Number(duration) : null;
       if (holds && sec) {
@@ -296,7 +335,7 @@ function restartCurrentCue() {
 }
 
 function handleFileEnded() {
-  if (isTransitioning) return;
+  if (isTransitioning || wallMode() !== 'cues') return;
   const s = state.getState();
   const cue = s.playlist[s.currentCueIndex];
   if (!cue) return;
@@ -313,7 +352,9 @@ function handleFileEnded() {
 mpv.on('file-ended', handleFileEnded);
 mpv.onReconnect(() => {
   const s = state.getState();
-  if (s.currentCueIndex >= 0 && s.currentCueIndex < s.playlist.length) {
+  if (wallMode() === 'visuals') lab.enter().catch((err) => console.warn('Visuals:', err.message));
+  else if (wallMode() === 'grid') grid.enter().catch((err) => console.warn('Grid:', err.message));
+  else if (s.currentCueIndex >= 0 && s.currentCueIndex < s.playlist.length) {
     playCue(s.currentCueIndex);
   }
 });
@@ -334,29 +375,30 @@ fs.mkdirSync(config.uploadsDir, { recursive: true });
   }
 }
 
-// The Visuals cue's library item: always there, can't be deleted
+// The Visuals cue (an earlier build) is gone: the wall's Visuals tab took its
+// place. Its library item and cues go; if it was on the wall, Visuals stays there.
 {
   const s = state.getState();
-  const item = {
-    id: VISUALS_ID,
-    type: VISUALS_TYPE,
-    builtin: true,
-    originalName: 'Visuals',
-    filename: '',
-    size: 0,
-    addedAt: new Date(0).toISOString(),
-    folderId: null,
-    thumbUrl: '/visuals/thumbs/blackhole.jpg',
-  };
-  const existing = s.library.find((m) => m.id === VISUALS_ID);
-  if (!existing) state.updateState({ library: [item, ...s.library] });
-  else state.updateState({ library: s.library.map((m) => (m.id === VISUALS_ID ? { ...item, originalName: m.originalName, folderId: m.folderId } : m)) });
+  if (s.library.some((m) => m.type === 'visuals')) {
+    const gone = new Set(s.library.filter((m) => m.type === 'visuals').map((m) => m.id));
+    const current = s.playlist[s.currentCueIndex];
+    const playlist = s.playlist.filter((c) => !gone.has(c.mediaId));
+    const library = s.library.filter((m) => !gone.has(m.id));
+    const onVisuals = current && gone.has(current.mediaId);
+    state.updateState({
+      library,
+      playlist,
+      currentCueIndex: current && !onVisuals ? playlist.findIndex((c) => c.id === current.id) : -1,
+      ...(onVisuals ? { wallMode: 'visuals' } : {}),
+    });
+  }
+  if (!WALL_MODES.includes(state.getState().wallMode)) state.updateState({ wallMode: 'cues' });
 }
 
 // Backfill thumbnails for media uploaded before thumbnails existed, one at a time
 (async () => {
   for (const item of state.getState().library) {
-    if (!item.thumb && item.type !== VISUALS_TYPE) await enrichMedia(item);
+    if (!item.thumb) await enrichMedia(item);
   }
 })();
 
@@ -395,7 +437,17 @@ else app.get('/api/remote-upload', (req, res) => res.json({ disabled: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/visuals/thumbs', express.static(path.join(visuals.BUILTIN_DIR, 'thumbs')));
 app.use('/api/visuals', lab.router);
+app.use('/api/grid', grid.router);
 app.get('/visuals', (req, res) => res.sendFile(path.join(__dirname, 'public', 'visuals.html')));
+app.get('/grid', (req, res) => res.sendFile(path.join(__dirname, 'public', 'grid.html')));
+
+// The wall's tab: cues, visuals or grid, for every page at once
+app.put('/api/wall', (req, res) => {
+  const { mode } = req.body ?? {};
+  if (!WALL_MODES.includes(mode)) return res.status(400).json({ error: `mode must be ${WALL_MODES.join(', ')}` });
+  setWallMode(mode);
+  res.json({ wallMode: wallMode() });
+});
 app.get(/^\/uploads\/.+/, (req, res) => {
   const requested = req.path.replace(/^\/uploads\/?/, '') || '';
   const filePath = path.join(config.uploadsDir, requested);
@@ -455,7 +507,7 @@ app.get('/api/library', (req, res) => {
 // Deletes media files (and their thumbnails), drops their cues, and keeps playback sane
 function removeMedia(ids, extra = {}) {
   const s = state.getState();
-  // Built-in items (the Visuals cue) stay; a deleted folder drops them at the top
+  // Built-in items stay; a deleted folder drops them at the top
   const kept = new Set(s.library.filter((m) => m.builtin).map((m) => m.id));
   const gone = new Set(ids.filter((id) => !kept.has(id)));
   for (const item of s.library) {
@@ -497,7 +549,7 @@ app.delete('/api/library/:id', (req, res) => {
   const s = state.getState();
   const item = s.library.find((m) => m.id === req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
-  if (item.builtin) return res.status(403).json({ error: 'The Visuals cue can\'t be deleted' });
+  if (item.builtin) return res.status(403).json({ error: 'Built-in items can\'t be deleted' });
   removeMedia([req.params.id]);
   res.status(204).send();
 });
@@ -621,8 +673,8 @@ let screenshot = { at: 0, pending: null };
 function takeScreenshot() {
   if (Date.now() - screenshot.at < SCREENSHOT_MAX_AGE_MS) return Promise.resolve(true);
   if (!screenshot.pending) {
-    // A visual's source is 16x16, so its 'video' shot would be too: take the output
-    screenshot.pending = mpv.screenshotToFile(SCREENSHOT_PATH, lab.isOnAir() ? 'window' : 'video')
+    // A visual's (or the Grid's) source is 16x16, so its 'video' shot would be too: take the output
+    screenshot.pending = mpv.screenshotToFile(SCREENSHOT_PATH, wallMode() !== 'cues' ? 'window' : 'video')
       .then(() => { screenshot.at = Date.now(); return true; })
       .catch(() => false)
       .finally(() => { screenshot.pending = null; });
@@ -751,9 +803,8 @@ app.put('/api/playlist/:cueId', (req, res) => {
   // Only the framing changed: move the picture in place instead of reloading
   const needsReload = ['loop', 'freeze', 'displayMode', 'duration']
     .some((k) => (cue.settings[k] ?? null) !== (before[k] ?? null));
-  // The Visuals cue has nothing to reframe or reload
-  const isVisuals = s.library.find((m) => m.id === cue.mediaId)?.type === VISUALS_TYPE;
-  if (isVisuals) {
+  // While another mode has the wall, the cue shows its new settings when it plays
+  if (wallMode() !== 'cues') {
     // nothing
   } else if (idx === s.currentCueIndex && !needsReload) {
     mpv.setFraming(getCueFraming(cue.settings)).catch(console.error);
@@ -826,13 +877,13 @@ app.delete('/api/playlist/:cueId', (req, res) => {
 
 // GO: the next cue, or stop / wrap around after the last one
 function goNext() {
+  toCues();
   const s = state.getState();
   const next = s.currentCueIndex + 1;
   if (next >= s.playlist.length) {
     if (s.playlistLoop && s.playlist.length > 0) {
       playCue(0);
     } else {
-      lab.release();
       mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
       clearDurationTimer();
       state.updateState({ currentCueIndex: -1 });
@@ -846,6 +897,7 @@ function goNext() {
 // BACK: the previous cue. From the first cue it wraps to the last one when the
 // playlist loops (otherwise restarts it); when stopped it goes to the last cue.
 function goBack() {
+  toCues();
   const s = state.getState();
   if (!s.playlist.length) return;
   const i = s.currentCueIndex;
@@ -870,13 +922,14 @@ app.post('/api/go/:cueId', (req, res) => {
   const s = state.getState();
   const idx = s.playlist.findIndex((c) => c.id === req.params.cueId);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  toCues();
   playCue(idx);
   broadcastState();
   res.status(204).send();
 });
 
 app.post('/api/stop', (req, res) => {
-  lab.release();
+  toCues();
   mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
   clearDurationTimer();
   state.updateState({ currentCueIndex: -1 });
@@ -1116,12 +1169,19 @@ function getDmxConfig() {
     const go = saved.go;
     saved = {};
     if (go) {
-      DMX_FUNCTIONS.forEach((fn, i) => { saved[fn] = Math.min(512, go + i); });
+      [...DMX_FIXTURES.control, ...DMX_FIXTURES.visuals].forEach((fn, i) => { saved[fn] = Math.min(512, go + i); });
     }
   }
   const channels = {};
-  // Unsaved functions default to consecutive channels from DMX_ADDRESS
-  DMX_FUNCTIONS.forEach((fn, i) => { channels[fn] = saved[fn] ?? Math.min(512, a + i); });
+  // A fixture with nothing saved follows right after the one before it (the first
+  // from DMX_ADDRESS); single unsaved channels take their place in that layout
+  let next = a;
+  for (const fns of Object.values(DMX_FIXTURES)) {
+    const placed = fns.some((fn) => saved[fn] !== undefined);
+    const start = placed ? next : Math.min(next, 513 - fns.length);
+    fns.forEach((fn, i) => { channels[fn] = saved[fn] ?? Math.min(512, start + i); });
+    next = (channels[fns[fns.length - 1]] || start + fns.length - 1) + 1;
+  }
   // Each fixture's start address while its channels sit there in order, else null
   const fixtures = Object.fromEntries(Object.entries(DMX_FIXTURES).map(([name, fns]) => {
     const first = channels[fns[0]];
@@ -1165,6 +1225,7 @@ function handleDmxValues(values) {
   if (values.go >= DMX_ON && !(prev.go >= DMX_ON)) goNext();
   if (values.back >= DMX_ON && !(prev.back >= DMX_ON)) goBack();
   lab.applyDmx(values, prev);
+  grid.applyDmx(values);
 }
 
 // Art-Net or the virtual desk going quiet puts the fixture back to neutral
@@ -1173,6 +1234,7 @@ setInterval(() => {
     setDmx({ receiving: false, values: null });
     dmxLast = null;
     lab.resetDmx();
+    grid.resetDmx();
   }
 }, 1000);
 
@@ -1207,7 +1269,7 @@ app.put('/api/dmx', (req, res) => {
   // A start address patches a whole fixture there, like on the desk
   if (req.body?.start !== undefined) {
     const fns = DMX_FIXTURES[req.body.fixture];
-    if (!fns) return res.status(400).json({ error: 'fixture must be control or visuals' });
+    if (!fns) return res.status(400).json({ error: `fixture must be ${Object.keys(DMX_FIXTURES).join(', ')}` });
     const start = req.body.start;
     const last = 513 - fns.length;
     if (!Number.isInteger(start) || start < 1 || start > last) {
@@ -1226,6 +1288,7 @@ app.put('/api/dmx', (req, res) => {
   state.updateState({ dmxConfig: { channels } });
   dmxLast = null;
   lab.resetDmx();
+  grid.resetDmx();
   dmx = { ...dmx, receiving: false, values: null };
   broadcastState();
   res.json(getDmxConfig());
@@ -1253,6 +1316,7 @@ wss.on('connection', (ws) => {
     hdmi,
     dmx: { ...dmx, ...getDmxConfig() },
     visual: lab.status(),
+    grid: grid.status(),
   }));
   pollLed();
   pollHdmi();

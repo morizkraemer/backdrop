@@ -316,18 +316,11 @@ $('btnPlay').addEventListener('click', async () => {
   }
 });
 
-// state.visual: the visual on the wall (id), and whether backdrop's Visuals cue is live (cue)
-$('btnStopWall').addEventListener('click', () => {
-  api('POST', '/visuals/stop').catch(() => {});
-});
-
+// state.visual: the visual on the wall (id)
 function renderAir() {
   const v = state.visual;
-  $('airText').textContent = !v ? 'Wall: backdrop cues'
-    : v.cue ? `Visuals cue live${v.name ? `: ${v.name}` : ''}`
-    : `Testing on the wall: ${v.name}`;
-  $('airText').classList.toggle('live', !!v);
-  $('btnStopWall').hidden = !v?.id || v.cue;
+  $('airText').textContent = v?.name ? `On the wall: ${v.name}` : '';
+  $('airText').classList.toggle('live', !!v?.name);
   render();
   renderList();
 }
@@ -611,6 +604,7 @@ function connect() {
     const prevValues = JSON.stringify(state.visual?.values);
     const msg = JSON.parse(e.data);
     state = { ...state, ...msg };
+    wallTabs.follow(state.wallMode);
     if ('visual' in msg || prevAir !== onAirId()) {
       // DMX moved the sliders of the visual shown here: follow them
       if (isOnAir() && JSON.stringify(state.visual.values) !== prevValues && !liveTimer) {

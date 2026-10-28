@@ -1,4 +1,4 @@
-/* Visuals lab (public/visuals.html); colours and DMX rows come from control.css */
+/* Visuals lab and Grid pages (public/visuals.html, grid.html); colours and DMX rows come from control.css */
 
 .lab {
   min-height: 100%;
@@ -25,25 +25,8 @@
 .lab-title h1 {
   margin: 0;
   font-size: 17px;
-  font-weight: 600;
-}
-
-.lab-back {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-muted);
-  font-size: 13px;
-  text-decoration: none;
-}
-
-.lab-back svg {
-  width: 16px;
-  height: 16px;
-}
-
-.lab-back:hover {
-  color: var(--text);
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .lab-air {

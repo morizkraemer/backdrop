@@ -19,12 +19,13 @@
           <span class="dot"></span>
           <span id="playerText">Connecting…</span>
         </div>
+        <nav class="wall-tabs" id="wallTabs" data-page="cues" aria-label="What the wall shows">
+          <a href="/control" data-mode="cues" aria-current="page">Cues</a>
+          <a href="/visuals" data-mode="visuals">Visuals</a>
+          <a href="/grid" data-mode="grid">Grid</a>
+        </nav>
       </div>
       <div class="header-right">
-        <a class="btn-led" href="/visuals" title="Visuals lab: live shader visuals for the LED wall">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z"/></svg>
-          <span>Visuals</span>
-        </a>
         <div class="dmx" id="dmx" hidden>
           <button type="button" class="btn-led" id="btnDmx" aria-expanded="false" aria-controls="dmxPopover" title="DMX control (Art-Net)">
             <span class="sig" id="dmxSig"></span>
@@ -259,6 +260,7 @@
 
     <div class="uploads" id="uploads" aria-live="polite"></div>
   </div>
+  <script src="js/wall-tabs.js"></script>
   <script src="js/control.js"></script>
 </body>
 </html>
