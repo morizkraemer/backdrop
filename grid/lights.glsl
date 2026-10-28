@@ -1,11 +1,11 @@
 // Grid: 12x4 lights for the Grid fixture (setup/DMX.md), one colour, a level per cell
-// Shape: 0 square, 1 circle, 2 triangle, 3 Fresnel stage light
+// Shape: 0 square, 1 circle, 2 triangle, 3 Fresnel stage light, 4 four lamps hanging together
 
 //!PARAM shape
-//!DESC Shape: square, circle, triangle, Fresnel
+//!DESC Shape: square, circle, triangle, Fresnel, Fresnel x4
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
-//!MAXIMUM 3.0
+//!MAXIMUM 4.0
 0.0
 //!PARAM red
 //!DESC Red
@@ -456,6 +456,99 @@ vec3 fresnel(vec2 p, float level, vec3 colour, float aa) {
     return vec3(1.0) - exp(-col * 1.5);
 }
 
+// Rounded box distance, for the cluster's housing
+float sdRoundBox(vec2 p, vec2 b, float r) {
+    vec2 q = abs(p) - b + r;
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+
+// Shape 4. Four lamps hanging together: a 2x2 housing in a yoke, clamped to a
+// pipe that runs along the row, all four on the cell's dimmer. Each lamp has a
+// bezel and a ringed, stippled lens; they dim to tungsten orange like the
+// Fresnel. Tone-mapped so bright parts go to white.
+vec3 quad(vec2 p, float level, vec3 colour, float aa) {
+    const vec2 CENTRE = vec2(0.0, 0.08);
+    const vec2 HALF = vec2(0.84, 0.83);
+    const float SPACING = 0.41;
+    const float SIZE = 0.37;
+    const float LENS = 0.82;
+    float px = aa * 0.5;
+    float e = pow(level, 2.2);
+    vec3 hue = colour * mix(vec3(1.0, 0.3, 0.05), vec3(1.0), smoothstep(0.0, 0.8, level));
+    float grain = hash21(floor(p * 96.0) + 17.0);
+    vec3 col = vec3(0.0);
+
+    // Pipe along the top of the row: a lit cylinder
+    float py = (p.y + 0.93) / 0.045;
+    float pipe = 1.0 - smoothstep(1.0 - px / 0.045, 1.0 + px / 0.045, abs(py));
+    vec3 pipeCol = vec3(0.03) + vec3(0.12) * clamp(0.6 - 0.6 * py, 0.0, 1.0)
+        + vec3(0.25) * exp(-pow((py + 0.5) * 3.5, 2.0));
+    col = mix(col, pipeCol * (0.85 + 0.3 * grain), pipe);
+
+    // Hook clamp on the pipe, and its bolt down to the yoke
+    float clampBox = sdRoundBox(p - vec2(0.0, -0.925), vec2(0.075, 0.075), 0.03);
+    vec3 clampCol = vec3(0.07) * (0.8 + 0.4 * grain) * (1.2 - 0.5 * (p.y + 0.925) / 0.075);
+    clampCol = mix(clampCol, vec3(0.2), smoothstep(0.028, 0.018, length(p - vec2(0.0, -0.925))));
+    col = mix(col, clampCol, 1.0 - smoothstep(-px, px, clampBox));
+    float stem = sdRoundBox(p - vec2(0.0, -0.83), vec2(0.025, 0.03), 0.0);
+    col = mix(col, vec3(0.12) * (1.0 - abs(p.x) / 0.03), 1.0 - smoothstep(-px, px, stem));
+
+    // Yoke: a bar over the housing and an arm down each side to a knob
+    float bar = sdRoundBox(p - vec2(0.0, -0.78), vec2(0.92, 0.022), 0.01);
+    float arms = sdRoundBox(vec2(abs(p.x), p.y) - vec2(0.905, -0.34), vec2(0.022, 0.46), 0.01);
+    float yoke = min(bar, arms);
+    vec3 yokeCol = vec3(0.05) * (0.8 + 0.4 * grain) + vec3(0.1) * smoothstep(0.02, -0.02, p.y + 0.79) * step(bar, arms);
+    col = mix(col, yokeCol, 1.0 - smoothstep(-px, px, yoke));
+    vec2 kp = vec2(abs(p.x), p.y) - vec2(0.905, 0.1);
+    float knob = length(kp);
+    vec3 knobCol = vec3(0.06) + vec3(0.14) * clamp(0.5 - kp.y / 0.05, 0.0, 1.0);
+    col = mix(col, knobCol, 1.0 - smoothstep(0.055 - px, 0.055 + px, knob));
+
+    // Housing: matte black, a rolled edge lit from above, a seam between lamps
+    vec2 hp = p - CENTRE;
+    float hd = sdRoundBox(hp, HALF, 0.12);
+    float body = 1.0 - smoothstep(-px, px, hd);
+    vec3 metal = vec3(0.04) * (0.85 + 0.3 * grain) * (1.15 - 0.4 * hp.y / HALF.y);
+    metal += vec3(0.16) * smoothstep(0.03, 0.0, abs(hd + 0.025)) * clamp(-hp.y / HALF.y, 0.0, 1.0);
+    float seam = min(abs(hp.x), abs(hp.y));
+    metal *= 0.4 + 0.6 * smoothstep(0.0, 3.0 * px, seam);
+
+    // The nearest lamp, in its own -1..1 space
+    vec2 lc = CENTRE + vec2(hp.x < 0.0 ? -SPACING : SPACING, hp.y < 0.0 ? -SPACING : SPACING);
+    vec2 q = (p - lc) / SIZE;
+    float r = length(q);
+    float lpx = px / SIZE;
+    float up = 0.5 - 0.5 * q.y / max(r, 1e-4);
+    // Bezel
+    float bezel = 1.0 - smoothstep(1.0 - lpx, 1.0 + lpx, r);
+    vec3 ring = vec3(0.07) * (0.85 + 0.3 * grain) * (0.6 + 0.8 * up);
+    ring += vec3(0.2) * pow(up, 3.0) * smoothstep(0.06, 0.0, abs(r - 0.94));
+    ring *= mix(1.0, 0.45, smoothstep(LENS + 0.08, LENS, r));
+    ring += hue * e * 0.35 * exp(-(r - LENS) * 14.0);
+    metal = mix(metal, ring, bezel);
+    // Lens
+    float lens = 1.0 - smoothstep(LENS - lpx, LENS + lpx, r);
+    float f = fract(r / LENS * 6.0);
+    float riser = smoothstep(2.0 * lpx * 6.0 / LENS, 0.0, f) * step(0.5, r / LENS * 6.0);
+    float stip = 0.8 + 0.4 * noise(p * 150.0);
+    vec3 glass = vec3(0.05, 0.055, 0.05) * (0.75 + 0.5 * f);
+    glass += vec3(0.08) * riser * up;
+    glass += vec3(0.05) * exp(-dot(q / LENS - vec2(-0.35, -0.4), q / LENS - vec2(-0.35, -0.4)) * 10.0) * (1.0 - 0.5 * e);
+    vec2 fp = q / LENS;
+    float beam = 0.5 + 1.5 * exp(-dot(fp, fp) * 5.0) + 2.4 * exp(-dot(fp, fp) * 35.0);
+    glass += hue * e * (beam * stip * (0.75 + 0.35 * f) + 0.6 * riser);
+    glass *= mix(0.5, 1.0, smoothstep(LENS, LENS - 0.08, r));
+    metal = mix(metal, glass, lens);
+    // Spill from the lenses onto the housing's face
+    metal += hue * e * 0.15 * exp(-max(r - 1.0, 0.0) * 6.0) * (1.0 - bezel);
+    col = mix(col, metal, body);
+
+    // Glow round the housing, fading before the cell's edge
+    float edge = pow(clamp((1.0 - max(abs(p.x), abs(p.y))) / 0.06, 0.0, 1.0), 2.0);
+    col += hue * e * 0.3 * exp(-max(hd, 0.0) * 12.0) * (1.0 - body) * edge;
+    return vec3(1.0) - exp(-col * 1.5);
+}
+
 vec3 visual(vec2 uv, float t) {
     vec2 g = uv * vec2(COLS, ROWS);
     vec2 cell = min(floor(g), vec2(COLS - 1.0, ROWS - 1.0));
@@ -466,6 +559,7 @@ vec3 visual(vec2 uv, float t) {
     float aa = 2.0 * COLS * 2.0 / RES.x;
     int s = int(floor(shape + 0.5));
     if (s == 3) return fresnel(p, level, colour, aa);
+    if (s == 4) return quad(p, level, colour, aa);
     float d;
     if (s == 1) d = length(p) - 0.85;
     else if (s == 2) d = sdTriangle(p, 0.8);
