@@ -975,7 +975,8 @@ app.post('/api/bluetooth/pairing', async (req, res) => {
   const { enabled } = req.body;
   const onOff = enabled ? 'on' : 'off';
   try {
-    await sshCommand(`bluetoothctl discoverable ${onOff}`);
+    // pairable too, or new devices are rejected even while discoverable
+    await sshCommand(`bluetoothctl pairable ${onOff} && bluetoothctl discoverable ${onOff}`);
     res.json({ discoverable: !!enabled });
   } catch (err) {
     res.status(500).json({ error: err.message });
