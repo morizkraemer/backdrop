@@ -29,7 +29,7 @@ Each function only takes over once its fader moves; until then the visual looks 
 
 The Visuals lab has **Download dot2 fixture** (`/api/visuals/dot2.xml`): one MA fixture type (grandMA2 XML) for GO, BACK and the 59 visuals channels (61 in all), with every visual named on the select channel. Download it again after adding visuals, so the names stay current.
 
-To import: copy it to a USB stick as `dot2/library/backdrop_visuals.xml`, then on the dot2 open Setup → Patch and Fixture Schedule → Add New Fixtures → Select other... → Import, pick the USB drive, manufacturer "backdrop", "Visuals". Patch it at the GO channel (2 by default) on the Art-Net universe backdrop listens to. Brightness stays a channel of its own.
+To import: copy it to a USB stick as `dot2/library/backdrop_visuals.xml`, then on the dot2 open Setup → Patch and Fixture Schedule → Add New Fixtures → Select other... → Import, pick the USB drive, manufacturer "backdrop", "Visuals". Patch it at any address on the Art-Net universe backdrop listens to, and enter the same address as **Start address** in the Visuals lab's DMX panel: GO, BACK and all visuals channels then follow on from it (61 channels, 2-62 by default). Brightness stays a channel of its own.
 
 dot2 only has its own attribute names, so the functions sit on the nearest ones:
 

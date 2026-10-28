@@ -56,7 +56,8 @@ const lab = createVisualsLab({
 });
 // DMX functions in display order; each maps to one channel of the universe (0 = unused).
 // After the show controls come the 16 channels of the visuals fixture.
-const DMX_FUNCTIONS = ['brightness', 'go', 'back', ...lab.DMX_FUNCTIONS];
+const FIXTURE_FNS = ['go', 'back', ...lab.DMX_FUNCTIONS];
+const DMX_FUNCTIONS = ['brightness', ...FIXTURE_FNS];
 let dmx = {
   configured: config.dmxUniverse !== null,
   receiving: false,
@@ -1106,7 +1107,10 @@ function getDmxConfig() {
   const channels = {};
   // Unsaved functions default to consecutive channels from DMX_ADDRESS
   DMX_FUNCTIONS.forEach((fn, i) => { channels[fn] = saved[fn] ?? Math.min(512, a + i); });
-  return { universe: config.dmxUniverse ?? 0, channels, visuals: lab.slots() };
+  // The dot2 fixture: GO, BACK and the visuals channels from one start address.
+  // start is its address while all of them sit there in order, else null.
+  const start = FIXTURE_FNS.every((fn, i) => channels[fn] === channels.go + i) ? channels.go : null;
+  return { universe: config.dmxUniverse ?? 0, channels, start, fixtureSize: FIXTURE_FNS.length, visuals: lab.slots() };
 }
 
 function setDmx(patch) {
@@ -1182,6 +1186,15 @@ app.put('/api/dmx', (req, res) => {
   if (!dmx.configured) return res.status(501).json({ error: 'DMX is disabled (DMX_UNIVERSE is empty)' });
   const cur = getDmxConfig();
   const channels = { ...cur.channels };
+  // A start address patches the whole fixture there, like on the desk
+  if (req.body?.start !== undefined) {
+    const start = req.body.start;
+    const last = 513 - FIXTURE_FNS.length;
+    if (!Number.isInteger(start) || start < 1 || start > last) {
+      return res.status(400).json({ error: `Start address must be 1-${last} (the fixture has ${FIXTURE_FNS.length} channels)` });
+    }
+    FIXTURE_FNS.forEach((fn, i) => { channels[fn] = start + i; });
+  }
   for (const fn of DMX_FUNCTIONS) {
     const ch = req.body?.channels?.[fn];
     if (ch === undefined) continue;
