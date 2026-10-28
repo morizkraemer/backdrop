@@ -383,43 +383,50 @@ float sdTriangle(vec2 p, float r) {
     return -length(p) * sign(p.y);
 }
 
-// A light bulb seen from above, lit at level: a round glass dome in a dark
-// fitting cup, the filament as a small star of loops around its support post,
-// a glass highlight, and glow spilling into the cup when it's on
+// A light bulb seen from above, lit at level: a clear glass globe with its
+// window reflections, an Edison filament (a star of glowing wires around the
+// stem) that burns white-hot at full and warm when dimmed, light filling the
+// glass and blooming around it. Tone-mapped so bright parts go to white.
 vec3 bulb(vec2 p, float level, vec3 colour, float aa) {
+    const float R = 0.7;
     float r = length(p);
     float a = atan(p.y, p.x);
-    const float DOME = 0.66;
-    const float CUP = 0.92;
-    vec3 col = vec3(0.0);
+    float inside = 1.0 - smoothstep(R - aa, R + aa, r);
+    float x = clamp(r / R, 0.0, 1.0);
+    float z = sqrt(1.0 - x * x); // the globe's height, 1 in the middle
 
-    // The fitting: a dark cup with a lighter rim, lit by the bulb inside it
-    float cup = 1.0 - smoothstep(CUP - aa, CUP + aa, r);
-    col += cup * (vec3(0.035) + colour * level * 0.3 * exp(-(r - DOME) * 6.0));
-    col += vec3(0.16) * smoothstep(0.03, 0.0, abs(r - CUP)) * (0.6 + 0.4 * -p.y / max(r, 0.001));
+    // Light: dimmed filaments glow warmer, like real ones
+    vec3 hue = colour * mix(vec3(1.0, 0.45, 0.12), vec3(1.0), smoothstep(0.0, 0.6, level));
+    float e = level * level;
 
-    // The glass dome: shaded like a sphere when off, filled with light when on
-    float dome = 1.0 - smoothstep(DOME - aa, DOME + aa, r);
-    float z = sqrt(max(0.0, 1.0 - (r / DOME) * (r / DOME)));
-    vec3 glass = vec3(0.025 + 0.05 * z);
-    glass += colour * level * (0.3 + 0.7 * exp(-r * 3.5));
-    // A hot core around the filament
-    glass += mix(colour, vec3(1.0), 0.5) * level * level * 0.5 * exp(-r * 8.0);
-    // Filament: loops around the post, nearly white when bright
-    float loops = abs(r - 0.15 - 0.045 * sin(a * 6.0));
-    float post = r;
-    float fil = exp(-loops * 70.0) + 0.8 * exp(-post * 30.0);
-    glass += mix(colour, vec3(1.0), 0.75 * level) * (0.06 + 1.4 * level) * fil;
-    // Glass reflection, top left
-    vec2 h = p - vec2(-0.24, -0.26);
-    glass += vec3(0.35) * exp(-dot(h, h) * 55.0) * (1.0 - 0.5 * level);
-    glass += vec3(0.08) * smoothstep(0.035, 0.0, abs(r - DOME + 0.02));
-    col = mix(col, glass, dome);
+    // Filament: eight wires from the stem outwards, gently zigzagging
+    float k = 8.0;
+    float sector = (fract(a / (2.0 * PI) * k + 0.5) - 0.5) * 2.0 * PI / k;
+    float wire = abs(r * sin(sector) - 0.012 * sin(r * 70.0));
+    float wires = smoothstep(0.022, 0.0, wire) * smoothstep(0.06, 0.09, r) * smoothstep(0.34, 0.3, r);
+    float stem = smoothstep(0.07, 0.03, r);
+    float fil = max(wires, stem);
+    vec3 light = hue * e * (6.0 * fil + 2.2 * exp(-r * 9.0) + 0.55 * exp(-r * 3.0));
 
-    // Halo beyond the cup, fading before the cell's edge
-    float edge = smoothstep(1.0, 0.92, max(abs(p.x), abs(p.y)));
-    col += colour * level * (1.0 - cup) * 0.2 * exp(-(r - CUP) * 12.0) * edge;
-    return col;
+    // Glass: a dark globe with a brighter rim (Fresnel), lit from inside when on
+    float fresnel = pow(1.0 - z, 3.0);
+    vec3 glass = vec3(0.02) + vec3(0.12) * fresnel + hue * e * 0.6 * fresnel;
+    // Unlit wires still show, dark against the glass
+    glass += vec3(0.05) * fil * (1.0 - level);
+    // Window reflections: a soft one top left, a small sharp one beside it
+    vec2 h = (p - vec2(-0.27, -0.3)) * vec2(1.0, 1.6);
+    glass += vec3(0.22) * exp(-dot(h, h) * 30.0);
+    vec2 h2 = p - vec2(-0.12, -0.42);
+    glass += vec3(0.5) * smoothstep(0.05, 0.0, length(h2));
+    vec3 col = inside * (glass + light);
+
+    // Bloom around the globe, fading before the cell's edge
+    float edge = pow(clamp((1.0 - r) / (1.0 - R), 0.0, 1.0), 2.0);
+    col += hue * e * 0.9 * exp(-(max(r - R, 0.0)) * 7.0) * (1.0 - inside) * edge;
+    // A thin bright edge where the glass curves away
+    col += (vec3(0.1) + hue * e * 0.5) * smoothstep(0.03, 0.0, abs(r - R + 0.015));
+
+    return vec3(1.0) - exp(-col * 1.5);
 }
 
 vec3 visual(vec2 uv, float t) {
