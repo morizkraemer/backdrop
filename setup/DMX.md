@@ -35,7 +35,7 @@ By default right after the Visuals fixture (channels 14-65). It only acts while 
 
 | Fixture channel | Function | Behaviour |
 |---|---|---|
-| 1 | Shape | 0-63 square, 64-127 circle, 128-191 triangle, 192-255 Fresnel (a stage light seen from the front: black housing, a ringed lens glowing in the colour, a wire safety mesh). |
+| 1 | Shape | 0-63 square, 64-127 circle, 128-191 triangle, 192-223 Fresnel (an old stage light seen from the front: worn housing, a ringed lens glowing in the colour, a wire safety mesh; it dims to tungsten orange), 224-255 Fresnel x4 (a cluster of four of them per cell, all on the cell's dimmer). |
 | 2-4 | Red, green, blue | The colour of every cell. |
 | 5-52 | Cell 1-48 | Each cell's dimmer, row by row from the top left (cell 1-12 the top row). |
 

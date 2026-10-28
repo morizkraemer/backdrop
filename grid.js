@@ -1,7 +1,8 @@
 /**
  * The Grid (setup/DMX.md): a 12x4 grid of lights on the LED wall, drawn by an
  * mpv shader (grid/lights.glsl) and played from the desk's Grid fixture: Shape
- * (square, circle, triangle, Fresnel), one RGB colour and a dimmer per cell.
+ * (square, circle, triangle, Fresnel, four Fresnels), one RGB colour and a dimmer
+ * per cell.
  * It's on the wall while the wall mode is Grid (server.js setWallMode). Without
  * the desk every cell shows full white squares; with it the cells follow the
  * fixture exactly.
@@ -15,7 +16,15 @@ const FILE = path.join(__dirname, 'grid', 'lights.glsl');
 const COLS = 12;
 const ROWS = 4;
 const CELLS = COLS * ROWS;
-const SHAPES = ['Square', 'Circle', 'Triangle', 'Fresnel'];
+// The Shape channel's ranges (the last quarter is split between one Fresnel and
+// a cluster of four, so presets made for 192 still pick the single Fresnel)
+const SHAPES = [
+  { name: 'Square', from: 0, to: 63 },
+  { name: 'Circle', from: 64, to: 127 },
+  { name: 'Triangle', from: 128, to: 191 },
+  { name: 'Fresnel', from: 192, to: 223 },
+  { name: 'Fresnel x4', from: 224, to: 255 },
+];
 const CELL_FNS = Array.from({ length: CELLS }, (_, i) => `cell${i + 1}`);
 const DMX_FUNCTIONS = ['shape', 'grid_red', 'grid_green', 'grid_blue', ...CELL_FNS];
 
@@ -27,13 +36,12 @@ const NEUTRAL = {
   ...Object.fromEntries(CELL_FNS.map((_, i) => [`c${i + 1}`, 1])),
 };
 
-// Shape 0-63 square, 64-127 circle, 128-191 triangle, 192-255 Fresnel
-const shapeOf = (v) => Math.min(SHAPES.length - 1, Math.floor(v / 64));
+const shapeOf = (v) => SHAPES.findIndex((s) => v <= s.to);
 
 // The Grid fixture for the dot2: Shape, RGB, then 48 cells as subfixtures
 function dot2GridFixture() {
   return maFixtureType('Grid', [
-    dmxChannel(1, 'GOBO1', 'GOBO', 'GOBO', SHAPES.map((name, i) => dmxSet(name, i * 64, i * 64 + 63))),
+    dmxChannel(1, 'GOBO1', 'GOBO', 'GOBO', SHAPES.map((s) => dmxSet(s.name, s.from, s.to))),
     dmxChannel(2, 'COLORRGB1', 'RGB', 'COLOR'),
     dmxChannel(3, 'COLORRGB2', 'RGB', 'COLOR'),
     dmxChannel(4, 'COLORRGB3', 'RGB', 'COLOR'),
@@ -119,7 +127,7 @@ function createGrid({ config, mpv, broadcast }) {
     }
   }
 
-  // live: the wall mode is Grid; values: the shader's (shape 0-3, colour and cells 0-1)
+  // live: the wall mode is Grid; values: the shader's (shape 0-4, colour and cells 0-1)
   function status() {
     return { live: active, values };
   }
