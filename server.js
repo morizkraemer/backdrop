@@ -983,14 +983,12 @@ app.post('/api/bluetooth/pairing', async (req, res) => {
   }
 });
 
-// Pi speakers source: every player on the Pi (snapclient for backdrop,
-// raspotify for Spotify Connect, shairport-sync for AirPlay, bluealsa-aplay
-// for Bluetooth) opens the USB sound card directly, so only one can play.
-// Picking one stops the others (needs setup/sudoers-pi-audio on the Pi).
+// Pi speakers source: snapclient (backdrop), raspotify (Spotify Connect) or
+// bluealsa-aplay (Bluetooth). Picking one stops the others, so only the
+// chosen one plays (needs setup/sudoers-pi-audio on the Pi).
 const PI_SOURCES = {
   backdrop: 'snapclient',
   spotify: 'raspotify',
-  airplay: 'shairport-sync',
   bluetooth: 'bluealsa-aplay',
 };
 
