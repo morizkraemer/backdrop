@@ -56,8 +56,13 @@ const lab = createVisualsLab({
 });
 // DMX functions in display order; each maps to one channel of the universe (0 = unused).
 // After the show controls come the 16 channels of the visuals fixture.
-const FIXTURE_FNS = ['go', 'back', ...lab.DMX_FUNCTIONS];
-const DMX_FUNCTIONS = ['brightness', ...FIXTURE_FNS];
+// The dot2 fixtures (setup/DMX.md), each patched from its own start address:
+// backdrop's Control fixture and the Visuals fixture (visuals-lab.js)
+const DMX_FIXTURES = {
+  control: ['go', 'back', 'brightness'],
+  visuals: lab.DMX_FUNCTIONS,
+};
+const DMX_FUNCTIONS = [...DMX_FIXTURES.control, ...DMX_FIXTURES.visuals];
 let dmx = {
   configured: config.dmxUniverse !== null,
   receiving: false,
@@ -1081,9 +1086,10 @@ if (matrix) {
 }
 
 // DMX control over Art-Net (see setup/DMX.md). The universe comes from .env; the channel
-// of each function is set in the UI (state.dmxConfig, defaults from .env):
-// brightness = LED brightness (0-255 -> 0-100 %), go = next cue, back = previous cue,
-// then the visuals fixture (visuals-lab.js applyDmx).
+// of each function is set in the UI (state.dmxConfig, defaults from .env), mostly as
+// the start address of a fixture (DMX_FIXTURES). Control: go = next cue, back =
+// previous cue, brightness = LED brightness (0-255 -> 0-100 %); then the Visuals
+// fixture (visuals-lab.js applyDmx).
 // GO and BACK fire once when their channel rises past half; brightness follows the
 // fader only when it moves, so the UI can still set it while the fader rests.
 const DMX_ON = 128;
@@ -1104,13 +1110,25 @@ function getDmxConfig() {
     if (saved.visual) lab.DMX_FUNCTIONS.forEach((fn, i) => { saved[fn] = Math.min(512, saved.visual + i); });
     else lab.DMX_FUNCTIONS.forEach((fn) => delete saved[fn]);
   }
+  // Saved as one big fixture (GO, BACK, dimmer, cells): the Control fixture stays at
+  // GO, the Visuals fixture follows right after it
+  if ('seg1' in saved || 'dimmer' in saved) {
+    const go = saved.go;
+    saved = {};
+    if (go) {
+      DMX_FUNCTIONS.forEach((fn, i) => { saved[fn] = Math.min(512, go + i); });
+    }
+  }
   const channels = {};
   // Unsaved functions default to consecutive channels from DMX_ADDRESS
   DMX_FUNCTIONS.forEach((fn, i) => { channels[fn] = saved[fn] ?? Math.min(512, a + i); });
-  // The dot2 fixture: GO, BACK and the visuals channels from one start address.
-  // start is its address while all of them sit there in order, else null.
-  const start = FIXTURE_FNS.every((fn, i) => channels[fn] === channels.go + i) ? channels.go : null;
-  return { universe: config.dmxUniverse ?? 0, channels, start, fixtureSize: FIXTURE_FNS.length, visuals: lab.slots() };
+  // Each fixture's start address while its channels sit there in order, else null
+  const fixtures = Object.fromEntries(Object.entries(DMX_FIXTURES).map(([name, fns]) => {
+    const first = channels[fns[0]];
+    const start = first && fns.every((fn, i) => channels[fn] === first + i) ? first : null;
+    return [name, { start, size: fns.length }];
+  }));
+  return { universe: config.dmxUniverse ?? 0, channels, fixtures, visuals: lab.slots() };
 }
 
 function setDmx(patch) {
@@ -1186,14 +1204,16 @@ app.put('/api/dmx', (req, res) => {
   if (!dmx.configured) return res.status(501).json({ error: 'DMX is disabled (DMX_UNIVERSE is empty)' });
   const cur = getDmxConfig();
   const channels = { ...cur.channels };
-  // A start address patches the whole fixture there, like on the desk
+  // A start address patches a whole fixture there, like on the desk
   if (req.body?.start !== undefined) {
+    const fns = DMX_FIXTURES[req.body.fixture];
+    if (!fns) return res.status(400).json({ error: 'fixture must be control or visuals' });
     const start = req.body.start;
-    const last = 513 - FIXTURE_FNS.length;
+    const last = 513 - fns.length;
     if (!Number.isInteger(start) || start < 1 || start > last) {
-      return res.status(400).json({ error: `Start address must be 1-${last} (the fixture has ${FIXTURE_FNS.length} channels)` });
+      return res.status(400).json({ error: `Start address must be 1-${last} (the fixture has ${fns.length} channels)` });
     }
-    FIXTURE_FNS.forEach((fn, i) => { channels[fn] = start + i; });
+    fns.forEach((fn, i) => { channels[fn] = start + i; });
   }
   for (const fn of DMX_FUNCTIONS) {
     const ch = req.body?.channels?.[fn];

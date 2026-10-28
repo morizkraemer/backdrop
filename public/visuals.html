@@ -67,22 +67,13 @@
 
         <details class="lab-panel lab-desk" id="deskPanel">
           <summary class="field-label">Virtual desk</summary>
-          <span class="field-hint">Plays the dot2 fixture from here, to try it without the desk. Like the desk it only drives the wall while backdrop's Visuals cue is live: GO into it first. Close this to hand back to the desk.</span>
+          <span class="field-hint">Plays the dot2 fixtures from here, to try them without the desk. Like the desk, the Visuals faders only drive the wall while backdrop's Visuals cue is live: GO into it first. Brightness sets the real LED wall brightness. Close this to hand back to the desk.</span>
           <div class="lab-desk-top">
             <button type="button" class="lab-btn" id="deskBack">BACK</button>
             <button type="button" class="lab-btn lab-btn-live" id="deskGo">GO</button>
             <label class="lab-control"><span>Visual select</span><select id="deskVisual"></select></label>
           </div>
           <div class="lab-desk-faders" id="deskFaders"></div>
-          <div class="field-row">
-            <span class="field-label">Cells</span>
-            <span>
-              <button type="button" class="btn-link" id="deskAll">All on</button>
-              <button type="button" class="btn-link" id="deskNone">All off</button>
-              <button type="button" class="btn-link" id="deskChase">Chase</button>
-            </span>
-          </div>
-          <div class="lab-desk-cells" id="deskCells"></div>
         </details>
 
         <details class="lab-panel lab-code" id="codePanel">
@@ -102,20 +93,21 @@
       <aside class="lab-dmx" aria-label="DMX fixture">
         <div class="lab-panel">
           <div class="field-row">
-            <span class="field-label">DMX fixture</span>
+            <span class="field-label">Visuals fixture</span>
             <span class="dmx-state" id="dmxState"></span>
           </div>
-          <label class="lab-start">
+          <label class="dmx-start">
             <span class="field-label">Start address</span>
-            <input type="number" id="dmxStart" min="1" max="512" step="1" inputmode="numeric" placeholder="—" aria-label="Fixture start address">
+            <input type="number" id="dmxStart" min="1" max="512" step="1" inputmode="numeric" placeholder="—" aria-label="Visuals fixture start address">
             <span class="field-hint" id="dmxStartHint"></span>
           </label>
           <div class="dmx-channels" id="dmxChannels">
             <div class="dmx-ch dmx-ch-head"><span>Channel</span><span>Function</span><span></span><span>Value</span></div>
           </div>
           <div class="led-status" id="dmxStatus"></div>
-          <a class="lab-btn lab-download" href="/api/visuals/dot2.xml" download>Download dot2 fixture</a>
-          <span class="field-hint">Patch the dot2 fixture at the start address: GO, BACK and the visuals channels follow on from it. Brightness is set in backdrop. Single channels can still be moved below. Each fixture channel takes over once its fader moves. Full map in setup/DMX.md.</span>
+          <a class="lab-btn lab-download" href="/api/visuals/dot2.xml" download>Download Visuals fixture (dot2)</a>
+          <a class="lab-btn lab-download" href="/api/visuals/dot2-control.xml" download>Download Control fixture (dot2)</a>
+          <span class="field-hint">Two fixtures for the dot2: Control (GO, BACK, Brightness; its address is set in backdrop's DMX menu) and Visuals (set here). Patch Visuals at the start address and its channels follow on. Each channel takes over once its fader moves. Full map in setup/DMX.md.</span>
         </div>
       </aside>
     </main>
