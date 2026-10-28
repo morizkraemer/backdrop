@@ -4,6 +4,7 @@ const API = '/api';
 const WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
 
 const $ = (id) => document.getElementById(id);
+const DMX_SLOT = 5; // visual select values per visual (visuals-lab.js)
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 let state = {}; // backdrop's state over the WebSocket: visual (on air), dmx
@@ -41,7 +42,7 @@ function renderList() {
     <span class="lab-thumb">${v.thumb ? `<img src="${esc(v.thumb)}" alt="" loading="lazy">` : ''}</span>
     <span class="lab-item-text">
       <span class="lab-item-name">${esc(v.name)}</span>
-      <span class="lab-item-sub">DMX ${(i + 1) * 10}${v.builtin ? '' : ' · yours'}${air === v.id ? ' · on wall' : ''}</span>
+      <span class="lab-item-sub">DMX ${(i + 1) * DMX_SLOT}${v.builtin ? '' : ' · yours'}${air === v.id ? ' · on wall' : ''}</span>
     </span>
   </button>`).join('');
 }
@@ -174,7 +175,7 @@ function render() {
   $('visualName').textContent = current.name;
   const i = visuals.findIndex((v) => v.id === current.id);
   $('visualSub').textContent = [
-    i >= 0 ? `DMX select ${(i + 1) * 10}` : null,
+    i >= 0 ? `DMX select ${(i + 1) * DMX_SLOT}` : null,
     current.builtin ? 'built-in' : 'yours',
   ].filter(Boolean).join(' · ');
   $('previewTag').textContent = isOnAir() ? 'Preview · on the wall' : 'Preview';
@@ -479,7 +480,7 @@ function pct(v) {
 }
 
 function slotName(v) {
-  const s = slots.find((x) => v >= x.value && v < x.value + 10);
+  const s = slots.find((x) => v >= x.value && v < x.value + DMX_SLOT);
   return s ? s.name : '—';
 }
 

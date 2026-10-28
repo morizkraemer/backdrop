@@ -20,7 +20,7 @@ const MAX_SOURCE = 256 * 1024;
 const SEGMENT_FNS = Array.from({ length: visuals.SEGMENTS }, (_, i) => `seg${i + 1}`);
 const CONTROL_FNS = Array.from({ length: visuals.CONTROLS }, (_, i) => `control${i + 1}`);
 const DMX_FUNCTIONS = ['visual', 'dimmer', 'red', 'green', 'blue', 'colour', 'speed', 'strobe', ...CONTROL_FNS, ...SEGMENT_FNS];
-const DMX_SLOT = 10; // visual select: 10-19 = first visual, 20-29 = second, ...
+const DMX_SLOT = 5; // visual select: 5-9 = first visual, 10-14 = second, ... (50 visuals)
 const DMX_MASK_HOLD_MS = 2000; // cells all at 0 this long = whole wall again
 
 const xmlEsc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

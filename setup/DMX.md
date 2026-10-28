@@ -14,7 +14,7 @@ By default the 59 channels after BACK (4-62 with `DMX_ADDRESS=1`). They only act
 
 | Default channel | Function | Behaviour |
 |---|---|---|
-| 4 | Visual select | 10-19 plays the first visual, 20-29 the second, and so on (the Visuals lab lists them: built-ins by file name, then your own by file name); 0-9 keeps the current one. |
+| 4 | Visual select | 5-9 plays the first visual, 10-14 the second, and so on, up to 50 visuals (the Visuals lab lists each one's value: built-ins by file name, then your own by file name; the dot2 fixture names them); 0-4 keeps the current one. |
 | 5 | Dimmer | 0-100 % on the visual. |
 | 6-8 | Red, green, blue | The visual's colour, mixed like on any RGB fixture: the hue turns the visual's own colour slider, so its gradients and spread stay; less saturation fades it towards white, and the mix's brightness dims it (all at 0 is dark). |
 | 9 | Colour | The visual's second colour (Marble's second colour), else its colour spread, for visuals with either. |

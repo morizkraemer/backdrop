@@ -13,7 +13,7 @@ Visuals reach the wall only through the **Visuals** item in backdrop's library: 
 - **Save as default** stores the sliders as the values DMX and Send to wall start with (`visuals.json`, `VISUALS_SETTINGS`).
 - **Desk faders**: which sliders the fixture's Control 1-3 move for this visual, saved right away. Speed, RGB and Colour always move the `speed`, `hue` and `hue2` (else `spread`) sliders.
 - **Shader code**: edit and **Run preview** (Ctrl/Cmd+Enter); compile errors show over the preview with line numbers of the file. Built-ins are read-only: **Save as copy** makes your own, stored in `uploads/visuals/`. **New** starts from a template.
-- **DMX fixture**: channel of each fixture function and live fader values. The select value of each visual is shown in the list (DMX 10, 20, ...).
+- **DMX fixture**: channel of each fixture function and live fader values. The select value of each visual is shown in the list (DMX 5, 10, ...).
 
 There is no second display process: mpv plays a tiny generated source and the shader draws the picture at the panel's size (`VISUAL_SIZE`, default `2304x768`), which then goes through the same Fill/Centered/Stretch handling as a 2304×768 clip.
 
