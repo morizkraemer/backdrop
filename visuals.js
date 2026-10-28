@@ -12,6 +12,7 @@
  * hidden clock_t0/clock_ta params let the server change `speed` without the
  * animation jumping (see clockAfterSpeedChange).
  */
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -23,14 +24,11 @@ const SEG_COLS = 12;
 const SEG_ROWS = 4;
 const SEGMENTS = SEG_COLS * SEG_ROWS;
 // Desk-style controls laid over every visual (DMX, setup/DMX.md), neutral by default:
-// dimmer, a colour that replaces the visual's own (tint 1), strobe in Hz (0 = off)
+// dimmer, saturation (from the desk's RGB), strobe in Hz (0 = off)
 // and intensities for the grid cells (mask 1)
 const FX_NEUTRAL = {
   fx_dimmer: 1,
-  fx_tint: 0,
-  fx_r: 1,
-  fx_g: 1,
-  fx_b: 1,
+  fx_sat: 1,
   fx_strobe: 0,
   fx_mask: 0,
   ...Object.fromEntries(Array.from({ length: SEGMENTS }, (_, i) => [`fx_s${i}`, 1])),
@@ -189,8 +187,8 @@ function buildShader(visual, width, height) {
     `    float t = ${time};`,
     '    vec2 uv = HOOKED_pos;',
     '    vec3 col = clamp(visual(uv, t), 0.0, 1.0);',
-    '    // Desk colour: keep the brightness, replace the colour',
-    '    if (fx_tint > 0.5) col = max(col.r, max(col.g, col.b)) * vec3(fx_r, fx_g, fx_b);',
+    '    // Desk colour: its hue goes to the visual\'s hue slider, its saturation here',
+    '    col = mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, fx_sat);',
     `    if (fx_mask > 0.5) col *= fx_segment(int(min(floor(uv.y * ${SEG_ROWS}.0), ${SEG_ROWS - 1}.0)) * ${SEG_COLS}`
       + ` + int(min(floor(uv.x * ${SEG_COLS}.0), ${SEG_COLS - 1}.0)));`,
     '    if (fx_strobe > 0.0 && fract(src_t * fx_strobe) > 0.3) col = vec3(0.0);',
@@ -249,9 +247,19 @@ function listBuiltins() {
 /** Writes the mpv shader for a visual file into cacheDir and returns its path. */
 function writeShader(filePath, cacheDir, id, { width, height }) {
   fs.mkdirSync(cacheDir, { recursive: true });
+  const shader = buildShader(readVisual(filePath), width, height);
+  // mpv keeps a shader file it loaded once by its path, so a changed shader
+  // (an edit, or a new backdrop) gets a new name; the old ones are removed
+  const hash = crypto.createHash('sha1').update(shader).digest('hex').slice(0, 10);
+  const name = `${id}-${hash}.glsl`;
+  for (const f of fs.readdirSync(cacheDir)) {
+    if (f !== name && (f === `${id}.glsl` || /^(.+)-[0-9a-f]{10}\.glsl$/.exec(f)?.[1] === id)) {
+      try { fs.unlinkSync(path.join(cacheDir, f)); } catch (_) {}
+    }
+  }
   // Absolute: mpv resolves paths against its own working directory
-  const out = path.resolve(cacheDir, `${id}.glsl`);
-  fs.writeFileSync(out, buildShader(readVisual(filePath), width, height));
+  const out = path.resolve(cacheDir, name);
+  if (!fs.existsSync(out)) fs.writeFileSync(out, shader);
   return out;
 }
 

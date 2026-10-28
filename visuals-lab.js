@@ -53,7 +53,7 @@ function dot2Fixture(slots) {
     channel(5, 'COLORRGB1', 'RGB', 'COLOR'),
     channel(6, 'COLORRGB2', 'RGB', 'COLOR'),
     channel(7, 'COLORRGB3', 'RGB', 'COLOR'),
-    channel(8, 'COLOR1', 'COLOR', 'COLOR', [set('Colour', 0, 255)], [0, 255]),
+    channel(8, 'COLOR1', 'COLOR', 'COLOR', [set('Second colour', 0, 255)], [0, 255]),
     channel(9, 'GOBO1_POS', 'GOBO', 'GOBO', [set('Speed slow', 0, 0), set('Speed fast', 255, 255)]),
     channel(10, 'SHUTTER', 'SHUTTER', 'BEAM', [set('Open', 0, 9), set('Strobe 1-20 Hz', 10, 255)], [0, 20]),
     channel(11, 'GOBO2', 'GOBO', 'GOBO', [set('Control 1', 0, 255)], [0, 255]),
@@ -81,6 +81,26 @@ function dot2Fixture(slots) {
 	</FixtureType>
 </MA>
 `;
+}
+
+// 0-255 RGB to hue, saturation and value, each 0-1
+function toHsv(r, g, b) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d) {
+    if (max === r) h = ((g - b) / d + 6) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+  }
+  return { h: h / 6, s: max ? d / max : 0, v: max / 255 };
+}
+
+// The slider the Colour channel moves: a second colour, else the colour spread
+const SECOND_COLOUR = ['hue2', 'spread'];
+function secondColour(v) {
+  return SECOND_COLOUR.find((n) => v.params.some((p) => p.name === n)) ?? null;
 }
 
 function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
@@ -312,11 +332,13 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
 
     const nextFx = { ...visuals.FX_NEUTRAL };
     if (on('dimmer')) nextFx.fx_dimmer = level('dimmer');
-    if (on('red') || on('green') || on('blue')) {
-      nextFx.fx_tint = 1;
-      nextFx.fx_r = (values.red ?? 0) / 255;
-      nextFx.fx_g = (values.green ?? 0) / 255;
-      nextFx.fx_b = (values.blue ?? 0) / 255;
+    // RGB picks the visual's colour like a colour mix on a fixture: its hue turns the
+    // visual's hue slider (below), saturation and brightness apply on top
+    const rgbOn = on('red') || on('green') || on('blue');
+    const rgb = rgbOn ? toHsv(values.red ?? 0, values.green ?? 0, values.blue ?? 0) : null;
+    if (rgb) {
+      nextFx.fx_sat = rgb.s;
+      nextFx.fx_dimmer *= rgb.v;
     }
     // 0-9 open, then 1-20 flashes per second
     if (on('strobe') && values.strobe >= 10) nextFx.fx_strobe = Math.round((1 + ((values.strobe - 10) * 19) / 245) * 10) / 10;
@@ -339,7 +361,11 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     const scaled = (p, fn) => p.min + (p.max - p.min) * level(fn);
     if (on('speed') && values.speed !== prev.speed && param('speed')) patch.speed = scaled(param('speed'), 'speed');
     const moved = (fn) => on(fn) && values[fn] !== prev[fn];
-    if (moved('colour') && param('hue')) patch.hue = scaled(param('hue'), 'colour');
+    const rgbMoved = moved('red') || moved('green') || moved('blue');
+    // Grey has no hue: leave the slider where it is
+    if (rgbMoved && rgb.s > 0.02 && param('hue')) patch.hue = param('hue').min + (param('hue').max - param('hue').min) * rgb.h;
+    const second = v && secondColour(v);
+    if (moved('colour') && second) patch[second] = scaled(param(second), 'colour');
     if (v) {
       controlsFor(v).forEach((name, i) => {
         if (name && moved(CONTROL_FNS[i]) && param(name)) patch[name] = scaled(param(name), CONTROL_FNS[i]);

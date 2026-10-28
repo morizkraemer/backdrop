@@ -211,11 +211,14 @@ function renderParams() {
     : '<span class="field-hint">This visual has no sliders.</span>';
 }
 
-// Which desk fader moves a slider: speed and hue are fixed, Control 1-3 are picked per visual
+// Which desk fader moves a slider: speed, hue (RGB) and the second colour
+// (hue2, else spread) are fixed, Control 1-3 are picked per visual
 function paramTag(name) {
   const tags = [];
+  const second = ['hue2', 'spread'].find((n) => current.params.some((p) => p.name === n));
   if (name === 'speed') tags.push('DMX speed');
-  if (name === 'hue') tags.push('DMX colour');
+  if (name === 'hue') tags.push('DMX RGB');
+  if (name === second) tags.push('DMX colour');
   current.controls.forEach((c, i) => { if (c === name) tags.push(`Control ${i + 1}`); });
   return tags.map((t) => ` <em>${t}</em>`).join('');
 }

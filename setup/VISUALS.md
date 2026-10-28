@@ -11,7 +11,7 @@ Visuals reach the wall only through the **Visuals** item in backdrop's library: 
 - **Preview**: the selected visual runs in the browser (WebGL2) with the same code, so you can try sliders and edits without touching the wall.
 - **Send to wall** puts it on the LED wall and the sliders then move it live. While the Visuals cue is live this just switches visuals; otherwise it's a test outside the cue list, which **Stop**, GO or any cue ends.
 - **Save as default** stores the sliders as the values DMX and Send to wall start with (`visuals.json`, `VISUALS_SETTINGS`).
-- **Desk faders**: which sliders the fixture's Control 1-3 move for this visual, saved right away. Speed and Colour always move the `speed` and `hue` sliders.
+- **Desk faders**: which sliders the fixture's Control 1-3 move for this visual, saved right away. Speed, RGB and Colour always move the `speed`, `hue` and `hue2` (else `spread`) sliders.
 - **Shader code**: edit and **Run preview** (Ctrl/Cmd+Enter); compile errors show over the preview with line numbers of the file. Built-ins are read-only: **Save as copy** makes your own, stored in `uploads/visuals/`. **New** starts from a template.
 - **DMX fixture**: channel of each fixture function and live fader values. The select value of each visual is shown in the list (DMX 10, 20, ...).
 
@@ -53,7 +53,7 @@ Shipped in `visuals/`, with 576×192 thumbnails in `visuals/thumbs/`.
 
 Use **New** or **Save as copy** in the lab (or add a file to `visuals/` with a 576×192 thumbnail). The file holds:
 
-1. A first comment line with the name: `// Plasma: soft colour clouds`. Optionally a `// controls: <param>, <param>, <param>` line naming the sliders the desk's Control 1-3 move by default (otherwise its sliders other than speed and hue, in order). The lab can change them per visual. A slider named `speed` follows the Speed channel and one named `hue` the Colour channel.
+1. A first comment line with the name: `// Plasma: soft colour clouds`. Optionally a `// controls: <param>, <param>, <param>` line naming the sliders the desk's Control 1-3 move by default (otherwise its sliders other than speed and hue, in order). The lab can change them per visual. A slider named `speed` follows the Speed channel, `hue` the RGB channels, and `hue2` (else `spread`) the Colour channel.
 2. One libplacebo `//!PARAM` block per slider. Use `DYNAMIC float` so moving the slider doesn't recompile the shader. `DESC` is the slider's label, `MINIMUM`/`MAXIMUM` its range, and the line after the block its default.
 3. A function `vec3 visual(vec2 uv, float t)` returning the colour (0-1) at `uv` (0-1, top left is 0,0) at time `t` in seconds.
 

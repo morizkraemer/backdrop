@@ -16,8 +16,8 @@ By default the 59 channels after BACK (4-62 with `DMX_ADDRESS=1`). They only act
 |---|---|---|
 | 4 | Visual select | 10-19 plays the first visual, 20-29 the second, and so on (the Visuals lab lists them: built-ins by file name, then your own by file name); 0-9 keeps the current one. |
 | 5 | Dimmer | 0-100 % on the visual. |
-| 6-8 | Red, green, blue | Replaces the visual's colours with this colour, keeping its brightness pattern. |
-| 9 | Colour | Across the visual's own colour (hue) slider, for visuals that have one. The RGB channels still tint on top. |
+| 6-8 | Red, green, blue | The visual's colour, mixed like on any RGB fixture: the hue turns the visual's own colour slider, so its gradients and spread stay; less saturation fades it towards white, and the mix's brightness dims it (all at 0 is dark). |
+| 9 | Colour | The visual's second colour (Marble's second colour), else its colour spread, for visuals with either. |
 | 10 | Speed | Across the visual's speed range. The animation never jumps when it changes. |
 | 11 | Strobe | 0-9 off, then 1-20 flashes per second. |
 | 12-14 | Control 1-3 | Three visual-specific sliders, picked per visual in the Visuals lab under Desk faders (by default its main sliders, e.g. pattern, size or density). |
@@ -40,7 +40,7 @@ dot2 only has its own attribute names, so the functions sit on the nearest ones:
 | 3 | Gobo 1 (Gobo view, named buttons) | Visual select |
 | 4 | Dimmer | Dimmer |
 | 5-7 | Color RGB | Red, green, blue |
-| 8 | Color 1 | Colour |
+| 8 | Color 1 | Colour (second colour) |
 | 9 | Gobo 1 position | Speed |
 | 10 | Shutter (Beam view) | Strobe |
 | 11 | Gobo 2 | Control 1 |

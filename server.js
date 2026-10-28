@@ -206,7 +206,7 @@ function playCue(index) {
   const s = state.getState();
   const cue = s.playlist[index];
   if (!cue) {
-    mpv.stop();
+    mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
     state.updateState({ currentCueIndex: -1 });
     broadcastState();
     return;
@@ -264,7 +264,7 @@ function advance() {
     } else if (s.playlistLoop && s.playlist.length > 0) {
       playCue(0);
     } else {
-      mpv.stop();
+      mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
       state.updateState({ currentCueIndex: -1 });
       broadcastState();
       clearDurationTimer();
@@ -476,7 +476,7 @@ function removeMedia(ids, extra = {}) {
     if (nextIdx < playlist.length) {
       playCue(nextIdx);
     } else {
-      mpv.stop();
+      mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
       clearDurationTimer();
     }
   } else {
@@ -806,7 +806,7 @@ app.delete('/api/playlist/:cueId', (req, res) => {
       currentCueIndex = -1;
       playCue(Math.min(idx, playlist.length - 1));
     } else {
-      mpv.stop();
+      mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
       clearDurationTimer();
       currentCueIndex = -1;
     }
@@ -827,7 +827,7 @@ function goNext() {
       playCue(0);
     } else {
       lab.release();
-      mpv.stop();
+      mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
       clearDurationTimer();
       state.updateState({ currentCueIndex: -1 });
     }
@@ -871,7 +871,7 @@ app.post('/api/go/:cueId', (req, res) => {
 
 app.post('/api/stop', (req, res) => {
   lab.release();
-  mpv.stop();
+  mpv.stop().catch((err) => console.warn('mpv stop:', err.message));
   clearDurationTimer();
   state.updateState({ currentCueIndex: -1 });
   broadcastState();
