@@ -225,7 +225,7 @@
 
   // which player gets the Pi's sound card
 
-  const PI_SOURCES = { backdrop: 'backdrop', spotify: 'Spotify', airplay: 'AirPlay', bluetooth: 'Bluetooth' };
+  const PI_SOURCES = { backdrop: 'backdrop', spotify: 'Spotify', bluetooth: 'Bluetooth' };
   const piAudioSources = $('piAudioSources');
   let piSource = null;
   let piPending = null; // source sent but not yet confirmed

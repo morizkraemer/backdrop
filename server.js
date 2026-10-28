@@ -983,14 +983,12 @@ app.post('/api/bluetooth/pairing', async (req, res) => {
   }
 });
 
-// Pi speakers source: every player on the Pi (snapclient for backdrop,
-// raspotify for Spotify Connect, shairport-sync for AirPlay, bluealsa-aplay
-// for Bluetooth) opens the USB sound card directly, so only one can play.
-// Picking one stops the others (needs setup/sudoers-pi-audio on the Pi).
+// Pi speakers source: snapclient (backdrop), raspotify (Spotify Connect) or
+// bluealsa-aplay (Bluetooth). Picking one stops the others, so only the
+// chosen one plays (needs setup/sudoers-pi-audio on the Pi).
 const PI_SOURCES = {
   backdrop: 'snapclient',
   spotify: 'raspotify',
-  airplay: 'shairport-sync',
   bluetooth: 'bluealsa-aplay',
 };
 
@@ -1020,14 +1018,8 @@ app.post('/api/pi-audio/source', async (req, res) => {
   // one unit per command so each matches a line of the sudoers rule
   const stops = Object.values(PI_SOURCES).filter((u) => u !== unit)
     .map((u) => `sudo -n systemctl stop ${u}`);
-  // The USB card pops when one player lets go and the next opens it, so mute
-  // it around the switch and unmute once the new player is running, even if
-  // the switch failed
-  const mixer = 'amixer -q -c CODEC sset PCM';
-  const cmd = `${mixer} mute; ${[...stops, `sudo -n systemctl start ${unit}`].join(' && ')}; rc=$?; `
-    + `sleep 1; ${mixer} unmute; exit $rc`;
   try {
-    await sshCommand(cmd);
+    await sshCommand([...stops, `sudo -n systemctl start ${unit}`].join(' && '));
     res.json({ source: await piAudioSource() });
   } catch (err) {
     res.status(500).json({ error: err.message });

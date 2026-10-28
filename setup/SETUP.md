@@ -126,12 +126,10 @@ systemctl enable snapclient
 systemctl start snapclient
 ```
 
-### Speakers picker (backdrop / Spotify / AirPlay / Bluetooth)
+### Speakers picker (backdrop / Spotify / Bluetooth)
 
-The Pi also runs raspotify (Spotify Connect), shairport-sync (AirPlay) and
-bluealsa-aplay (Bluetooth). All of them and snapclient open `hw:CODEC`
-directly, so only one can play; whichever grabs the card first wins. The
-**Speakers** picker in backdrop's header keeps only the chosen one running
+The Pi also runs raspotify (Spotify Connect) and bluealsa-aplay (Bluetooth).
+The **Audio** menu in backdrop's header keeps only the chosen player running
 by stopping the others over SSH (`BT_HOST`/`BT_USER` in `.env`). Let `bhf`
 do that without a password, once, on the Pi:
 
@@ -140,7 +138,31 @@ sudo install -m 0440 sudoers-pi-audio /etc/sudoers.d/pi-audio   # from setup/
 ```
 
 A stopped player disappears for phones: with backdrop picked, the Pi isn't
-offered in the Spotify app or as an AirPlay speaker until someone switches.
+offered in the Spotify app until someone switches back.
+
+All players play into an ALSA dmix called `speakers`, not straight into
+`hw:CODEC`. A keep-alive holds the USB card open at a fixed 48 kHz, so
+switching doesn't pop (the card used to close and reopen at 44.1 or 48 kHz).
+Added to `/etc/asound.conf`:
+
+```
+pcm.speakersmix {
+  type dmix
+  ipc_key 4242
+  ipc_perm 0666
+  slave { pcm "hw:CODEC"; rate 48000; format S16_LE; channels 2; period_size 1024; buffer_size 8192 }
+}
+pcm.speakers {
+  type plug
+  slave.pcm "speakersmix"
+}
+```
+
+and `/etc/systemd/system/speakers-keepalive.service` runs
+`aplay -q -D speakers -t raw -f S16_LE -r 48000 -c 2 /dev/zero` (Restart=always).
+The players point at `speakers`: `--soundcard speakers` in
+`/etc/default/snapclient`, `LIBRESPOT_DEVICE="speakers"` in
+`/etc/raspotify/conf`, and `--pcm=speakers` in the bluealsa-aplay override.
 
 ## 9. Verification
 
