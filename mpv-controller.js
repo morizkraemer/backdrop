@@ -131,7 +131,11 @@ class MpvController extends EventEmitter {
             }
           }
         } else if (msg.event) {
-          if (msg.event === 'end-file') this.emit('file-ended', msg);
+          // end-file also comes for the old file when a new one replaces it
+          // (reason "stop"), which would skip the cue that's just starting
+          if (msg.event === 'end-file') {
+            if (msg.reason === 'eof') this.emit('file-ended', msg);
+          }
           else if (msg.event === 'start-file') this.emit('file-loaded', msg);
           else if (msg.event === 'property-change' && msg.name === 'eof-reached') {
             if (msg.data === true) this.emit('file-ended', { event: 'end-file', reason: 'eof' });
