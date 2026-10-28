@@ -32,28 +32,26 @@ Shipped in `visuals/`, with 576×192 thumbnails in `visuals/thumbs/`.
 | Plasma | Soft colour clouds drifting across the wall |
 | Scanner | Light bars sweeping back and forth |
 | Smoke | Slow flowing noise, like haze in a beam |
-| Tunnel | Rings pulsing out from the centre |
 | Dots | A grid of LED-style dots lit by a travelling wave |
-| Wash | One colour over the whole wall, optionally breathing |
-| Stars | A starfield flying towards the audience |
 | Chase | Blocks lighting up in turn: run, bounce, fill, random, alternate |
-| Black hole | A swirling accretion disk falling into the dark, with lensed stars; "Trippy" cycles the colours |
 | Kaleido | A kaleidoscope of drifting colour, with adjustable mirrors |
 | Rain | Columns of falling glowing code |
 | Fire | Flames licking up from the bottom of the wall |
 | Lines | Stacked waveforms, like a sound-wave landscape |
-| Cells | Pulsing stained-glass (Voronoi) cells |
 | Ink | Clouds of ink blooming and curling in water |
 | Nebula | Glowing gas clouds and stars in deep space |
 | Marble | Slow liquid marbling of two colours |
 | Lava | Blobs rising and merging like a lava lamp |
-| Mandala | Rings of petals turning against each other |
 | Crystal | A kaleidoscope of sharp glassy facets |
 | Bars | Minimal: bars wiping across the wall (wipe, centre out, in from the sides, build up, random) |
 | Grid | Minimal: a grid of cells lighting in sequence (reading order, snake, columns, rows, random, checker) |
 | Pulse | Minimal: the whole wall hitting on the beat like a blinder (single, double, swell, left/right, thirds) |
 | Stripes | Minimal: clean lines moving across the wall at any angle |
 | Frames | Minimal: rectangles opening out from (or into) the centre |
+| Shutters | Minimal: slats opening and closing like venetian blinds, in a wave across the wall (or sideways) |
+| Wipes | Minimal: hard-edged wipes from one colour to the other (diagonal, iris, diamond, clock, split) |
+| Triangles | Minimal: a mesh of triangles flipping on and off (random, wave, sweep) |
+| Blocks | Minimal: the wall cut into hard rectangles that re-cut on every beat, in two colours |
 
 ## Writing a visual
 
