@@ -83,6 +83,9 @@ class MpvController extends EventEmitter {
         this._flushQueue();
         // With keep-open=yes mpv sends no end-file at EOF, so watch eof-reached
         this._command('observe_property', [1, 'eof-reached']).catch(() => {});
+        // Transparent image areas show as black (LEDs off), not mpv's checkerboard
+        this._command('set_property', ['background', 'color']).catch(() => {});
+        this._command('set_property', ['background-color', '#000000']).catch(() => {});
         if (this.reconnectCallback) this.reconnectCallback();
         resolve();
       });
