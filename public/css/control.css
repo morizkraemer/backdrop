@@ -381,6 +381,14 @@ a.btn-led:hover {
 
 /* HDMI matrix */
 
+/* Fade to black: lit while the wall is black */
+
+.btn-led.btn-black.active {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
 .btn-led.external {
   border-color: #6a4f1d;
   background: #241c0e;
@@ -2145,6 +2153,10 @@ button.crumb:hover {
 /* Phones: keep the header to one row of icons so the page never scrolls sideways */
 @media (max-width: 480px) {
   .header h1 {
+    display: none;
+  }
+
+  #blackText {
     display: none;
   }
 
