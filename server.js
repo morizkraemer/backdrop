@@ -36,6 +36,12 @@ let isTransitioning = false;
 let wss = null;
 let mpvProcess = null;
 let led = { configured: !!config.novaHost, available: false, brightness: null };
+// Fade to black (fadeToBlack): 0 clear .. 1 black, what mpv shows now, and where it's fading
+let black = 0;
+let blackTarget = 0;
+let fadeTimer = null;
+const FADE_MS = 1000;
+const FADE_STEP_MS = 40;
 const matrix = config.hdmiHosts.length ? createMatrix(config.hdmiHosts) : null;
 let hdmi = {
   configured: !!matrix,
@@ -94,6 +100,7 @@ function broadcastState() {
     dmx: { ...dmx, ...getDmxConfig() },
     visual: lab.status(),
     grid: grid.status(),
+    blackout: blackTarget === 1,
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -352,6 +359,7 @@ function handleFileEnded() {
 mpv.on('file-ended', handleFileEnded);
 mpv.onReconnect(() => {
   const s = state.getState();
+  if (black > 0) mpv.setBlack(black).catch(() => {});
   if (wallMode() === 'visuals') lab.enter().catch((err) => console.warn('Visuals:', err.message));
   else if (wallMode() === 'grid') grid.enter().catch((err) => console.warn('Grid:', err.message));
   else if (s.currentCueIndex >= 0 && s.currentCueIndex < s.playlist.length) {
@@ -440,6 +448,31 @@ app.use('/api/visuals', lab.router);
 app.use('/api/grid', grid.router);
 app.get('/visuals', (req, res) => res.sendFile(path.join(__dirname, 'public', 'visuals.html')));
 app.get('/grid', (req, res) => res.sendFile(path.join(__dirname, 'public', 'grid.html')));
+
+// --- Fade to black: a black layer over whatever the wall shows. It stays
+// until faded back in, also across cue changes and tab switches ---
+
+function fadeToBlack(on) {
+  blackTarget = on ? 1 : 0;
+  broadcastState();
+  if (fadeTimer) return; // the running fade turns around
+  fadeTimer = setInterval(() => {
+    const step = FADE_STEP_MS / FADE_MS;
+    black = blackTarget > black ? Math.min(blackTarget, black + step) : Math.max(blackTarget, black - step);
+    mpv.setBlack(black).catch(() => {});
+    if (black === blackTarget) {
+      clearInterval(fadeTimer);
+      fadeTimer = null;
+    }
+  }, FADE_STEP_MS);
+}
+
+app.put('/api/blackout', (req, res) => {
+  const { on } = req.body ?? {};
+  if (typeof on !== 'boolean') return res.status(400).json({ error: 'on must be true or false' });
+  fadeToBlack(on);
+  res.json({ blackout: on });
+});
 
 // The wall's tab: cues, visuals or grid, for every page at once
 app.put('/api/wall', (req, res) => {
@@ -1372,6 +1405,7 @@ wss.on('connection', (ws) => {
     dmx: { ...dmx, ...getDmxConfig() },
     visual: lab.status(),
     grid: grid.status(),
+    blackout: blackTarget === 1,
   }));
   pollLed();
   pollHdmi();

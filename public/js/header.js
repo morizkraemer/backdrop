@@ -1,7 +1,7 @@
 // The header at the top of every page (control, visuals and grid.html): the
-// tabs for what the wall shows (server.js setWallMode), then a few menus: DMX,
-// Wall (HDMI source, LED brightness), Audio (Pi speakers, Bluetooth pairing)
-// and a status dot for the player, the connection and disk space. It's the
+// tabs for what the wall shows (server.js setWallMode), a fade to black button,
+// then a few menus: DMX, Wall (HDMI source, LED brightness), Audio (Pi
+// speakers, Bluetooth pairing) and a status dot for the player, the connection and disk space. It's the
 // same on every tab, so switching tabs doesn't move anything. Each page
 // fills <header id="appHeader" data-page="..."> by loading this script first,
 // then calls appHeader.update(state, connected) on every WebSocket update.
@@ -20,6 +20,10 @@
     </nav>
   </div>
   <div class="header-right">
+    <button type="button" class="btn-led btn-black" id="btnBlack" aria-pressed="false" title="Fade the wall to black">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg>
+      <span id="blackText">Black</span>
+    </button>
     <div class="dmx" id="dmx" hidden>
       <button type="button" class="btn-led" id="btnDmx" aria-expanded="false" aria-controls="dmxPopover" title="DMX control (Art-Net)">
         <span class="sig" id="dmxSig"></span>
@@ -143,6 +147,22 @@
     api('PUT', '/wall', { mode: tab.dataset.mode }).then((res) => {
       if (res.ok) location.href = tab.href;
     }).catch(() => {});
+  });
+
+  // --- Fade to black: one button, the same on every tab ---
+
+  const btnBlack = $('btnBlack');
+
+  function renderBlack() {
+    const on = !!state.blackout;
+    btnBlack.classList.toggle('active', on);
+    btnBlack.setAttribute('aria-pressed', String(on));
+    btnBlack.title = on ? 'The wall is black: fade back in' : 'Fade the wall to black';
+    $('blackText').textContent = on ? 'Fade in' : 'Black';
+  }
+
+  btnBlack.addEventListener('click', () => {
+    api('PUT', '/blackout', { on: !state.blackout }).catch(() => {});
   });
 
   // --- Menus: one open at a time; outside click or Escape closes it ---
@@ -526,6 +546,7 @@
       connected = !!isConnected;
       if (PAGES[state.wallMode] && state.wallMode !== page) location.replace(PAGES[state.wallMode]);
       renderStatus();
+      renderBlack();
       renderLed();
       renderHdmi();
       renderDmx();

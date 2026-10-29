@@ -288,6 +288,16 @@ class MpvController extends EventEmitter {
     return this.setProperty('glsl-shader-opts', opts);
   }
 
+  // Black over everything mpv draws (cues, visuals, grid) as an OSD layer:
+  // level 0 (gone) to 1 (fully black). The rectangle is oversized so it covers
+  // any panel aspect.
+  setBlack(level) {
+    if (level <= 0) return this._command('osd-overlay', [1, 'none', '']);
+    const alpha = Math.round((1 - Math.min(level, 1)) * 255).toString(16).padStart(2, '0').toUpperCase();
+    const box = `{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H000000&\\1a&H${alpha}&\\p1}m -5000 -5000 l 10000 -5000 10000 10000 -5000 10000`;
+    return this._command('osd-overlay', [1, 'ass-events', box, 0, 720, 0]);
+  }
+
   stop() {
     return this._command('stop');
   }
