@@ -350,6 +350,11 @@ a.btn-led:hover {
   color: var(--live);
 }
 
+.dmx-enable {
+  height: 40px;
+  justify-content: center;
+}
+
 .dmx-val {
   font-family: var(--mono);
   font-size: 12px;

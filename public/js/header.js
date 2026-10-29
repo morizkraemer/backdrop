@@ -23,13 +23,14 @@
     <div class="dmx" id="dmx" hidden>
       <button type="button" class="btn-led" id="btnDmx" aria-expanded="false" aria-controls="dmxPopover" title="DMX control (Art-Net)">
         <span class="sig" id="dmxSig"></span>
-        <span>DMX</span>
+        <span id="dmxText">DMX</span>
       </button>
       <div class="dmx-popover" id="dmxPopover" hidden>
         <div class="led-head">
           <span class="field-label">DMX control</span>
           <span class="dmx-state" id="hdrDmxState"></span>
         </div>
+        <button type="button" class="btn-bt dmx-enable" id="hdrDmxEnable" aria-pressed="true">Receiving from the desk</button>
         <label class="dmx-start">
           <span class="field-label">Start address</span>
           <input type="number" id="hdrDmxStart" min="1" max="510" step="1" inputmode="numeric" placeholder="—" aria-label="Control fixture start address">
@@ -453,12 +454,18 @@
     const d = state.dmx || {};
     dmxEl.hidden = !d.configured;
     if (!d.configured) return;
-    const on = !!d.receiving;
+    const enabled = d.enabled !== false;
+    const on = enabled && !!d.receiving;
     btnDmx.classList.toggle('offline', !on);
     $('dmxSig').classList.toggle('on', on);
-    btnDmx.title = on ? 'DMX: receiving' : 'DMX: no signal';
-    $('hdrDmxState').textContent = on ? 'Receiving' : 'No signal';
+    $('dmxText').textContent = enabled ? 'DMX' : 'DMX off';
+    btnDmx.title = !enabled ? 'DMX: switched off' : on ? 'DMX: receiving' : 'DMX: no signal';
+    $('hdrDmxState').textContent = !enabled ? 'Off' : on ? 'Receiving' : 'No signal';
     $('hdrDmxState').classList.toggle('on', on);
+    const toggle = $('hdrDmxEnable');
+    toggle.classList.toggle('active', enabled);
+    toggle.setAttribute('aria-pressed', String(enabled));
+    toggle.textContent = enabled ? 'Receiving from the desk · turn off' : 'Desk ignored · turn on';
     DMX_FUNCTIONS.forEach((fn) => {
       const row = dmxChannels.querySelector(`input[data-fn="${fn.key}"]`).closest('.dmx-ch');
       const input = row.querySelector('input');
@@ -480,8 +487,12 @@
     $('hdrDmxStartHint').textContent = ctl?.start ? `Channels ${ctl.start}-${ctl.start + ctl.size - 1}` : 'Set one by one';
     const status = $('hdrDmxStatus');
     status.classList.toggle('error', !!dmxError);
-    status.textContent = dmxError || (on ? '' : `Waiting for Art-Net on universe ${d.universe ?? 0}`);
+    status.textContent = dmxError || (on || !enabled ? '' : `Waiting for Art-Net on universe ${d.universe ?? 0}`);
   }
+
+  $('hdrDmxEnable').addEventListener('click', () => {
+    sendDmxConfig({ enabled: (state.dmx || {}).enabled === false });
+  });
 
   $('hdrDmxStart').addEventListener('change', (e) => {
     const start = Math.round(Number(e.target.value));

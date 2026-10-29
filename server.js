@@ -1237,7 +1237,9 @@ function getDmxConfig() {
     const start = first && fns.every((fn, i) => channels[fn] === first + i) ? first : null;
     return [name, { start, size: fns.length }];
   }));
-  return { universe: config.dmxUniverse ?? 0, channels, fixtures, visuals: lab.slots() };
+  // Receiving can be switched off in the header's DMX menu (on unless saved off)
+  const enabled = state.getState().dmxConfig?.enabled !== false;
+  return { universe: config.dmxUniverse ?? 0, enabled, channels, fixtures, visuals: lab.slots() };
 }
 
 function setDmx(patch) {
@@ -1250,8 +1252,8 @@ function setDmx(patch) {
 }
 
 function handleDmxFrame(universe, data) {
-  const { universe: want, channels } = getDmxConfig();
-  if (universe !== want) return;
+  const { universe: want, enabled, channels } = getDmxConfig();
+  if (!enabled || universe !== want) return;
   dmxLastPacket = Date.now();
   const values = {};
   for (const fn of DMX_FUNCTIONS) values[fn] = channels[fn] ? data[channels[fn] - 1] ?? 0 : null;
@@ -1315,6 +1317,10 @@ app.put('/api/dmx', (req, res) => {
   if (!dmx.configured) return res.status(501).json({ error: 'DMX is disabled (DMX_UNIVERSE is empty)' });
   const cur = getDmxConfig();
   const channels = { ...cur.channels };
+  const { enabled } = req.body ?? {};
+  if (enabled !== undefined && typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'enabled must be true or false' });
+  }
   // A start address patches a whole fixture there, like on the desk
   if (req.body?.start !== undefined) {
     const fns = DMX_FIXTURES[req.body.fixture];
@@ -1334,7 +1340,7 @@ app.put('/api/dmx', (req, res) => {
     }
     channels[fn] = ch;
   }
-  state.updateState({ dmxConfig: { channels } });
+  state.updateState({ dmxConfig: { channels, enabled: enabled ?? cur.enabled } });
   dmxLast = null;
   lab.resetDmx();
   grid.resetDmx();
