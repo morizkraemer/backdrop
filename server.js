@@ -975,9 +975,57 @@ app.post('/api/bluetooth/pairing', async (req, res) => {
   const { enabled } = req.body;
   const onOff = enabled ? 'on' : 'off';
   try {
-    // pairable too, or new devices are rejected even while discoverable
+    // pairable too, or new phones see the Pi but can't pair
     await sshCommand(`bluetoothctl pairable ${onOff} && bluetoothctl discoverable ${onOff}`);
     res.json({ discoverable: !!enabled });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Pi speakers source: snapclient (backdrop), raspotify (Spotify Connect) and
+// bluealsa-aplay (Bluetooth) all run all the time, each through its own ALSA
+// softvol control on the Pi's sound card (setup/SETUP.md). Picking a source
+// turns its control up and the others to zero, so Spotify stays connected.
+// bhf is in the audio group, so amixer needs no sudo.
+const PI_SOURCES = {
+  backdrop: 'Backdrop',
+  spotify: 'Spotify',
+  bluetooth: 'Bluetooth',
+};
+const PI_MIXER = 'amixer -c CODEC';
+
+async function piAudioSource() {
+  // sget fails for a control that doesn't exist yet, so always succeed
+  const out = await sshCommand(Object.values(PI_SOURCES)
+    .map((c) => `echo "${c} $(${PI_MIXER} sget ${c} 2>/dev/null | grep -o '\\[[0-9]*%\\]' | head -1)"`)
+    .join('; '));
+  const on = Object.keys(PI_SOURCES).filter((key) => {
+    const line = out.split('\n').find((l) => l.startsWith(`${PI_SOURCES[key]} `)) || '';
+    const pct = Number((line.match(/\[(\d+)%\]/) || [])[1]);
+    return pct > 0;
+  });
+  // several up means they play over each other: show it as mixed
+  return on.length === 1 ? on[0] : on.length ? 'mixed' : null;
+}
+
+app.get('/api/pi-audio/status', async (req, res) => {
+  if (!config.btHost) return res.json({ available: false });
+  try {
+    res.json({ available: true, source: await piAudioSource() });
+  } catch {
+    res.json({ available: false });
+  }
+});
+
+app.post('/api/pi-audio/source', async (req, res) => {
+  if (!config.btHost) return res.status(501).json({ error: 'BT_HOST not configured' });
+  const control = PI_SOURCES[req.body.source];
+  if (!control) return res.status(400).json({ error: `source must be one of ${Object.keys(PI_SOURCES).join(', ')}` });
+  const levels = Object.values(PI_SOURCES).map((c) => `${PI_MIXER} -q sset ${c} ${c === control ? '100%' : '0%'}`);
+  try {
+    await sshCommand(levels.join(' && '));
+    res.json({ source: await piAudioSource() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1189,7 +1237,9 @@ function getDmxConfig() {
     const start = first && fns.every((fn, i) => channels[fn] === first + i) ? first : null;
     return [name, { start, size: fns.length }];
   }));
-  return { universe: config.dmxUniverse ?? 0, channels, fixtures, visuals: lab.slots() };
+  // Receiving can be switched off in the header's DMX menu (on unless saved off)
+  const enabled = state.getState().dmxConfig?.enabled !== false;
+  return { universe: config.dmxUniverse ?? 0, enabled, channels, fixtures, visuals: lab.slots() };
 }
 
 function setDmx(patch) {
@@ -1202,8 +1252,8 @@ function setDmx(patch) {
 }
 
 function handleDmxFrame(universe, data) {
-  const { universe: want, channels } = getDmxConfig();
-  if (universe !== want) return;
+  const { universe: want, enabled, channels } = getDmxConfig();
+  if (!enabled || universe !== want) return;
   dmxLastPacket = Date.now();
   const values = {};
   for (const fn of DMX_FUNCTIONS) values[fn] = channels[fn] ? data[channels[fn] - 1] ?? 0 : null;
@@ -1267,6 +1317,10 @@ app.put('/api/dmx', (req, res) => {
   if (!dmx.configured) return res.status(501).json({ error: 'DMX is disabled (DMX_UNIVERSE is empty)' });
   const cur = getDmxConfig();
   const channels = { ...cur.channels };
+  const { enabled } = req.body ?? {};
+  if (enabled !== undefined && typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'enabled must be true or false' });
+  }
   // A start address patches a whole fixture there, like on the desk
   if (req.body?.start !== undefined) {
     const fns = DMX_FIXTURES[req.body.fixture];
@@ -1286,7 +1340,7 @@ app.put('/api/dmx', (req, res) => {
     }
     channels[fn] = ch;
   }
-  state.updateState({ dmxConfig: { channels } });
+  state.updateState({ dmxConfig: { channels, enabled: enabled ?? cur.enabled } });
   dmxLast = null;
   lab.resetDmx();
   grid.resetDmx();

@@ -1,7 +1,8 @@
 // The header at the top of every page (control, visuals and grid.html): the
-// player, the tabs for what the wall shows (server.js setWallMode), DMX, the
-// HDMI source, LED brightness, Bluetooth, disk space and the connection. It's
-// the same on every tab, so switching tabs doesn't move anything. Each page
+// tabs for what the wall shows (server.js setWallMode), then a few menus: DMX,
+// Wall (HDMI source, LED brightness), Audio (Pi speakers, Bluetooth pairing)
+// and a status dot for the player, the connection and disk space. It's the
+// same on every tab, so switching tabs doesn't move anything. Each page
 // fills <header id="appHeader" data-page="..."> by loading this script first,
 // then calls appHeader.update(state, connected) on every WebSocket update.
 (function () {
@@ -12,10 +13,6 @@
   el.innerHTML = `
   <div class="header-left">
     <h1>backdrop</h1>
-    <div class="player-pill" id="playerPill">
-      <span class="dot"></span>
-      <span id="playerText">Connecting…</span>
-    </div>
     <nav class="wall-tabs" id="wallTabs" aria-label="What the wall shows">
       <a href="/control" data-mode="cues">Cues</a>
       <a href="/visuals" data-mode="visuals">Visuals</a>
@@ -26,13 +23,14 @@
     <div class="dmx" id="dmx" hidden>
       <button type="button" class="btn-led" id="btnDmx" aria-expanded="false" aria-controls="dmxPopover" title="DMX control (Art-Net)">
         <span class="sig" id="dmxSig"></span>
-        <span>DMX</span>
+        <span id="dmxText">DMX</span>
       </button>
       <div class="dmx-popover" id="dmxPopover" hidden>
         <div class="led-head">
           <span class="field-label">DMX control</span>
           <span class="dmx-state" id="hdrDmxState"></span>
         </div>
+        <button type="button" class="btn-bt dmx-enable" id="hdrDmxEnable" aria-pressed="true">Receiving from the desk</button>
         <label class="dmx-start">
           <span class="field-label">Start address</span>
           <input type="number" id="hdrDmxStart" min="1" max="510" step="1" inputmode="numeric" placeholder="—" aria-label="Control fixture start address">
@@ -45,44 +43,65 @@
         <div class="led-status" id="hdrDmxStatus"></div>
       </div>
     </div>
-    <div class="hdmi" id="hdmi" hidden>
-      <button type="button" class="btn-led" id="btnHdmi" aria-expanded="false" aria-controls="hdmiPopover" title="LED wall source (HDMI matrix)">
+    <div class="menu" id="wallMenu" hidden>
+      <button type="button" class="btn-led" id="btnWall" aria-expanded="false" aria-controls="wallPopover" title="LED wall: source and brightness">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
-        <span id="hdmiText">—</span>
+        <span id="wallText">Wall</span>
       </button>
-      <div class="hdmi-popover" id="hdmiPopover" hidden>
-        <span class="field-label" id="lblHdmi">LED wall source</span>
-        <div class="hdmi-sources" id="hdmiSources" role="radiogroup" aria-labelledby="lblHdmi"></div>
-        <div class="led-status" id="hdmiStatus"></div>
+      <div class="menu-popover" id="wallPopover" hidden>
+        <section class="menu-section" id="hdmi" hidden>
+          <span class="field-label" id="lblHdmi">Source</span>
+          <div class="hdmi-sources" id="hdmiSources" role="radiogroup" aria-labelledby="lblHdmi"></div>
+          <div class="led-status" id="hdmiStatus"></div>
+        </section>
+        <section class="menu-section" id="led" hidden>
+          <div class="led-head">
+            <span class="field-label" id="lblLed">Brightness</span>
+            <span class="led-value" id="ledValue">—</span>
+          </div>
+          <input type="range" id="ledSlider" min="0" max="100" step="1" aria-labelledby="lblLed">
+          <div class="led-presets" id="ledPresets">
+            <button type="button" data-value="0">Off</button>
+            <button type="button" data-value="25">25</button>
+            <button type="button" data-value="50">50</button>
+            <button type="button" data-value="75">75</button>
+            <button type="button" data-value="100">100</button>
+          </div>
+          <div class="led-status" id="ledStatus"></div>
+        </section>
       </div>
     </div>
-    <div class="led" id="led" hidden>
-      <button type="button" class="btn-led" id="btnLed" aria-expanded="false" aria-controls="ledPopover" title="LED panel brightness">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M4.93 19.07l1.41-1.41"/><path d="M17.66 6.34l1.41-1.41"/></svg>
-        <span id="ledText">—</span>
+    <div class="menu" id="audioMenu" hidden>
+      <button type="button" class="btn-led" id="btnAudio" aria-expanded="false" aria-controls="audioPopover" title="Speakers and Bluetooth">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+        <span id="audioText">Audio</span>
       </button>
-      <div class="led-popover" id="ledPopover" hidden>
-        <div class="led-head">
-          <span class="field-label" id="lblLed">LED brightness</span>
-          <span class="led-value" id="ledValue">—</span>
-        </div>
-        <input type="range" id="ledSlider" min="0" max="100" step="1" aria-labelledby="lblLed">
-        <div class="led-presets" id="ledPresets">
-          <button type="button" data-value="0">Off</button>
-          <button type="button" data-value="25">25</button>
-          <button type="button" data-value="50">50</button>
-          <button type="button" data-value="75">75</button>
-          <button type="button" data-value="100">100</button>
-        </div>
-        <div class="led-status" id="ledStatus"></div>
+      <div class="menu-popover" id="audioPopover" hidden>
+        <section class="menu-section" id="piAudio" hidden>
+          <span class="field-label" id="lblPiAudio">Speakers play</span>
+          <div class="hdmi-sources" id="piAudioSources" role="radiogroup" aria-labelledby="lblPiAudio"></div>
+          <div class="led-status" id="piAudioStatus"></div>
+        </section>
+        <section class="menu-section" id="btSection" hidden>
+          <button type="button" class="btn-bt" id="btnBluetooth" aria-pressed="false" title="Let new phones pair with the speakers">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>
+            <span id="btText">Bluetooth pairing</span>
+          </button>
+        </section>
       </div>
     </div>
-    <button type="button" class="btn-bt" id="btnBluetooth" hidden aria-pressed="false" title="Bluetooth pairing mode">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>
-      <span id="btText">BT pairing</span>
-    </button>
-    <span id="diskSpace">—</span>
-    <span class="conn" id="connStatus"><span class="dot"></span><span id="connText">Connecting…</span></span>
+    <div class="menu" id="statusMenu">
+      <button type="button" class="btn-led btn-status" id="btnStatus" aria-expanded="false" aria-controls="statusPopover" title="Status">
+        <span class="dot" id="statusDot"></span>
+      </button>
+      <div class="menu-popover" id="statusPopover" hidden>
+        <dl class="status-list">
+          <dt>Player</dt><dd id="playerText">—</dd>
+          <dt>Control</dt><dd id="connText">—</dd>
+          <dt>Disk</dt><dd id="diskSpace">—</dd>
+        </dl>
+      </div>
+    </div>
   </div>`;
 
   const $ = (id) => document.getElementById(id);
@@ -126,27 +145,64 @@
     }).catch(() => {});
   });
 
-  function renderStatus() {
-    const online = state.mpvConnected !== false;
-    const pill = $('playerPill');
-    pill.classList.toggle('offline', !online);
-    pill.querySelector('.dot').className = `dot ${online ? 'on' : 'off'}`;
-    $('playerText').textContent = online ? 'LED panel · 2304×768 · player online' : 'Player offline';
-    $('diskSpace').textContent = `${formatBytes(state.diskFree)} free`;
-    $('connStatus').querySelector('.dot').className = `dot ${connected ? 'on' : 'off'}`;
-    $('connText').textContent = connected ? 'Connected' : 'Reconnecting…';
+  // --- Menus: one open at a time; outside click or Escape closes it ---
+
+  const menus = [];
+
+  function menu(id, onOpen) {
+    const root = $(id);
+    const btn = root.querySelector(':scope > button');
+    const pop = root.querySelector(':scope > div');
+    const m = {
+      root,
+      get open() { return !pop.hidden; },
+      setOpen(open) {
+        pop.hidden = !open;
+        btn.setAttribute('aria-expanded', String(open));
+        if (!open) return;
+        menus.forEach((o) => { if (o !== m) o.setOpen(false); });
+        onOpen?.();
+      },
+    };
+    btn.addEventListener('click', () => m.setOpen(pop.hidden));
+    menus.push(m);
   }
 
-  // --- Bluetooth pairing (only shown when the server has BT_HOST configured) ---
+  document.addEventListener('click', (e) => {
+    // composedPath: the clicked button may already be replaced by a re-render
+    menus.forEach((m) => { if (m.open && !e.composedPath().includes(m.root)) m.setOpen(false); });
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') menus.forEach((m) => { if (m.open) m.setOpen(false); });
+  });
+
+  // --- Status: player, connection and disk space behind one dot ---
+
+  menu('statusMenu');
+
+  function renderStatus() {
+    const online = state.mpvConnected !== false;
+    const ok = online && connected;
+    $('statusDot').className = `dot ${ok ? 'on' : 'off'}`;
+    $('btnStatus').classList.toggle('alert', !ok);
+    $('btnStatus').title = !connected ? 'Reconnecting…' : online ? 'Status: all good' : 'Player offline';
+    $('playerText').textContent = online ? 'Online' : 'Offline';
+    $('connText').textContent = connected ? 'Connected' : 'Reconnecting…';
+    $('diskSpace').textContent = state.diskFree != null ? `${formatBytes(state.diskFree)} free` : '—';
+  }
+
+  // --- Audio menu: Bluetooth pairing and the Pi speakers (only shown when the
+  // server has BT_HOST configured) ---
 
   const btnBluetooth = $('btnBluetooth');
   let btDiscoverable = false;
 
   function renderBluetooth(available) {
-    btnBluetooth.hidden = !available;
+    $('btSection').hidden = !available;
+    if (available) $('audioMenu').hidden = false;
     btnBluetooth.classList.toggle('active', btDiscoverable);
     btnBluetooth.setAttribute('aria-pressed', String(btDiscoverable));
-    $('btText').textContent = btDiscoverable ? 'BT pairing on' : 'BT pairing';
+    $('btText').textContent = btDiscoverable ? 'Bluetooth pairing on' : 'Bluetooth pairing';
   }
 
   api('GET', '/bluetooth/status')
@@ -168,11 +224,86 @@
       .catch(() => {});
   });
 
+  // which player gets the Pi's sound card
+
+  const PI_SOURCES = { backdrop: 'backdrop', spotify: 'Spotify', bluetooth: 'Bluetooth' };
+  const piAudioSources = $('piAudioSources');
+  let piSource = null;
+  let piPending = null; // source sent but not yet confirmed
+  let piError = null;
+
+  function renderPiAudio() {
+    $('btnAudio').classList.toggle('external', !!piSource && piSource !== 'backdrop');
+    $('audioText').textContent = piSource === 'mixed' ? 'Mixed'
+      : piSource ? PI_SOURCES[piSource] : 'Speakers off';
+    const status = $('piAudioStatus');
+    status.classList.toggle('error', !!piError || piSource === 'mixed');
+    status.textContent = piError ? piError
+      : piPending ? 'Switching…'
+      : piSource === 'mixed' ? 'Several players are on and fight over the speakers. Pick one.'
+      : '';
+    piAudioSources.innerHTML = Object.entries(PI_SOURCES).map(([key, name]) => {
+      const active = piSource === key;
+      return `<button type="button" role="radio" aria-checked="${active}" data-source="${key}" class="${active ? 'active' : ''}${piPending === key ? ' pending' : ''}">
+        <span class="hdmi-name">${name}</span>
+      </button>`;
+    }).join('');
+  }
+
+  api('GET', '/pi-audio/status')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (!data || !data.available) return;
+      piSource = data.source;
+      $('piAudio').hidden = false;
+      $('audioMenu').hidden = false;
+      renderPiAudio();
+    })
+    .catch(() => {});
+
+  function sendPiSource(source) {
+    piPending = source;
+    piError = null;
+    renderPiAudio();
+    api('POST', '/pi-audio/source', { source })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || 'Could not switch');
+        piSource = data.source;
+      })
+      .catch((err) => { piError = err.message; })
+      .finally(() => {
+        if (piPending === source) piPending = null;
+        renderPiAudio();
+      });
+  }
+
+  menu('audioMenu', renderPiAudio);
+
+  piAudioSources.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-source]');
+    if (b && !piPending) sendPiSource(b.dataset.source);
+  });
+
+  // --- Wall menu: HDMI source and LED brightness; the button shows both ---
+
+  let wallSource = null;
+  let wallLed = null;
+  let wallExternal = false;
+
+  function renderWallButton() {
+    $('wallMenu').hidden = wallSource == null && wallLed == null;
+    $('btnWall').classList.toggle('external', wallExternal);
+    const parts = [wallSource, wallLed].filter(Boolean);
+    $('wallText').textContent = parts.length && parts.every((t) => t.endsWith('offline')) ? 'Wall offline'
+      : parts.join(' · ') || 'Wall';
+  }
+
+  menu('wallMenu', () => { renderHdmi(); renderLed(); });
+
   // --- LED panel brightness (NovaStar controller, proxied by the server) ---
 
   const ledEl = $('led');
-  const btnLed = $('btnLed');
-  const ledPopover = $('ledPopover');
   const ledSlider = $('ledSlider');
   let ledDragging = false;
   let ledPending = null; // value sent but not yet confirmed
@@ -184,8 +315,8 @@
     ledEl.hidden = !led.configured;
     const online = !!led.available;
     const shown = ledDragging || ledPending !== null ? Number(ledSlider.value) : led.brightness;
-    btnLed.classList.toggle('offline', !online);
-    $('ledText').textContent = online && shown != null ? `${shown}%` : 'LED offline';
+    wallLed = !led.configured ? null : online && shown != null ? `${shown}%` : 'LED offline';
+    renderWallButton();
     $('ledValue').textContent = shown != null ? `${shown}%` : '—';
     if (!ledDragging && ledPending === null && led.brightness != null) ledSlider.value = led.brightness;
     ledSlider.disabled = !online;
@@ -216,20 +347,6 @@
       });
   }
 
-  function setLedOpen(open) {
-    ledPopover.hidden = !open;
-    btnLed.setAttribute('aria-expanded', String(open));
-    if (open) renderLed();
-  }
-
-  btnLed.addEventListener('click', () => setLedOpen(ledPopover.hidden));
-  document.addEventListener('click', (e) => {
-    if (!ledPopover.hidden && !ledEl.contains(e.target)) setLedOpen(false);
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !ledPopover.hidden) setLedOpen(false);
-  });
-
   // Sends while dragging (throttled) so the panel follows the slider
   ledSlider.addEventListener('input', () => {
     ledDragging = true;
@@ -257,8 +374,6 @@
   // --- LED wall source (HDMI matrix output, proxied by the server) ---
 
   const hdmiEl = $('hdmi');
-  const btnHdmi = $('btnHdmi');
-  const hdmiPopover = $('hdmiPopover');
   const hdmiSources = $('hdmiSources');
   let hdmiPending = null; // input sent but not yet confirmed
   let hdmiError = null;
@@ -266,14 +381,16 @@
   function renderHdmi() {
     const h = state.hdmi || {};
     hdmiEl.hidden = !h.configured;
-    if (!h.configured) return;
+    wallSource = null;
+    wallExternal = false;
+    if (!h.configured) return renderWallButton();
     const online = !!h.available;
     const sources = h.sources || [];
     const current = sources[h.current - 1];
-    btnHdmi.classList.toggle('offline', !online);
     // Input 1 is backdrop itself; anything else means the wall isn't showing the cues
-    btnHdmi.classList.toggle('external', online && h.current > 1);
-    $('hdmiText').textContent = !online ? 'Source offline' : current ? current.name : '—';
+    wallExternal = online && h.current > 1;
+    wallSource = !online ? 'Source offline' : current ? current.name : '—';
+    renderWallButton();
 
     const status = $('hdmiStatus');
     status.classList.toggle('error', !!hdmiError || !online);
@@ -308,20 +425,6 @@
       });
   }
 
-  function setHdmiOpen(open) {
-    hdmiPopover.hidden = !open;
-    btnHdmi.setAttribute('aria-expanded', String(open));
-    if (open) renderHdmi();
-  }
-
-  btnHdmi.addEventListener('click', () => setHdmiOpen(hdmiPopover.hidden));
-  document.addEventListener('click', (e) => {
-    // composedPath: the clicked button may already be replaced by a re-render
-    if (!hdmiPopover.hidden && !e.composedPath().includes(hdmiEl)) setHdmiOpen(false);
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !hdmiPopover.hidden) setHdmiOpen(false);
-  });
   hdmiSources.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-input]');
     if (b && !b.disabled) sendHdmiSource(Number(b.dataset.input));
@@ -331,7 +434,6 @@
 
   const dmxEl = $('dmx');
   const btnDmx = $('btnDmx');
-  const dmxPopover = $('dmxPopover');
   const dmxChannels = $('hdrDmxChannels');
   // backdrop's Control fixture on the desk, in channel order (server.js DMX_FIXTURES)
   const DMX_FUNCTIONS = [
@@ -352,12 +454,18 @@
     const d = state.dmx || {};
     dmxEl.hidden = !d.configured;
     if (!d.configured) return;
-    const on = !!d.receiving;
+    const enabled = d.enabled !== false;
+    const on = enabled && !!d.receiving;
     btnDmx.classList.toggle('offline', !on);
     $('dmxSig').classList.toggle('on', on);
-    btnDmx.title = on ? 'DMX: receiving' : 'DMX: no signal';
-    $('hdrDmxState').textContent = on ? 'Receiving' : 'No signal';
+    $('dmxText').textContent = enabled ? 'DMX' : 'DMX off';
+    btnDmx.title = !enabled ? 'DMX: switched off' : on ? 'DMX: receiving' : 'DMX: no signal';
+    $('hdrDmxState').textContent = !enabled ? 'Off' : on ? 'Receiving' : 'No signal';
     $('hdrDmxState').classList.toggle('on', on);
+    const toggle = $('hdrDmxEnable');
+    toggle.classList.toggle('active', enabled);
+    toggle.setAttribute('aria-pressed', String(enabled));
+    toggle.textContent = enabled ? 'Receiving from the desk · turn off' : 'Desk ignored · turn on';
     DMX_FUNCTIONS.forEach((fn) => {
       const row = dmxChannels.querySelector(`input[data-fn="${fn.key}"]`).closest('.dmx-ch');
       const input = row.querySelector('input');
@@ -379,8 +487,12 @@
     $('hdrDmxStartHint').textContent = ctl?.start ? `Channels ${ctl.start}-${ctl.start + ctl.size - 1}` : 'Set one by one';
     const status = $('hdrDmxStatus');
     status.classList.toggle('error', !!dmxError);
-    status.textContent = dmxError || (on ? '' : `Waiting for Art-Net on universe ${d.universe ?? 0}`);
+    status.textContent = dmxError || (on || !enabled ? '' : `Waiting for Art-Net on universe ${d.universe ?? 0}`);
   }
+
+  $('hdrDmxEnable').addEventListener('click', () => {
+    sendDmxConfig({ enabled: (state.dmx || {}).enabled === false });
+  });
 
   $('hdrDmxStart').addEventListener('change', (e) => {
     const start = Math.round(Number(e.target.value));
@@ -405,19 +517,7 @@
     sendDmxConfig({ channels: { [input.dataset.fn]: ch } });
   });
 
-  function setDmxOpen(open) {
-    dmxPopover.hidden = !open;
-    btnDmx.setAttribute('aria-expanded', String(open));
-    if (open) renderDmx();
-  }
-
-  btnDmx.addEventListener('click', () => setDmxOpen(dmxPopover.hidden));
-  document.addEventListener('click', (e) => {
-    if (!dmxPopover.hidden && !dmxEl.contains(e.target)) setDmxOpen(false);
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !dmxPopover.hidden) setDmxOpen(false);
-  });
+  menu('dmx', renderDmx);
 
   window.appHeader = {
     // state: backdrop's state over the WebSocket; connected: the WebSocket is open

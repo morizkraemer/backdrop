@@ -115,25 +115,6 @@ svg {
   letter-spacing: -0.01em;
 }
 
-.player-pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  font-size: 13px;
-  color: var(--text-2);
-  white-space: nowrap;
-}
-
-.player-pill.offline {
-  border-color: var(--danger-border);
-  background: var(--danger-bg);
-  color: var(--danger);
-}
-
 .header-right {
   font-size: 13px;
   color: var(--text-muted);
@@ -170,10 +151,6 @@ svg {
 }
 
 /* LED brightness */
-
-.led {
-  position: relative;
-}
 
 .btn-led {
   height: 32px;
@@ -240,22 +217,6 @@ a.btn-led:hover {
   color: var(--text-dim);
 }
 
-.led-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 50;
-  width: 260px;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-raised);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .led-head {
   display: flex;
   align-items: baseline;
@@ -268,7 +229,7 @@ a.btn-led:hover {
   color: var(--text);
 }
 
-.led-popover input[type="range"] {
+#ledSlider {
   width: 100%;
   margin: 0;
   accent-color: var(--live);
@@ -389,6 +350,11 @@ a.btn-led:hover {
   color: var(--live);
 }
 
+.dmx-enable {
+  height: 40px;
+  justify-content: center;
+}
+
 .dmx-val {
   font-family: var(--mono);
   font-size: 12px;
@@ -414,26 +380,6 @@ a.btn-led:hover {
 }
 
 /* HDMI matrix */
-
-.hdmi {
-  position: relative;
-}
-
-.hdmi-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 50;
-  width: 260px;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-raised);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 
 .btn-led.external {
   border-color: #6a4f1d;
@@ -508,15 +454,70 @@ a.btn-led:hover {
   background: var(--live);
 }
 
-.conn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/* Header menus (js/header.js): Wall, Audio and the status dot */
+
+.menu {
+  position: relative;
 }
 
-.conn .dot {
-  width: 6px;
-  height: 6px;
+.menu-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: 280px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.menu-section:not([hidden]) ~ .menu-section:not([hidden]) {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.menu-section .btn-bt {
+  height: 40px;
+  justify-content: center;
+}
+
+.btn-status {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.btn-status.alert {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.status-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  font-size: 13px;
+}
+
+.status-list dt {
+  color: var(--text-dim);
+}
+
+.status-list dd {
+  margin: 0;
+  color: var(--text);
 }
 
 /* Transport */
@@ -1808,7 +1809,7 @@ button.crumb:hover {
     padding: 0 16px;
   }
 
-  .hdmi-popover,
+  .menu-popover,
   .dmx-popover {
     position: fixed;
     top: 64px;
@@ -1817,24 +1818,8 @@ button.crumb:hover {
     width: auto;
   }
 
-  .player-pill {
-    padding: 0;
-    border: none;
-    background: none;
-  }
-
-  .player-pill.offline {
-    background: none;
-  }
-
-  #diskSpace {
-    display: none;
-  }
-
-  .btn-bt span,
-  #hdmiText,
-  #ledText,
-  #connText {
+  #wallText,
+  #audioText {
     display: none;
   }
 
@@ -2157,15 +2142,8 @@ button.crumb:hover {
   }
 }
 
-@media (max-width: 480px) {
-  #connText {
-    display: none;
-  }
-}
-
 /* Phones: keep the header to one row of icons so the page never scrolls sideways */
 @media (max-width: 480px) {
-  #playerText,
   .header h1 {
     display: none;
   }
