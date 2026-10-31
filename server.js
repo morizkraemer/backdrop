@@ -166,23 +166,36 @@ function isValidDisplayMode(m) {
 
 const FRAMING_LIMITS = { offset: 2, minScale: 0.1, maxScale: 4 };
 
-// Moving and resizing only applies to centered clips; fill and stretch always cover the panel
+// Centered clips can be moved and resized freely. Filled clips can only slide
+// along the side that overflows the panel (fillX/fillY, -1..1 from one edge to
+// the other), so they always cover it. Stretched clips never move.
 function getCueFraming(settings = {}) {
-  if ((settings.displayMode ?? 'fill') !== 'centered') return { offsetX: 0, offsetY: 0, scale: 1 };
-  return {
-    offsetX: settings.offsetX ?? 0,
-    offsetY: settings.offsetY ?? 0,
-    scale: settings.scale ?? 1,
-  };
+  const framing = { offsetX: 0, offsetY: 0, scale: 1, alignX: 0, alignY: 0 };
+  const mode = settings.displayMode ?? 'fill';
+  if (mode === 'centered') {
+    framing.offsetX = settings.offsetX ?? 0;
+    framing.offsetY = settings.offsetY ?? 0;
+    framing.scale = settings.scale ?? 1;
+  } else if (mode === 'fill') {
+    framing.alignX = settings.fillX ?? 0;
+    framing.alignY = settings.fillY ?? 0;
+  }
+  return framing;
 }
 
-// Validates offsetX/offsetY/scale in body; returns { framing } or { error }
+// Validates offsetX/offsetY/scale/fillX/fillY in body; returns { framing } or { error }
 function parseFraming(body) {
   const framing = {};
   for (const key of ['offsetX', 'offsetY']) {
     if (body[key] === undefined) continue;
     const v = Number(body[key]);
     if (!Number.isFinite(v) || Math.abs(v) > FRAMING_LIMITS.offset) return { error: `Invalid ${key}` };
+    framing[key] = v;
+  }
+  for (const key of ['fillX', 'fillY']) {
+    if (body[key] === undefined) continue;
+    const v = Number(body[key]);
+    if (!Number.isFinite(v) || Math.abs(v) > 1) return { error: `Invalid ${key}` };
     framing[key] = v;
   }
   if (body.scale !== undefined) {
