@@ -195,6 +195,9 @@ function isTyping(el) {
 // --- framing: moving and resizing a centered clip on the panel ---
 // Offsets use mpv's video-pan units (a fraction of the scaled picture's size),
 // so a drag maps 1:1 to what mpv does on the panel.
+// A filled clip only slides along the side that overflows the panel: fillX/fillY
+// run from -1 (left/top edge showing) to 1 (right/bottom edge), like mpv's
+// video-align and CSS object-position, so no empty edge ever shows.
 const PANEL_ASPECT = 3; // 2304x768
 const mediaAspects = new Map(); // media id -> width / height
 let dragFraming = null; // { cueId, offsetX, offsetY, scale } while dragging
@@ -204,7 +207,13 @@ function rememberAspect(mediaId, w, h) {
 }
 
 function cueFraming(settings = {}) {
-  return { offsetX: settings.offsetX ?? 0, offsetY: settings.offsetY ?? 0, scale: settings.scale ?? 1 };
+  return {
+    offsetX: settings.offsetX ?? 0,
+    offsetY: settings.offsetY ?? 0,
+    scale: settings.scale ?? 1,
+    fillX: settings.fillX ?? 0,
+    fillY: settings.fillY ?? 0,
+  };
 }
 
 function liveFraming(cue) {
@@ -218,10 +227,40 @@ function fitFraction(mediaId) {
   return { w: Math.min(1, aspect / PANEL_ASPECT), h: Math.min(1, PANEL_ASPECT / aspect) };
 }
 
+// Size of the filled (cropped) picture as a multiple of the screen box
+function coverFraction(mediaId) {
+  const aspect = mediaAspects.get(mediaId);
+  if (!aspect) return null;
+  return { w: Math.max(1, aspect / PANEL_ASPECT), h: Math.max(1, PANEL_ASPECT / aspect) };
+}
+
+// Which way a filled clip can slide: only along a side that overflows the panel
+const MIN_OVERFLOW = 1.01;
+function fillAxes(mediaId) {
+  const cover = coverFraction(mediaId);
+  return { x: !!cover && cover.w > MIN_OVERFLOW, y: !!cover && cover.h > MIN_OVERFLOW };
+}
+
+function canMove(cue) {
+  const mode = cue?.settings?.displayMode ?? 'fill';
+  if (mode === 'centered') return !!fitFraction(cue.mediaId);
+  if (mode !== 'fill') return false;
+  const axes = fillAxes(cue.mediaId);
+  return axes.x || axes.y;
+}
+
 // Positions a contained <img>/<video> filling a .screen box the way mpv draws it
 function applyFraming(el, settings = {}, mediaId) {
+  const mode = settings.displayMode ?? 'fill';
+  if (mode === 'fill') {
+    const { fillX, fillY } = cueFraming(settings);
+    el.style.transform = '';
+    el.style.objectPosition = fillX || fillY ? `${(fillX + 1) * 50}% ${(fillY + 1) * 50}%` : '';
+    return;
+  }
+  el.style.objectPosition = '';
   const fit = fitFraction(mediaId);
-  if ((settings.displayMode ?? 'fill') !== 'centered' || !fit) {
+  if (mode !== 'centered' || !fit) {
     el.style.transform = '';
     return;
   }
@@ -633,13 +672,23 @@ function renderStage(cue, media) {
   }
   const el = screen.querySelector('img, video');
   const centered = mode === 'centered';
-  screen.classList.toggle('stage', centered);
+  const movable = canMove(cue);
+  screen.classList.toggle('stage', movable);
   if (el) {
     el.style.objectFit = PREVIEW_FIT[mode];
     applyFraming(el, liveFraming(cue), media?.id);
   }
 
-  $('framingField').hidden = !centered;
+  // Filled clips only get a position (no size), and only when they overflow
+  $('framingField').hidden = !(centered || movable);
+  $('lblFraming').textContent = centered ? 'Position & size' : 'Position';
+  $('framingSize').hidden = !centered;
+  if (!centered && movable) {
+    const axes = fillAxes(cue.mediaId);
+    $('framingHint').textContent = `Drag the picture ${axes.x ? 'left or right' : 'up or down'} to choose which part shows. Live cues follow on the panel.`;
+  } else {
+    $('framingHint').textContent = 'Drag the picture above to move it. Live cues follow on the panel.';
+  }
   if (centered) {
     const { scale } = cueFraming(liveFraming(cue));
     if (document.activeElement !== inspScale) inspScale.value = Math.round(scale * 100);
@@ -1268,26 +1317,52 @@ let drag = null;
 
 inspScreen.addEventListener('pointerdown', (e) => {
   const cue = state.playlist.find((c) => c.id === selectedCueId);
-  if (!cue || cue.settings?.displayMode !== 'centered') return;
-  const fit = fitFraction(cue.mediaId);
-  if (!fit) return;
+  if (!canMove(cue)) return;
   e.preventDefault();
   inspScreen.setPointerCapture(e.pointerId);
   const rect = inspScreen.getBoundingClientRect();
   const start = cueFraming(cue.settings);
-  drag = {
-    x: e.clientX,
-    y: e.clientY,
-    start,
-    // screen pixels per unit of offset
-    unitX: rect.width * fit.w * start.scale,
-    unitY: rect.height * fit.h * start.scale,
-  };
+  if (cue.settings?.displayMode === 'centered') {
+    const fit = fitFraction(cue.mediaId);
+    drag = {
+      x: e.clientX,
+      y: e.clientY,
+      start,
+      // screen pixels per unit of offset
+      unitX: rect.width * fit.w * start.scale,
+      unitY: rect.height * fit.h * start.scale,
+    };
+  } else {
+    // Fill: the full -1..1 range is the overflowing part of the picture.
+    // Dragging the picture right shows more of its left side (towards -1).
+    const cover = coverFraction(cue.mediaId);
+    const axes = fillAxes(cue.mediaId);
+    drag = {
+      fill: true,
+      x: e.clientX,
+      y: e.clientY,
+      start,
+      unitX: axes.x ? -rect.width * (cover.w - 1) / 2 : 0,
+      unitY: axes.y ? -rect.height * (cover.h - 1) / 2 : 0,
+    };
+  }
   inspScreen.classList.add('dragging');
 });
 
 inspScreen.addEventListener('pointermove', (e) => {
   if (!drag) return;
+  if (drag.fill) {
+    const along = (start, delta, unit) => {
+      if (!unit) return 0;
+      const v = Math.max(-1, Math.min(1, start + delta / unit));
+      return Math.abs(v) < SNAP ? 0 : Math.round(v * 1000) / 1000;
+    };
+    setDragFraming({
+      fillX: along(drag.start.fillX, e.clientX - drag.x, drag.unitX),
+      fillY: along(drag.start.fillY, e.clientY - drag.y, drag.unitY),
+    });
+    return;
+  }
   let offsetX = drag.start.offsetX + (e.clientX - drag.x) / drag.unitX;
   let offsetY = drag.start.offsetY + (e.clientY - drag.y) / drag.unitY;
   if (Math.abs(offsetX) < SNAP) offsetX = 0;
@@ -1307,11 +1382,16 @@ inspScreen.addEventListener('pointercancel', endDrag);
 inspScreen.addEventListener('dblclick', () => {
   const cue = state.playlist.find((c) => c.id === selectedCueId);
   if (cue?.settings?.displayMode === 'centered') updateCue({ offsetX: 0, offsetY: 0 });
+  else if (canMove(cue)) updateCue({ fillX: 0, fillY: 0 });
 });
 
 inspScale.addEventListener('input', () => setDragFraming({ scale: Number(inspScale.value) / 100 }));
 inspScale.addEventListener('change', commitFraming);
-$('framingReset').addEventListener('click', () => updateCue({ offsetX: 0, offsetY: 0, scale: 1 }));
+$('framingReset').addEventListener('click', () => {
+  const cue = state.playlist.find((c) => c.id === selectedCueId);
+  if (cue?.settings?.displayMode === 'centered') updateCue({ offsetX: 0, offsetY: 0, scale: 1 });
+  else updateCue({ fillX: 0, fillY: 0 });
+});
 
 $('inspPlay').addEventListener('click', () => {
   if (selectedCueId) api('POST', `/go/${selectedCueId}`);
