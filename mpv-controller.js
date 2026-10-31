@@ -11,13 +11,17 @@ const DISPLAY_MODES = {
   fill: { keepaspect: true, panscan: 1 },
 };
 
-// Position and size of a centered clip, in mpv's own units: pan is a fraction
-// of the scaled video's size, zoom is log2 of the scale factor.
-function framingProps({ offsetX = 0, offsetY = 0, scale = 1 } = {}) {
+// Position and size of a clip, in mpv's own units: pan is a fraction of the
+// scaled video's size, zoom is log2 of the scale factor (centered clips).
+// align (-1..1) slides a filled clip along the side it overflows, from one
+// edge to the other, so it never shows an empty edge (fill clips).
+function framingProps({ offsetX = 0, offsetY = 0, scale = 1, alignX = 0, alignY = 0 } = {}) {
   return {
     'video-pan-x': String(offsetX),
     'video-pan-y': String(offsetY),
     'video-zoom': String(Math.log2(scale)),
+    'video-align-x': String(alignX),
+    'video-align-y': String(alignY),
   };
 }
 
