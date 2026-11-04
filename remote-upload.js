@@ -34,7 +34,7 @@ function sameToken(a, b) {
  * @param {string[]} opts.allowedExt
  * @param {() => number} opts.getDiskFree
  * @param {(name: string) => string} opts.sanitizeFilename
- * @param {(file: {filename, originalName, size}, folderName: string) => object} opts.addToLibrary
+ * @param {(file: {filename, originalName, size}, folderName: string) => Promise<object>} opts.addToLibrary
  */
 function createRemoteUpload({ config, allowedExt, getDiskFree, sanitizeFilename, addToLibrary }) {
   const settingsPath = config.remoteUploadSettingsPath;
@@ -241,7 +241,7 @@ function createRemoteUpload({ config, allowedExt, getDiskFree, sanitizeFilename,
     req.pipe(out);
   });
 
-  publicApp.post('/u/:token/files/:id/done', checkToken, (req, res) => {
+  publicApp.post('/u/:token/files/:id/done', checkToken, async (req, res) => {
     const p = getPending(req, res);
     if (!p) return;
     if (p.busy || p.received !== p.size) return res.status(409).json({ error: 'Upload incomplete', received: p.received });
@@ -254,7 +254,11 @@ function createRemoteUpload({ config, allowedExt, getDiskFree, sanitizeFilename,
       fs.rm(p.file, { force: true }, () => {});
       return res.status(500).json({ error: 'Could not save file' });
     }
-    addToLibrary({ filename, originalName: p.name, size: p.size }, config.remoteUploadFolder);
+    try {
+      await addToLibrary({ filename, originalName: p.name, size: p.size }, config.remoteUploadFolder);
+    } catch (err) {
+      return res.status(415).json({ error: err.message || 'Could not add file' });
+    }
     res.json({ ok: true });
   });
 

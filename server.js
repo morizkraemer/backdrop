@@ -16,9 +16,10 @@ const { createRemoteUpload } = require('./remote-upload');
 const { createVisualsLab } = require('./visuals-lab');
 const { createGrid, DMX_FUNCTIONS: gridDmxFunctions } = require('./grid');
 const visuals = require('./visuals');
+const { isEps, convertEps } = require('./eps');
 
 const ALLOWED_EXT = [
-  'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'eps',
   'mp4', 'webm', 'mkv', 'avi', 'mov', 'm4v',
 ];
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
@@ -127,6 +128,13 @@ function getMediaType(filename) {
   return IMAGE_EXT.includes(ext) ? 'image' : 'video';
 }
 
+// EPS uploads become PNGs (eps.js); anything else is kept as uploaded.
+// Resolves to the stored { filename, size }.
+async function storeUpload(filename, size) {
+  if (!isEps(filename)) return { filename, size };
+  return convertEps(config.uploadsDir, filename);
+}
+
 function sanitizeFilename(name) {
   const base = path.basename(name || '');
   return base.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').slice(0, 200) || 'unnamed';
@@ -134,7 +142,9 @@ function sanitizeFilename(name) {
 
 // Adds a finished phone upload to the library, inside a root folder of that
 // name (created on first use so phone uploads don't mix into the root)
-function addRemoteUpload({ filename, originalName, size }, folderName) {
+async function addRemoteUpload(file, folderName) {
+  const { filename, size } = await storeUpload(file.filename, file.size);
+  const { originalName } = file;
   let folder = state.getState().folders.find((f) => !f.parentId && f.name === folderName);
   if (!folder) {
     folder = { id: `f-${uuidv4().slice(0, 8)}`, name: folderName, parentId: null };
@@ -504,20 +514,26 @@ app.post('/api/upload', (req, res) => {
   if (free < config.minFreeDisk) {
     return res.status(507).json({ error: 'Insufficient disk space' });
   }
-  upload.single('file')(req, res, (err) => {
+  upload.single('file')(req, res, async (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File too large' });
       return res.status(400).json({ error: err.message || 'Upload failed' });
     }
     if (!req.file) return res.status(400).json({ error: 'No file' });
+    let stored;
+    try {
+      stored = await storeUpload(req.file.filename, req.file.size);
+    } catch (e) {
+      return res.status(415).json({ error: e.message });
+    }
 
-    const id = path.basename(req.file.filename).slice(0, 32);
+    const id = path.basename(stored.filename).slice(0, 32);
     const item = {
       id,
-      filename: req.file.filename,
+      filename: stored.filename,
       originalName: req.file.originalname,
-      type: getMediaType(req.file.filename),
-      size: req.file.size,
+      type: getMediaType(stored.filename),
+      size: stored.size,
       addedAt: new Date().toISOString(),
       folderId: null,
     };
@@ -757,20 +773,26 @@ app.post('/api/playlist/upload', (req, res) => {
   if (free < config.minFreeDisk) {
     return res.status(507).json({ error: 'Insufficient disk space' });
   }
-  upload.single('file')(req, res, (err) => {
+  upload.single('file')(req, res, async (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File too large' });
       return res.status(400).json({ error: err.message || 'Upload failed' });
     }
     if (!req.file) return res.status(400).json({ error: 'No file' });
+    let stored;
+    try {
+      stored = await storeUpload(req.file.filename, req.file.size);
+    } catch (e) {
+      return res.status(415).json({ error: e.message });
+    }
 
-    const id = path.basename(req.file.filename).slice(0, 32);
+    const id = path.basename(stored.filename).slice(0, 32);
     const item = {
       id,
-      filename: req.file.filename,
+      filename: stored.filename,
       originalName: req.file.originalname,
-      type: getMediaType(req.file.filename),
-      size: req.file.size,
+      type: getMediaType(stored.filename),
+      size: stored.size,
       addedAt: new Date().toISOString(),
       playlistOnly: true,
     };
