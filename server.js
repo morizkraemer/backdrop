@@ -68,7 +68,7 @@ const grid = createGrid({ config, mpv, broadcast: () => broadcastState() });
 // (grid.js). DMX_FUNCTIONS lists their functions in order; each maps to one
 // channel of the universe (0 = unused).
 const DMX_FIXTURES = {
-  control: ['go', 'back', 'brightness'],
+  control: ['go', 'back', 'brightness', 'blackout'],
   visuals: lab.DMX_FUNCTIONS,
   grid: gridDmxFunctions,
 };
@@ -76,7 +76,7 @@ const DMX_FUNCTIONS = Object.values(DMX_FIXTURES).flat();
 let dmx = {
   configured: config.dmxUniverse !== null,
   receiving: false,
-  values: null, // { brightness, go, back, ...fixture }: 0-255, null for unused functions
+  values: null, // { go, back, brightness, blackout, ...fixture }: 0-255, null for unused functions
 };
 
 function getDiskFree() {
@@ -1254,6 +1254,18 @@ function getDmxConfig() {
       [...DMX_FIXTURES.control, ...DMX_FIXTURES.visuals].forEach((fn, i) => { saved[fn] = Math.min(512, go + i); });
     }
   }
+  // Saved before the Control fixture had Blackout (4th channel): Blackout goes right
+  // after Brightness, and the fixtures that followed right after Control move up one
+  // channel so nothing overlaps (repatch them on the desk too)
+  if (saved.go && !('blackout' in saved) && DMX_FIXTURES.control.slice(0, 3).every((fn, i) => saved[fn] === saved.go + i)) {
+    saved = { ...saved, blackout: saved.go + 3 };
+    let at = saved.go + 3;
+    for (const fns of [DMX_FIXTURES.visuals, DMX_FIXTURES.grid]) {
+      if (saved[fns[0]] !== at || !fns.every((fn, i) => saved[fn] === at + i)) break;
+      fns.forEach((fn) => { saved[fn] = Math.min(512, saved[fn] + 1); });
+      at += fns.length;
+    }
+  }
   const channels = {};
   // A fixture with nothing saved follows right after the one before it (the first
   // from DMX_ADDRESS); single unsaved channels take their place in that layout
@@ -1308,6 +1320,12 @@ function handleDmxValues(values) {
   }
   if (values.go >= DMX_ON && !(prev.go >= DMX_ON)) goNext();
   if (values.back >= DMX_ON && !(prev.back >= DMX_ON)) goBack();
+  // Blackout follows its fader: past half fades to black, back below fades in.
+  // Only crossings count, so the header's button still works while the fader rests.
+  if (values.blackout !== null && prev.blackout !== null) {
+    const on = values.blackout >= DMX_ON;
+    if (on !== prev.blackout >= DMX_ON) fadeToBlack(on);
+  }
   lab.applyDmx(values, prev);
   grid.applyDmx(values);
 }

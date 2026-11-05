@@ -37,7 +37,7 @@
         <button type="button" class="btn-bt dmx-enable" id="hdrDmxEnable" aria-pressed="true">Receiving from the desk</button>
         <label class="dmx-start">
           <span class="field-label">Start address</span>
-          <input type="number" id="hdrDmxStart" min="1" max="510" step="1" inputmode="numeric" placeholder="—" aria-label="Control fixture start address">
+          <input type="number" id="hdrDmxStart" min="1" max="509" step="1" inputmode="numeric" placeholder="—" aria-label="Control fixture start address">
           <span class="field-hint" id="hdrDmxStartHint"></span>
         </label>
         <div class="dmx-channels" id="hdrDmxChannels">
@@ -460,6 +460,7 @@
     { key: 'go', name: 'GO', show: (v) => (v >= 128 ? 'On' : 'Off') },
     { key: 'back', name: 'BACK', show: (v) => (v >= 128 ? 'On' : 'Off') },
     { key: 'brightness', name: 'Brightness', show: (v) => `${Math.round((v * 100) / 255)}%` },
+    { key: 'blackout', name: 'Blackout', show: (v) => (v >= 128 ? 'On' : 'Off') },
   ];
   let dmxError = null;
 

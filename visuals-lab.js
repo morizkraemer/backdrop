@@ -25,7 +25,7 @@ const xmlEsc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': 
 
 /**
  * MA fixture types (grandMA2 XML, which dot2 imports from USB: dot2/library),
- * one file each: backdrop's Control fixture (GO, BACK, brightness) and the
+ * one file each: backdrop's Control fixture (GO, BACK, brightness, blackout) and the
  * Visuals fixture. dot2 only knows its own attributes, so each function sits
  * on the nearest one (setup/DMX.md); channel sets name the visuals and ranges.
  */
@@ -70,12 +70,13 @@ function maFixtureType(name, channels, cells = null) {
 `;
 }
 
-// GO, BACK and the LED wall's brightness (server.js CONTROL_FNS)
+// GO, BACK, the LED wall's brightness and blackout (server.js DMX_FIXTURES.control)
 function dot2ControlFixture() {
   return maFixtureType('Control', [
     dmxChannel(1, 'PRISMA1', 'BEAM', 'BEAM', [dmxSet('Rest', 0, 127), dmxSet('GO', 128, 255)]),
     dmxChannel(2, 'PRISMA2', 'BEAM', 'BEAM', [dmxSet('Rest', 0, 127), dmxSet('BACK', 128, 255)]),
     dmxChannel(3, 'DIM', 'DIMMER', 'DIMMER', [dmxSet('Closed', 0, 0), dmxSet('Open', 255, 255)]),
+    dmxChannel(4, 'PRISMA3', 'BEAM', 'BEAM', [dmxSet('Off', 0, 127), dmxSet('Blackout', 128, 255)]),
   ]);
 }
 

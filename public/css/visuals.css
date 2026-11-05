@@ -78,6 +78,13 @@
   background: var(--live-hover);
 }
 
+/* Virtual desk's Blackout while held down */
+.lab-btn[aria-pressed="true"] {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
+
 .lab-btn-danger {
   border-color: var(--danger-border);
   background: var(--danger-bg);
