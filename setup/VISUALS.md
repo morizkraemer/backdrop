@@ -8,7 +8,7 @@ Every page has three tabs at the top: **Cues**, **Visuals** and **Grid**. The ta
 
 - **Cues**: backdrop's cue list as always. Coming back to it plays the current cue again from the start (or leaves the wall dark when nothing was playing).
 - **Visuals**: the last visual played (the first one the very first time); the Visuals fixture and the lab pick and drive it. The cue list waits where it is.
-- **Grid**: a 12×4 grid of lights played by the Grid fixture (setup/DMX.md).
+- **Grid**: an 8×2 grid of lights played by the Grid fixture (setup/DMX.md).
 
 GO or BACK (on a page or from the desk's Control fixture) always brings the wall back to Cues and plays the next or previous cue. The Visuals and Grid fixtures only act while their tab is on the wall.
 

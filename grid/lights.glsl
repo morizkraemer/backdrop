@@ -1,4 +1,4 @@
-// Grid: 12x4 lights for the Grid fixture (setup/DMX.md), one colour, a level per cell
+// Grid: 8x2 lights for the Grid fixture (setup/DMX.md), one colour, a level per cell
 // Shape: 0 square, 1 circle, 2 triangle, 3 Fresnel stage light
 
 //!PARAM shape
@@ -121,201 +121,9 @@
 //!MINIMUM 0.0
 //!MAXIMUM 1.0
 1.0
-//!PARAM c17
-//!DESC Cell 17
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c18
-//!DESC Cell 18
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c19
-//!DESC Cell 19
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c20
-//!DESC Cell 20
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c21
-//!DESC Cell 21
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c22
-//!DESC Cell 22
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c23
-//!DESC Cell 23
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c24
-//!DESC Cell 24
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c25
-//!DESC Cell 25
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c26
-//!DESC Cell 26
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c27
-//!DESC Cell 27
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c28
-//!DESC Cell 28
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c29
-//!DESC Cell 29
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c30
-//!DESC Cell 30
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c31
-//!DESC Cell 31
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c32
-//!DESC Cell 32
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c33
-//!DESC Cell 33
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c34
-//!DESC Cell 34
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c35
-//!DESC Cell 35
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c36
-//!DESC Cell 36
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c37
-//!DESC Cell 37
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c38
-//!DESC Cell 38
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c39
-//!DESC Cell 39
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c40
-//!DESC Cell 40
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c41
-//!DESC Cell 41
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c42
-//!DESC Cell 42
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c43
-//!DESC Cell 43
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c44
-//!DESC Cell 44
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c45
-//!DESC Cell 45
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c46
-//!DESC Cell 46
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c47
-//!DESC Cell 47
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
-//!PARAM c48
-//!DESC Cell 48
-//!TYPE DYNAMIC float
-//!MINIMUM 0.0
-//!MAXIMUM 1.0
-1.0
 
-#define COLS 12.0
-#define ROWS 4.0
+#define COLS 8.0
+#define ROWS 2.0
 
 // Cell i's level, in reading order from the top left
 float cellLevel(int i) {
@@ -336,38 +144,6 @@ float cellLevel(int i) {
     case 13: return c14;
     case 14: return c15;
     case 15: return c16;
-    case 16: return c17;
-    case 17: return c18;
-    case 18: return c19;
-    case 19: return c20;
-    case 20: return c21;
-    case 21: return c22;
-    case 22: return c23;
-    case 23: return c24;
-    case 24: return c25;
-    case 25: return c26;
-    case 26: return c27;
-    case 27: return c28;
-    case 28: return c29;
-    case 29: return c30;
-    case 30: return c31;
-    case 31: return c32;
-    case 32: return c33;
-    case 33: return c34;
-    case 34: return c35;
-    case 35: return c36;
-    case 36: return c37;
-    case 37: return c38;
-    case 38: return c39;
-    case 39: return c40;
-    case 40: return c41;
-    case 41: return c42;
-    case 42: return c43;
-    case 43: return c44;
-    case 44: return c45;
-    case 45: return c46;
-    case 46: return c47;
-    case 47: return c48;
     }
     return 0.0;
 }
@@ -461,9 +237,12 @@ vec3 visual(vec2 uv, float t) {
     vec2 cell = min(floor(g), vec2(COLS - 1.0, ROWS - 1.0));
     float level = clamp(cellLevel(int(cell.y) * int(COLS) + int(cell.x)), 0.0, 1.0);
     vec3 colour = vec3(red, green, blue);
-    // -1..1 inside the cell, about 2 pixels of anti-aliasing
-    vec2 p = fract(g) * 2.0 - 1.0;
-    float aa = 2.0 * COLS * 2.0 / RES.x;
+    // -1..1 across the cell's shorter side (cells needn't be square), centred,
+    // about 2 pixels of anti-aliasing
+    vec2 cs = RES / vec2(COLS, ROWS);
+    float m = min(cs.x, cs.y);
+    vec2 p = (fract(g) * 2.0 - 1.0) * cs / m;
+    float aa = 4.0 / m;
     int s = int(floor(shape + 0.5));
     if (s == 3) return fresnel(p, level, colour, aa);
     float d;
