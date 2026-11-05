@@ -2,8 +2,9 @@
 
 Zentrale renders a highlight video for each event of the day (the upcoming events of that event's Promo-Gruppen,
 2304×768, seamless loop) and publishes it in its LED feed. backdrop polls that feed and keeps one built-in library
-item per event of the day, **Highlights: <event>**, pinned at the top of the library. Put them in the cue list like any
-clip (Loop on); whoever runs the cues picks which one plays.
+item per event of the day, **Highlights: <event>**. They aren't in the library: they show as "Today's highlights" above
+the cue list (cards on desktop, chips on the phone). + or drag puts one in the cue list like any clip (Loop on);
+whoever runs the cues picks which one plays.
 
 Zentrale's side of the contract is `docs/led-feed.md` in the Zentrale repo (branch `feature/led-daily-highlights`
 until it's merged).
@@ -18,7 +19,7 @@ until it's merged).
    LED_FEED_URL=http://<VM-IP>:3001/s/<token>/led/today.json
    ```
 
-3. `sudo systemctl restart screenview`. Within a minute the Highlights items show up at the top of the library.
+3. `sudo systemctl restart screenview`. Within a minute today's highlights show up above the cue list.
 
 Leave `LED_FEED_URL` empty to turn it off. `GET /api/highlights` shows the last check, the event and any error.
 A `410` means the link was revoked in Zentrale ("Neuen Link erzeugen"): put the new one in `.env`.

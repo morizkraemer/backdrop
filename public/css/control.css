@@ -1038,37 +1038,6 @@ a.btn-led:hover {
   background: var(--bg-hover);
 }
 
-/* The Highlights items (one per event of the day, from Zentrale), boxed off at the top */
-.lib-pinned {
-  margin-bottom: 12px;
-  padding: 4px;
-  border: 1px solid var(--live-border);
-  border-radius: 10px;
-  background: var(--live-bg);
-}
-
-.lib-pinned-label {
-  padding: 6px 8px 2px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--live-soft);
-}
-
-.lib-pinned-label span {
-  margin-left: 4px;
-  font-weight: 500;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--text-dim);
-}
-
-.lib-pinned .media-item:hover,
-.lib-pinned .media-item:focus-within {
-  background: rgba(61, 220, 132, 0.08);
-}
-
 .media-item[draggable="true"] {
   cursor: grab;
 }
@@ -1359,6 +1328,106 @@ button.crumb:hover {
   flex: 1;
   min-width: 0;
   padding: 16px 20px;
+}
+
+/* Today's highlights from Zentrale (renderHighlights), above the cue list */
+.highlights-strip {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-raised);
+}
+
+.hl-label {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.hl-items {
+  display: flex;
+  gap: 8px;
+}
+
+.hl-item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-row);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: grab;
+}
+
+.hl-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.hl-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hl-add {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--live);
+  color: var(--live-ink);
+}
+
+.hl-add svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Phones: no box, one row of chips that scrolls sideways */
+@media (max-width: 900px) {
+  .highlights-strip {
+    padding: 0;
+    border: none;
+    background: none;
+  }
+
+  .hl-label {
+    margin-bottom: 6px;
+  }
+
+  .hl-items {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .hl-item {
+    flex: 0 0 auto;
+    max-width: 70%;
+    height: 40px;
+    padding: 0 6px 0 14px;
+    border-radius: 20px;
+  }
+
+  .hl-item .thumb {
+    display: none;
+  }
 }
 
 .cue-list {

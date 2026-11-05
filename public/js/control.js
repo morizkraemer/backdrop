@@ -41,6 +41,7 @@ const libraryMenu = $('libraryMenu');
 const fileInput = $('fileInput');
 const cuesPane = $('cuesPane');
 const cueList = $('cueList');
+const highlightsStrip = $('highlightsStrip');
 const cueFileInput = $('cueFileInput');
 const inspector = $('inspector');
 const segDisplay = $('segDisplay');
@@ -432,8 +433,9 @@ function getFolder(id) {
   return state.folders.find((f) => f.id === id);
 }
 
+// The Highlights items (from Zentrale) aren't library files: they sit above the cue list
 function libraryItems() {
-  return state.library.filter((m) => !m.playlistOnly);
+  return state.library.filter((m) => !m.playlistOnly && !m.builtin);
 }
 
 // Root-first list of folders leading to `id`
@@ -503,7 +505,7 @@ function mediaRowHtml(m, showPath) {
         <span class="media-meta">${showPath && m.folderId ? `${escapeHtml(folderLabel(m.folderId))} · ` : ''}${mediaMeta(m)}</span>
       </div>
       <div class="media-actions">
-        ${m.builtin ? '' : `<button type="button" class="menu-btn" data-kind="media" data-id="${m.id}" aria-label="More for ${escapeHtml(m.originalName)}" aria-haspopup="menu">${ICONS.more}</button>`}
+        <button type="button" class="menu-btn" data-kind="media" data-id="${m.id}" aria-label="More for ${escapeHtml(m.originalName)}" aria-haspopup="menu">${ICONS.more}</button>
         <button type="button" class="add" data-id="${m.id}" aria-label="Add ${escapeHtml(m.originalName)} to cues">${ICONS.plus}</button>
       </div>
     </div>`;
@@ -537,30 +539,24 @@ function renderLibrary() {
   const typeOk = (m) => libraryFilter === 'all' || m.type === libraryFilter;
   let folders;
   let items;
-  let pinned = [];
   if (q) {
     // Search looks through every folder and shows where each hit lives
     folders = state.folders.filter((f) => f.name.toLowerCase().includes(q));
     items = visible.filter((m) => typeOk(m) && (m.originalName || '').toLowerCase().includes(q));
   } else {
     folders = state.folders.filter((f) => (f.parentId || null) === currentFolderId);
-    items = visible.filter((m) => typeOk(m) && !m.builtin && (m.folderId || null) === currentFolderId);
-    // The Highlights items (one per event of the day, from Zentrale) sit at the top of the library
-    if (!currentFolderId) pinned = visible.filter((m) => typeOk(m) && m.builtin).sort((a, b) => (a.slot ?? 1) - (b.slot ?? 1));
+    items = visible.filter((m) => typeOk(m) && (m.folderId || null) === currentFolderId);
   }
   folders.sort((a, b) => byName(a.name, b.name));
 
-  if (!folders.length && !items.length && !pinned.length) {
+  if (!folders.length && !items.length) {
     let msg = 'Drop images or videos here, or use Upload';
     if (q) msg = 'No matches';
     else if (currentFolderId) msg = 'Empty folder. Drop files here to upload into it.';
     else if (visible.length) msg = 'No matches';
     setHtml(libraryList, `<div class="empty">${msg}</div>`);
   } else {
-    setHtml(libraryList, (pinned.length
-      ? `<div class="lib-pinned"><div class="lib-pinned-label">Today's highlights <span>from Zentrale</span></div>${pinned.map((m) => mediaRowHtml(m, false)).join('')}</div>`
-      : '')
-      + folders.map((f) => folderRowHtml(f, !!q)).join('')
+    setHtml(libraryList, folders.map((f) => folderRowHtml(f, !!q)).join('')
       + items.map((m) => mediaRowHtml(m, !!q)).join(''));
   }
 
@@ -573,7 +569,24 @@ function renderLibrary() {
   }
 }
 
+// Today's highlights from Zentrale (one item per event), above the cue list:
+// cards on wide screens, a row of chips on phones. + or drag adds one as a cue.
+function renderHighlights() {
+  const items = state.library.filter((m) => m.builtin).sort((a, b) => (a.slot ?? 1) - (b.slot ?? 1));
+  highlightsStrip.hidden = !items.length;
+  setHtml(highlightsStrip, items.length ? `
+    <div class="hl-label">Today's highlights</div>
+    <div class="hl-items">${items.map((m) => `
+      <button type="button" class="hl-item" draggable="true" data-id="${m.id}" title="Add to cues">
+        <span class="thumb">${thumbHtml(m)}</span>
+        <span class="hl-name">${escapeHtml(m.eventName || m.originalName)}</span>
+        <span class="hl-add">${ICONS.plus}</span>
+      </button>`).join('')}
+    </div>` : '');
+}
+
 function renderCues() {
+  renderHighlights();
   $('cueCount').textContent = state.playlist.length || '';
   $('tabCues').textContent = `Cues · ${state.playlist.length}`;
   const next = nextCueIndex();
@@ -1076,7 +1089,6 @@ function clearFolderDropMarks() {
 // Folder rows and breadcrumbs take dragged library rows
 function folderDropTarget(e) {
   if (!libDrag) return null;
-  if (libDrag.kind === 'media' && getMedia(libDrag.id)?.builtin) return null; // Highlights stay at the top
   const el = e.target.closest('.folder-item, .crumb:not(:disabled)');
   if (!el) return null;
   const folderId = el.dataset.folderId || null;
@@ -1169,6 +1181,17 @@ cueList.addEventListener('dragend', () => {
   draggingCueId = null;
   clearDropMarks();
   cueList.querySelectorAll('.dragging').forEach((r) => r.classList.remove('dragging'));
+});
+
+highlightsStrip.addEventListener('click', (e) => {
+  const item = e.target.closest('.hl-item');
+  if (item) addToCues(item.dataset.id);
+});
+highlightsStrip.addEventListener('dragstart', (e) => {
+  const item = e.target.closest('.hl-item');
+  if (!item) return;
+  e.dataTransfer.setData(MEDIA_MIME, item.dataset.id);
+  e.dataTransfer.effectAllowed = 'copy';
 });
 
 cuesPane.addEventListener('dragover', (e) => {

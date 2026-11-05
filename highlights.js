@@ -1,8 +1,8 @@
 /**
  * Event highlights from Zentrale (setup/HIGHLIGHTS.md): polls Zentrale's LED feed
  * (today.json) and keeps one built-in library item per event of the day, each on
- * that event's highlight video. They sit at the top of the library and go into the
- * cue list like any clip; which one plays is up to whoever runs the cues.
+ * that event's highlight video. The control page shows them above the cue list (not
+ * in the library); they go into the cue list like any clip.
  *
  * Items are slots in the day's time order: "highlights" is the day's first event,
  * "highlights-2" the second, and so on, so a cue keeps working from day to day.
