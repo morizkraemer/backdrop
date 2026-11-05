@@ -154,7 +154,8 @@ function mediaMeta(media) {
   if (!media) return 'Missing file';
   const parts = [media.type === 'video' ? 'Video' : 'Image'];
   if (media.type === 'video' && media.duration != null) parts.push(formatDuration(media.duration));
-  parts.push(formatBytes(media.size));
+  // The Highlights item (highlights.js) updates itself from Zentrale
+  parts.push(media.builtin && media.date ? `auto, ${media.eventName || media.date}` : formatBytes(media.size));
   return parts.join(' · ');
 }
 
@@ -968,7 +969,7 @@ function openMenu(kind, id, button) {
   libraryMenu.innerHTML = `
     <button type="button" role="menuitem" data-action="rename">Rename</button>
     ${kind === 'folder' ? '<button type="button" role="menuitem" data-action="open">Open</button>' : ''}
-    <button type="button" role="menuitem" data-action="delete" class="danger">Delete${kind === 'folder' ? ' folder' : ''}</button>
+    ${entry?.builtin ? '' : `<button type="button" role="menuitem" data-action="delete" class="danger">Delete${kind === 'folder' ? ' folder' : ''}</button>`}
     <div class="lib-menu-label">Move to</div>
     <div class="lib-menu-moves">${moveRows}</div>`;
   libraryMenu.hidden = false;

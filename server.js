@@ -16,6 +16,7 @@ const { createRemoteUpload } = require('./remote-upload');
 const { createVisualsLab } = require('./visuals-lab');
 const { createGrid, DMX_FUNCTIONS: gridDmxFunctions } = require('./grid');
 const visuals = require('./visuals');
+const { createHighlights } = require('./highlights');
 
 const ALLOWED_EXT = [
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
@@ -370,6 +371,22 @@ mpv.onReconnect(() => {
 // Ensure uploads dir exists
 fs.mkdirSync(config.uploadsDir, { recursive: true });
 
+// Event highlights from Zentrale (setup/HIGHLIGHTS.md): the built-in "Highlights"
+// item always holds today's video. When it's swapped while its cue is on the
+// wall, the cue starts again with the new file.
+const highlights = createHighlights({
+  config,
+  state,
+  broadcast: () => broadcastState(),
+  enrichMedia,
+  removeThumbnail,
+  onSwap: (mediaId) => {
+    const s = state.getState();
+    if (wallMode() === 'cues' && s.playlist[s.currentCueIndex]?.mediaId === mediaId) playCue(s.currentCueIndex);
+  },
+});
+highlights.start();
+
 // Visuals used to live in the library and cue list (an earlier test build);
 // they're in the Visuals lab now, so drop those entries
 {
@@ -532,6 +549,8 @@ app.post('/api/upload', (req, res) => {
     enrichMedia(item);
   });
 });
+
+app.get('/api/highlights', (req, res) => res.json(highlights.status()));
 
 app.get('/api/library', (req, res) => {
   res.json(state.getState().library);
