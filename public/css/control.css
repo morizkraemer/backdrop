@@ -1038,6 +1038,37 @@ a.btn-led:hover {
   background: var(--bg-hover);
 }
 
+/* The Highlights items (one per event of the day, from Zentrale), boxed off at the top */
+.lib-pinned {
+  margin-bottom: 12px;
+  padding: 4px;
+  border: 1px solid var(--live-border);
+  border-radius: 10px;
+  background: var(--live-bg);
+}
+
+.lib-pinned-label {
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--live-soft);
+}
+
+.lib-pinned-label span {
+  margin-left: 4px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-dim);
+}
+
+.lib-pinned .media-item:hover,
+.lib-pinned .media-item:focus-within {
+  background: rgba(61, 220, 132, 0.08);
+}
+
 .media-item[draggable="true"] {
   cursor: grab;
 }

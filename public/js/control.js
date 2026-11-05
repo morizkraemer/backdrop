@@ -154,8 +154,7 @@ function mediaMeta(media) {
   if (!media) return 'Missing file';
   const parts = [media.type === 'video' ? 'Video' : 'Image'];
   if (media.type === 'video' && media.duration != null) parts.push(formatDuration(media.duration));
-  // The Highlights item (highlights.js) updates itself from Zentrale
-  parts.push(media.builtin && media.date ? 'from Zentrale' : formatBytes(media.size));
+  if (!media.builtin) parts.push(formatBytes(media.size));
   return parts.join(' · ');
 }
 
@@ -558,7 +557,9 @@ function renderLibrary() {
     else if (visible.length) msg = 'No matches';
     setHtml(libraryList, `<div class="empty">${msg}</div>`);
   } else {
-    setHtml(libraryList, pinned.map((m) => mediaRowHtml(m, false)).join('')
+    setHtml(libraryList, (pinned.length
+      ? `<div class="lib-pinned"><div class="lib-pinned-label">Today's highlights <span>from Zentrale</span></div>${pinned.map((m) => mediaRowHtml(m, false)).join('')}</div>`
+      : '')
       + folders.map((f) => folderRowHtml(f, !!q)).join('')
       + items.map((m) => mediaRowHtml(m, !!q)).join(''));
   }
