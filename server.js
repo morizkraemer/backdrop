@@ -64,6 +64,26 @@ const lab = createVisualsLab({
   broadcast: () => broadcastState(),
 });
 const grid = createGrid({ config, mpv, broadcast: () => broadcastState() });
+// Event highlights from Zentrale (setup/HIGHLIGHTS.md): one built-in Highlights
+// item per event of the day, each holding that event's video. When one is
+// swapped while its cue is on the wall, the cue starts again with the new file.
+const highlights = createHighlights({
+  config,
+  state,
+  broadcast: () => broadcastState(),
+  enrichMedia,
+  removeThumbnail,
+  // Items of events that aren't on today any more: they and their cues go
+  remove: (ids) => {
+    const gone = new Set(ids);
+    state.updateState((s) => ({ ...s, library: s.library.map((m) => (gone.has(m.id) ? { ...m, builtin: false } : m)) }));
+    removeMedia(ids);
+  },
+  onSwap: (mediaId) => {
+    const s = state.getState();
+    if (wallMode() === 'cues' && s.playlist[s.currentCueIndex]?.mediaId === mediaId) playCue(s.currentCueIndex);
+  },
+});
 // The dot2 fixtures (setup/DMX.md), each patched from its own start address:
 // backdrop's Control fixture, the Visuals fixture (visuals-lab.js) and the Grid
 // (grid.js). DMX_FUNCTIONS lists their functions in order; each maps to one
@@ -371,20 +391,6 @@ mpv.onReconnect(() => {
 // Ensure uploads dir exists
 fs.mkdirSync(config.uploadsDir, { recursive: true });
 
-// Event highlights from Zentrale (setup/HIGHLIGHTS.md): the built-in "Highlights"
-// item always holds today's video. When it's swapped while its cue is on the
-// wall, the cue starts again with the new file.
-const highlights = createHighlights({
-  config,
-  state,
-  broadcast: () => broadcastState(),
-  enrichMedia,
-  removeThumbnail,
-  onSwap: (mediaId) => {
-    const s = state.getState();
-    if (wallMode() === 'cues' && s.playlist[s.currentCueIndex]?.mediaId === mediaId) playCue(s.currentCueIndex);
-  },
-});
 highlights.start();
 
 // Visuals used to live in the library and cue list (an earlier test build);
@@ -620,7 +626,7 @@ app.patch('/api/library/:id', (req, res) => {
     if (!name) return res.status(400).json({ error: 'Name required' });
     patch.originalName = name;
   }
-  if (req.body.folderId !== undefined) {
+  if (req.body.folderId !== undefined && !item.builtin) { // built-in items stay at the top
     const folderId = req.body.folderId || null;
     if (folderId && !s.folders.some((f) => f.id === folderId)) return res.status(404).json({ error: 'Folder not found' });
     patch.folderId = folderId;

@@ -1,8 +1,12 @@
 /**
  * Event highlights from Zentrale (setup/HIGHLIGHTS.md): polls Zentrale's LED feed
- * (today.json) and keeps one built-in library item, "Highlights", on the video of
- * today's highlights. It goes into the cue list like any clip and is always today's:
- * a new video is downloaded in the background and swapped in once it's complete.
+ * (today.json) and keeps one built-in library item per event of the day, each on
+ * that event's highlight video. They sit at the top of the library and go into the
+ * cue list like any clip; which one plays is up to whoever runs the cues.
+ *
+ * Items are slots in the day's time order: "highlights" is the day's first event,
+ * "highlights-2" the second, and so on, so a cue keeps working from day to day.
+ * A new video is downloaded in the background and swapped in once complete.
  *
  * Zentrale's contract: docs/led-feed.md on its side.
  */
@@ -11,76 +15,54 @@ const path = require('path');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 
-const ITEM_ID = 'highlights';
 const POLL_MS = 60 * 1000;
 const FEED_TIMEOUT_MS = 15 * 1000;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
-// With two events on a day, the second one's set takes over this long before its doors
-const LEAD_MIN = 120;
+const MAX_SLOTS = 4;
 
-// Minutes since midnight in Berlin (the feed's times are Berlin wall-clock times)
-function berlinMinutes(now = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(now);
-  const get = (t) => Number(parts.find((p) => p.type === t)?.value ?? 0);
-  return get('hour') * 60 + get('minute');
-}
+const slotId = (i) => (i === 0 ? 'highlights' : `highlights-${i + 1}`);
+const isHighlightsId = (id) => /^highlights(-\d+)?$/.test(id || '');
 
 function toMinutes(hhmm) {
   const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || '');
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
-/**
- * The set to show now: of the sets that have a video, the last one whose doors
- * (or start) time is at most LEAD_MIN away, else the first. "Today" runs until
- * 05:00, so after midnight (before 05:00) it's late evening for the feed.
- */
-function pickSet(sets, now = new Date()) {
-  const withVideo = (sets || []).filter((s) => s && s.highlightLoop);
-  if (!withVideo.length) return null;
-  let mins = berlinMinutes(now);
-  if (mins < 5 * 60) mins += 24 * 60;
-  const timed = withVideo
-    .map((s, i) => ({ s, i, t: toMinutes(s.doorsTime) ?? toMinutes(s.startTime) }))
-    .sort((a, b) => (a.t ?? -1) - (b.t ?? -1) || a.i - b.i);
-  let pick = timed[0];
-  for (const x of timed) if (x.t == null || x.t - LEAD_MIN <= mins) pick = x;
-  return pick.s;
+// The day's sets in time order (doors, else start; untimed last)
+function sortSets(sets) {
+  const t = (s) => toMinutes(s.doorsTime) ?? toMinutes(s.startTime) ?? Infinity;
+  return (sets || []).filter(Boolean).map((s, i) => ({ s, i }))
+    .sort((a, b) => t(a.s) - t(b.s) || a.i - b.i).map((x) => x.s)
+    .slice(0, MAX_SLOTS);
 }
 
-function createHighlights({ config, state, broadcast, enrichMedia, removeThumbnail, onSwap }) {
+function createHighlights({ config, state, broadcast, enrichMedia, removeThumbnail, remove, onSwap }) {
   const feedUrl = config.ledFeedUrl;
   const status = {
     configured: !!feedUrl,
     lastCheck: null,
     error: null,
     date: null,
-    eventName: null,
-    video: null, // ready, rendering, failed, empty; null when nothing for today
+    events: [], // per slot: { id, eventName, doorsTime, video: ready|rendering|failed|empty }
   };
   let busy = false;
 
-  function item() {
-    return state.getState().library.find((m) => m.id === ITEM_ID) || null;
-  }
+  const item = (id) => state.getState().library.find((m) => m.id === id) || null;
 
-  // Downloads `link` (a path on the feed's host) and puts it into the library item
-  async function download(link, set, date) {
-    const url = new URL(link, feedUrl);
+  // Downloads the slot's video and puts it into its library item
+  async function download(id, slot, set, date) {
+    const url = new URL(set.highlightLoop, feedUrl);
     const res = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
     if (res.status === 202) {
       await res.body?.cancel();
-      status.video = 'rendering';
       return;
     }
     if (!res.ok) {
       await res.body?.cancel();
-      throw new Error(`video: HTTP ${res.status}`);
+      throw new Error(`${set.eventName}: video HTTP ${res.status}`);
     }
     const stamp = (url.searchParams.get('v') || Date.now().toString(36)).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
-    const filename = `highlights-${date}-${stamp}.mp4`;
+    const filename = `${id}-${date}-${stamp}.mp4`;
     const filePath = path.join(config.uploadsDir, filename);
     const tmp = `${filePath}.part`;
     try {
@@ -91,14 +73,17 @@ function createHighlights({ config, state, broadcast, enrichMedia, removeThumbna
       throw err;
     }
 
-    const old = item();
+    const old = item(id);
     const next = {
-      ...(old || { id: ITEM_ID, originalName: 'Highlights', folderId: null, builtin: true }),
+      ...(old || { id, folderId: null }),
+      builtin: true,
+      slot,
+      originalName: `Highlights: ${set.eventName || date}`,
       filename,
       type: 'video',
       size: fs.statSync(filePath).size,
       addedAt: new Date().toISOString(),
-      source: link,
+      source: set.highlightLoop,
       eventName: set.eventName || null,
       date,
     };
@@ -106,7 +91,7 @@ function createHighlights({ config, state, broadcast, enrichMedia, removeThumbna
     delete next.duration;
     state.updateState((s) => ({
       ...s,
-      library: old ? s.library.map((m) => (m.id === ITEM_ID ? next : m)) : [next, ...s.library],
+      library: old ? s.library.map((m) => (m.id === id ? next : m)) : [next, ...s.library],
     }));
     if (old && old.filename !== filename) {
       // mpv may still have it open; on Linux it keeps reading the unlinked file
@@ -115,29 +100,44 @@ function createHighlights({ config, state, broadcast, enrichMedia, removeThumbna
     }
     broadcast();
     enrichMedia(next);
-    onSwap(ITEM_ID);
+    onSwap(id);
   }
 
   async function check() {
     if (busy) return;
     busy = true;
+    const errors = [];
     try {
       const res = await fetch(feedUrl, { signal: AbortSignal.timeout(FEED_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`feed: HTTP ${res.status}${res.status === 410 ? ' (link revoked, make a new one in Zentrale)' : ''}`);
       const feed = await res.json();
-      const set = pickSet(feed.sets);
+      const sets = sortSets(feed.sets);
       status.date = feed.date || null;
-      status.eventName = set?.eventName ?? null;
-      status.video = set?.status ?? null;
-      // Nothing for today: the last video stays (it shows upcoming events anyway)
-      if (set && set.status === 'ready' && item()?.source !== set.highlightLoop) {
-        await download(set.highlightLoop, set, feed.date);
+      status.events = sets.map((s, i) => ({
+        id: slotId(i), eventName: s.eventName, doorsTime: s.doorsTime ?? null, video: s.status,
+      }));
+
+      for (const [i, set] of sets.entries()) {
+        const id = slotId(i);
+        if (set.status !== 'ready' || !set.highlightLoop || item(id)?.source === set.highlightLoop) continue;
+        try {
+          await download(id, i + 1, set, feed.date);
+        } catch (err) {
+          errors.push(err.message);
+        }
       }
-      status.error = null;
+
+      // Fewer events than yesterday: the extra items (and their cues) go. The
+      // first one stays on a day without events: it still shows upcoming events.
+      const extra = state.getState().library
+        .filter((m) => isHighlightsId(m.id) && m.id !== slotId(0) && (m.slot ?? 1) > sets.length)
+        .map((m) => m.id);
+      if (extra.length) remove(extra);
     } catch (err) {
-      status.error = err.message;
-      console.warn('Highlights:', err.message);
+      errors.push(err.message);
     } finally {
+      status.error = errors.join('; ') || null;
+      if (status.error) console.warn('Highlights:', status.error);
       status.lastCheck = new Date().toISOString();
       busy = false;
     }
@@ -149,7 +149,7 @@ function createHighlights({ config, state, broadcast, enrichMedia, removeThumbna
     setInterval(check, POLL_MS).unref();
   }
 
-  return { start, check, status: () => ({ ...status, item: !!item() }), ITEM_ID };
+  return { start, check, status: () => ({ ...status }) };
 }
 
-module.exports = { createHighlights, pickSet, ITEM_ID };
+module.exports = { createHighlights, sortSets, slotId, isHighlightsId };

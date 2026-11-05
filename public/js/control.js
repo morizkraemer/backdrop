@@ -155,7 +155,7 @@ function mediaMeta(media) {
   const parts = [media.type === 'video' ? 'Video' : 'Image'];
   if (media.type === 'video' && media.duration != null) parts.push(formatDuration(media.duration));
   // The Highlights item (highlights.js) updates itself from Zentrale
-  parts.push(media.builtin && media.date ? `auto, ${media.eventName || media.date}` : formatBytes(media.size));
+  parts.push(media.builtin && media.date ? 'from Zentrale' : formatBytes(media.size));
   return parts.join(' · ');
 }
 
@@ -504,7 +504,7 @@ function mediaRowHtml(m, showPath) {
         <span class="media-meta">${showPath && m.folderId ? `${escapeHtml(folderLabel(m.folderId))} · ` : ''}${mediaMeta(m)}</span>
       </div>
       <div class="media-actions">
-        <button type="button" class="menu-btn" data-kind="media" data-id="${m.id}" aria-label="More for ${escapeHtml(m.originalName)}" aria-haspopup="menu">${ICONS.more}</button>
+        ${m.builtin ? '' : `<button type="button" class="menu-btn" data-kind="media" data-id="${m.id}" aria-label="More for ${escapeHtml(m.originalName)}" aria-haspopup="menu">${ICONS.more}</button>`}
         <button type="button" class="add" data-id="${m.id}" aria-label="Add ${escapeHtml(m.originalName)} to cues">${ICONS.plus}</button>
       </div>
     </div>`;
@@ -538,24 +538,28 @@ function renderLibrary() {
   const typeOk = (m) => libraryFilter === 'all' || m.type === libraryFilter;
   let folders;
   let items;
+  let pinned = [];
   if (q) {
     // Search looks through every folder and shows where each hit lives
     folders = state.folders.filter((f) => f.name.toLowerCase().includes(q));
     items = visible.filter((m) => typeOk(m) && (m.originalName || '').toLowerCase().includes(q));
   } else {
     folders = state.folders.filter((f) => (f.parentId || null) === currentFolderId);
-    items = visible.filter((m) => typeOk(m) && (m.folderId || null) === currentFolderId);
+    items = visible.filter((m) => typeOk(m) && !m.builtin && (m.folderId || null) === currentFolderId);
+    // The Highlights items (one per event of the day, from Zentrale) sit at the top of the library
+    if (!currentFolderId) pinned = visible.filter((m) => typeOk(m) && m.builtin).sort((a, b) => (a.slot ?? 1) - (b.slot ?? 1));
   }
   folders.sort((a, b) => byName(a.name, b.name));
 
-  if (!folders.length && !items.length) {
+  if (!folders.length && !items.length && !pinned.length) {
     let msg = 'Drop images or videos here, or use Upload';
     if (q) msg = 'No matches';
     else if (currentFolderId) msg = 'Empty folder. Drop files here to upload into it.';
     else if (visible.length) msg = 'No matches';
     setHtml(libraryList, `<div class="empty">${msg}</div>`);
   } else {
-    setHtml(libraryList, folders.map((f) => folderRowHtml(f, !!q)).join('')
+    setHtml(libraryList, pinned.map((m) => mediaRowHtml(m, false)).join('')
+      + folders.map((f) => folderRowHtml(f, !!q)).join('')
       + items.map((m) => mediaRowHtml(m, !!q)).join(''));
   }
 
@@ -969,7 +973,7 @@ function openMenu(kind, id, button) {
   libraryMenu.innerHTML = `
     <button type="button" role="menuitem" data-action="rename">Rename</button>
     ${kind === 'folder' ? '<button type="button" role="menuitem" data-action="open">Open</button>' : ''}
-    ${entry?.builtin ? '' : `<button type="button" role="menuitem" data-action="delete" class="danger">Delete${kind === 'folder' ? ' folder' : ''}</button>`}
+    <button type="button" role="menuitem" data-action="delete" class="danger">Delete${kind === 'folder' ? ' folder' : ''}</button>
     <div class="lib-menu-label">Move to</div>
     <div class="lib-menu-moves">${moveRows}</div>`;
   libraryMenu.hidden = false;
@@ -1071,6 +1075,7 @@ function clearFolderDropMarks() {
 // Folder rows and breadcrumbs take dragged library rows
 function folderDropTarget(e) {
   if (!libDrag) return null;
+  if (libDrag.kind === 'media' && getMedia(libDrag.id)?.builtin) return null; // Highlights stay at the top
   const el = e.target.closest('.folder-item, .crumb:not(:disabled)');
   if (!el) return null;
   const folderId = el.dataset.folderId || null;
