@@ -4,7 +4,7 @@ backdrop listens for Art-Net on UDP port 6454. The universe is set once in .env 
 
 Each channel only takes over once its fader moves, so the web UI can still set things while the desk's faders rest. When Art-Net stops for 3 s, everything goes back to neutral, and the next packet only records the fader positions again.
 
-### Control fixture (3 channels)
+### Control fixture (4 channels)
 
 For every show. By default at channel 1 (`DMX_ADDRESS`).
 
@@ -13,10 +13,13 @@ For every show. By default at channel 1 (`DMX_ADDRESS`).
 | 1 | GO | Plays the next cue when the value rises past 50 % (128). Bring it back below 50 % to arm it again. |
 | 2 | BACK | Plays the previous cue, same trigger as GO. From the first cue it wraps to the last one when the playlist loops; when stopped it goes to the last cue. |
 | 3 | Brightness | The LED wall's brightness, 0-255 to 0-100 % on the NovaStar controller, for every cue. |
+| 4 | Blackout | Same as the Black button in the header: past 50 % (128) fades the wall to black, back below 50 % fades it in again. Only the crossing counts, so the header button still works while the fader rests. |
+
+Before Blackout was added the fixture had 3 channels. A saved Control fixture gets Blackout right after Brightness, and a Visuals fixture (and Grid fixture) that sat right after it moves up one channel, so nothing overlaps. Import the new Control fixture on the dot2 and repatch the fixtures that moved.
 
 ### Visuals fixture (10 channels)
 
-By default right after the Control fixture (channels 4-13). It only acts while the wall is on the Visuals tab (setup/VISUALS.md), never on clips or stills.
+By default right after the Control fixture (channels 5-14). It only acts while the wall is on the Visuals tab (setup/VISUALS.md), never on clips or stills.
 
 | Fixture channel | Function | Behaviour |
 |---|---|---|
@@ -31,7 +34,7 @@ The lab's **Virtual desk** plays the Control and Visuals fixtures from the brows
 
 ### Grid fixture (20 channels)
 
-By default right after the Visuals fixture (channels 14-33). It only acts while the wall is on the Grid tab, and then the wall shows 8×2 lights in one colour. Without the desk every cell is lit white; once Art-Net arrives the cells follow the fixture exactly (back to all white 3 s after it stops).
+By default right after the Visuals fixture (channels 15-34). It only acts while the wall is on the Grid tab, and then the wall shows 8×2 lights in one colour. Without the desk every cell is lit white; once Art-Net arrives the cells follow the fixture exactly (back to all white 3 s after it stops).
 
 | Fixture channel | Function | Behaviour |
 |---|---|---|
@@ -56,6 +59,7 @@ dot2 only has its own attribute names, so the functions sit on the nearest ones:
 | Control | 1 | Prisma 1 (Beam view: Rest / GO) | GO |
 | Control | 2 | Prisma 2 (Beam view: Rest / BACK) | BACK |
 | Control | 3 | Dimmer | Brightness |
+| Control | 4 | Prisma 3 (Beam view: Off / Blackout) | Blackout |
 | Visuals | 1 | Gobo 1 (Gobo view, named buttons) | Visual select |
 | Visuals | 2-4 | Color RGB | Red, green, blue |
 | Visuals | 5 | Color 1 | Colour (second colour) |
@@ -68,4 +72,4 @@ dot2 only has its own attribute names, so the functions sit on the nearest ones:
 | Grid | 2-4 | Color RGB | Red, green, blue |
 | Grid | 5-20 | Dimmer of subfixtures .1-.16 | Cell 1-16 |
 
-If an import fails, patch generic fixtures from the dot2 library at the same channels instead (dimmers for GO, BACK, brightness and select, an RGB LED, more dimmers for the rest); everything works, only the names are missing.
+If an import fails, patch generic fixtures from the dot2 library at the same channels instead (dimmers for GO, BACK, brightness, blackout and select, an RGB LED, more dimmers for the rest); everything works, only the names are missing.

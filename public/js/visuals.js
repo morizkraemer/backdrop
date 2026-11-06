@@ -544,7 +544,7 @@ const DESK_FADERS = [
   ['colour', 'Colour', 0], ['speed', 'Speed', 0], ['strobe', 'Strobe', 0],
   ['control1', 'Control 1', 0], ['control2', 'Control 2', 0], ['control3', 'Control 3', 0],
 ];
-const desk = { go: 0, back: 0, visual: 0, ...Object.fromEntries(DESK_FADERS.map(([k, , v]) => [k, v])) };
+const desk = { go: 0, back: 0, blackout: 0, visual: 0, ...Object.fromEntries(DESK_FADERS.map(([k, , v]) => [k, v])) };
 let deskTimer = null;
 let deskBeat = null;
 
@@ -602,6 +602,12 @@ function deskButton(fn) {
 }
 $('deskGo').addEventListener('click', () => deskButton('go'));
 $('deskBack').addEventListener('click', () => deskButton('back'));
+// Blackout follows its fader, so this one stays down until pressed again
+$('deskBlackout').addEventListener('click', (e) => {
+  const on = !desk.blackout;
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+  setDesk({ blackout: on ? 255 : 0 });
+});
 
 // --- live state from backdrop ---
 

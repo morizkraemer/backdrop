@@ -56,10 +56,11 @@
 
         <details class="lab-panel lab-desk" id="deskPanel">
           <summary class="field-label">Virtual desk</summary>
-          <span class="field-hint">Plays the dot2 fixtures from here, to try them without the desk. Brightness sets the real LED wall brightness, and GO or BACK takes the wall back to the cues. Close this to hand back to the desk.</span>
+          <span class="field-hint">Plays the dot2 fixtures from here, to try them without the desk. Brightness sets the real LED wall brightness, Blackout fades the wall to black until pressed again, and GO or BACK takes the wall back to the cues. Close this to hand back to the desk.</span>
           <div class="lab-desk-top">
             <button type="button" class="lab-btn" id="deskBack">BACK</button>
             <button type="button" class="lab-btn lab-btn-live" id="deskGo">GO</button>
+            <button type="button" class="lab-btn" id="deskBlackout" aria-pressed="false">Blackout</button>
             <label class="lab-control"><span>Visual select</span><select id="deskVisual"></select></label>
           </div>
           <div class="lab-desk-faders" id="deskFaders"></div>
