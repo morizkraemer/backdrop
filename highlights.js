@@ -78,7 +78,7 @@ function createHighlights({ config, state, broadcast, enrichMedia, removeThumbna
       ...(old || { id, folderId: null }),
       builtin: true,
       slot,
-      originalName: `Highlights: ${set.eventName || date}`,
+      originalName: set.eventName ? `Highlights for ${set.eventName}` : `Highlights ${date}`,
       filename,
       type: 'video',
       size: fs.statSync(filePath).size,

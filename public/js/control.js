@@ -589,7 +589,7 @@ function renderHighlights() {
       <button type="button" class="hl-item${m.id === live ? ' on' : ''}" data-id="${m.id}" aria-pressed="${m.id === live}"
         title="${m.id === live ? 'Back to the cues' : 'Show on the wall now'}">
         <span class="thumb">${thumbHtml(m)}</span>
-        <span class="hl-name">${escapeHtml(m.eventName || m.originalName)}</span>
+        <span class="hl-name">${m.eventName ? `For ${escapeHtml(m.eventName)}` : escapeHtml(m.originalName)}</span>
         <span class="hl-state">${m.id === live ? 'On wall' : ICONS.play}</span>
       </button>`).join('')}
     </div>` : '');

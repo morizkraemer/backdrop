@@ -2,7 +2,7 @@
 
 Zentrale renders a highlight video for each event of the day (the upcoming events of that event's Promo-Gruppen,
 2304×768, seamless loop) and publishes it in its LED feed. backdrop polls that feed and keeps one built-in
-item per event of the day, **Highlights: <event>**. They aren't in the library: they show as "Today's highlights" above
+item per event of the day, **Highlights for <event>**. They aren't in the library: they show as "Today's highlights" above
 the cue list (cards on desktop, chips on the phone). Each is a toggle: tap it and that event's highlights loop on the
 wall right away, over the cue list, which waits where it is. Tap it again, GO, BACK, a cue or STOP and the wall goes
 back to the cues.
