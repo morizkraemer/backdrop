@@ -329,14 +329,16 @@ function updatePanelShot(screen, live) {
 }
 
 function renderMonitor(root, index, isNow) {
-  const cue = state.playlist[index];
+  // A highlight on the wall (the toggle above the cue list) shows as Now, looping
+  const hl = isNow && highlightOnWall();
+  const cue = hl ? { id: `hl-${hl.id}`, mediaId: hl.id, settings: { loop: true, displayMode: 'fill' } } : state.playlist[index];
   const media = cue && getMedia(cue.mediaId);
   const screen = root.querySelector('.screen');
-  root.querySelector('.cue-num').textContent = cue ? `Q${index + 1}` : '';
+  root.querySelector('.cue-num').textContent = hl ? 'HL' : cue ? `Q${index + 1}` : '';
   root.querySelector('.monitor-name').textContent = cue
     ? media?.originalName ?? '?'
     : isNow ? (state.isTransitioning ? 'Loading…' : 'Nothing playing') : (state.playlist.length ? 'End of list' : '—');
-  root.querySelector('.monitor-meta').textContent = cue ? cueSummary(cue, media) : '';
+  root.querySelector('.monitor-meta').textContent = hl ? 'Loops · tap it again or GO to go back' : cue ? cueSummary(cue, media) : '';
   if (isNow && previewCollapsed()) {
     // Phones keep the live preview behind a tap, so don't stream video nobody sees
     stopPreview();
@@ -569,18 +571,26 @@ function renderLibrary() {
   }
 }
 
-// Today's highlights from Zentrale (one item per event), above the cue list:
-// cards on wide screens, a row of chips on phones. + or drag adds one as a cue.
+// The highlight on the wall right now (server: showHighlight), or null
+function highlightOnWall() {
+  return state.wallMode === 'highlights' ? getMedia(state.highlightOnWall) ?? null : null;
+}
+
+// Today's highlights from Zentrale (one per event), above the cue list: cards on
+// wide screens, chips on phones. Each is a toggle: on puts it on the wall over the
+// cue list, off (or GO, BACK, a cue, STOP) goes back to the cues.
 function renderHighlights() {
   const items = state.library.filter((m) => m.builtin).sort((a, b) => (a.slot ?? 1) - (b.slot ?? 1));
+  const live = highlightOnWall()?.id;
   highlightsStrip.hidden = !items.length;
   setHtml(highlightsStrip, items.length ? `
     <div class="hl-label">Today's highlights</div>
     <div class="hl-items">${items.map((m) => `
-      <button type="button" class="hl-item" draggable="true" data-id="${m.id}" title="Add to cues">
+      <button type="button" class="hl-item${m.id === live ? ' on' : ''}" data-id="${m.id}" aria-pressed="${m.id === live}"
+        title="${m.id === live ? 'Back to the cues' : 'Show on the wall now'}">
         <span class="thumb">${thumbHtml(m)}</span>
         <span class="hl-name">${escapeHtml(m.eventName || m.originalName)}</span>
-        <span class="hl-add">${ICONS.plus}</span>
+        <span class="hl-state">${m.id === live ? 'On wall' : ICONS.play}</span>
       </button>`).join('')}
     </div>` : '');
 }
@@ -597,12 +607,15 @@ function renderCues() {
   }
   setHtml(cueList, state.playlist.map((cue, i) => {
     const media = getMedia(cue.mediaId);
-    const live = i === state.currentCueIndex;
-    const isNext = i === next && !live;
+    // While a highlight has the wall, the current cue waits (it comes back when the highlight is toggled off)
+    const held = i === state.currentCueIndex && !!highlightOnWall();
+    const live = i === state.currentCueIndex && !held;
+    const isNext = i === next && !live && !held;
     const classes = ['cue-row', live && 'live', cue.id === selectedCueId && 'selected'].filter(Boolean).join(' ');
     const tag = live
       ? '<span class="tag tag-live">LIVE</span>'
-      : isNext ? '<span class="tag tag-next">NEXT</span>' : '';
+      : held ? '<span class="tag tag-next">HELD</span>'
+        : isNext ? '<span class="tag tag-next">NEXT</span>' : '';
     return `
       <div class="${classes}" data-cue-id="${cue.id}" draggable="true">
         <span class="handle">${ICONS.grip}</span>
@@ -1185,13 +1198,7 @@ cueList.addEventListener('dragend', () => {
 
 highlightsStrip.addEventListener('click', (e) => {
   const item = e.target.closest('.hl-item');
-  if (item) addToCues(item.dataset.id);
-});
-highlightsStrip.addEventListener('dragstart', (e) => {
-  const item = e.target.closest('.hl-item');
-  if (!item) return;
-  e.dataTransfer.setData(MEDIA_MIME, item.dataset.id);
-  e.dataTransfer.effectAllowed = 'copy';
+  if (item) api('POST', `/highlights/${encodeURIComponent(item.dataset.id)}/toggle`).catch(() => toast('Could not show the highlight'));
 });
 
 cuesPane.addEventListener('dragover', (e) => {

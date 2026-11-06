@@ -76,12 +76,14 @@ const highlights = createHighlights({
   // Items of events that aren't on today any more: they and their cues go
   remove: (ids) => {
     const gone = new Set(ids);
+    if (wallMode() === 'highlights' && gone.has(state.getState().highlightOnWall)) setWallMode('cues');
     state.updateState((s) => ({ ...s, library: s.library.map((m) => (gone.has(m.id) ? { ...m, builtin: false } : m)) }));
     removeMedia(ids);
   },
   onSwap: (mediaId) => {
     const s = state.getState();
-    if (wallMode() === 'cues' && s.playlist[s.currentCueIndex]?.mediaId === mediaId) playCue(s.currentCueIndex);
+    if (wallMode() === 'highlights' && s.highlightOnWall === mediaId) showHighlight(mediaId);
+    else if (wallMode() === 'cues' && s.playlist[s.currentCueIndex]?.mediaId === mediaId) playCue(s.currentCueIndex);
   },
 });
 // The dot2 fixtures (setup/DMX.md), each patched from its own start address:
@@ -258,6 +260,23 @@ function setWallMode(mode) {
   broadcastState();
 }
 
+// A highlight from Zentrale straight on the wall, looping, over the cue list:
+// a toggle on the control page (wall mode 'highlights', no tab of its own). The
+// cue list waits where it is; toggling it off, GO, BACK, a cue or STOP go back.
+function showHighlight(id) {
+  const media = state.getState().library.find((m) => m.id === id && m.builtin);
+  const filePath = media && path.resolve(config.uploadsDir, media.filename);
+  if (!filePath || !fs.existsSync(filePath)) return false;
+  clearDurationTimer();
+  lab.release();
+  grid.release();
+  state.updateState({ wallMode: 'highlights', highlightOnWall: id });
+  mpv.loadFile(filePath, { loop: true, displayMode: 'fill', isImage: false, freeze: false, framing: getCueFraming() })
+    .catch((err) => console.error('mpv loadFile (highlight):', err));
+  broadcastState();
+  return true;
+}
+
 // A cue action (GO, BACK, a cue picked, STOP) brings the wall back to the cue list
 function toCues() {
   if (wallMode() === 'cues') return;
@@ -383,6 +402,7 @@ mpv.onReconnect(() => {
   if (black > 0) mpv.setBlack(black).catch(() => {});
   if (wallMode() === 'visuals') lab.enter().catch((err) => console.warn('Visuals:', err.message));
   else if (wallMode() === 'grid') grid.enter().catch((err) => console.warn('Grid:', err.message));
+  else if (wallMode() === 'highlights') showHighlight(s.highlightOnWall);
   else if (s.currentCueIndex >= 0 && s.currentCueIndex < s.playlist.length) {
     playCue(s.currentCueIndex);
   }
@@ -557,6 +577,14 @@ app.post('/api/upload', (req, res) => {
 });
 
 app.get('/api/highlights', (req, res) => res.json(highlights.status()));
+// The toggle above the cue list: the highlight on the wall, or (again) back to the cues
+app.post('/api/highlights/:id/toggle', (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
+  const on = wallMode() === 'highlights' && state.getState().highlightOnWall === req.params.id;
+  if (on) setWallMode('cues');
+  else if (!showHighlight(req.params.id)) return res.status(404).json({ error: 'Not found' });
+  res.json({ wallMode: wallMode() });
+});
 
 app.get('/api/library', (req, res) => {
   res.json(state.getState().library);
@@ -732,7 +760,7 @@ function takeScreenshot() {
   if (Date.now() - screenshot.at < SCREENSHOT_MAX_AGE_MS) return Promise.resolve(true);
   if (!screenshot.pending) {
     // A visual's (or the Grid's) source is 16x16, so its 'video' shot would be too: take the output
-    screenshot.pending = mpv.screenshotToFile(SCREENSHOT_PATH, wallMode() !== 'cues' ? 'window' : 'video')
+    screenshot.pending = mpv.screenshotToFile(SCREENSHOT_PATH, !['cues', 'highlights'].includes(wallMode()) ? 'window' : 'video')
       .then(() => { screenshot.at = Date.now(); return true; })
       .catch(() => false)
       .finally(() => { screenshot.pending = null; });

@@ -1,10 +1,11 @@
 # Event highlights from Zentrale
 
 Zentrale renders a highlight video for each event of the day (the upcoming events of that event's Promo-Gruppen,
-2304×768, seamless loop) and publishes it in its LED feed. backdrop polls that feed and keeps one built-in library
+2304×768, seamless loop) and publishes it in its LED feed. backdrop polls that feed and keeps one built-in
 item per event of the day, **Highlights: <event>**. They aren't in the library: they show as "Today's highlights" above
-the cue list (cards on desktop, chips on the phone). + or drag puts one in the cue list like any clip (Loop on);
-whoever runs the cues picks which one plays.
+the cue list (cards on desktop, chips on the phone). Each is a toggle: tap it and that event's highlights loop on the
+wall right away, over the cue list, which waits where it is. Tap it again, GO, BACK, a cue or STOP and the wall goes
+back to the cues.
 
 Zentrale's side of the contract is `docs/led-feed.md` in the Zentrale repo (branch `feature/led-daily-highlights`
 until it's merged).
@@ -32,7 +33,7 @@ A `410` means the link was revoked in Zentrale ("Neuen Link erzeugen"): put the 
 - When a set's video link changes and its `status` is `ready`, the new MP4 is downloaded next to the uploads and
   swapped in once complete, and the item is renamed to the event. While Zentrale is still rendering (`202`), the old
   video keeps playing.
-- If that item's cue is on the wall when the video is swapped, it starts again with the new one.
-- A day with fewer events than the day before: the extra items and their cues go. The first item stays on a day
+- If that highlight is on the wall when the video is swapped, it starts again with the new one.
+- A day with fewer events than the day before: the extra items go. The first item stays on a day
   without events (`sets: []`), with its last video: it still shows upcoming events.
 - The items can't be renamed, moved into a folder or deleted.

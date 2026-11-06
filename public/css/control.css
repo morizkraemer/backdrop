@@ -1368,7 +1368,7 @@ button.crumb:hover {
   font: inherit;
   font-size: 14px;
   text-align: left;
-  cursor: grab;
+  cursor: pointer;
 }
 
 .hl-item:hover {
@@ -1384,20 +1384,37 @@ button.crumb:hover {
   white-space: nowrap;
 }
 
-.hl-add {
+.hl-state {
   display: grid;
   place-items: center;
-  width: 28px;
+  min-width: 28px;
   height: 28px;
+  padding: 0 6px;
   flex-shrink: 0;
   border-radius: 6px;
-  background: var(--live);
-  color: var(--live-ink);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.hl-add svg {
-  width: 16px;
-  height: 16px;
+.hl-state svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* On the wall: lit like the live cue; tapping it again goes back to the cues */
+.hl-item.on {
+  border-color: var(--live);
+  background: var(--live-bg);
+  box-shadow: inset 0 0 0 1px var(--live);
+}
+
+.hl-item.on .hl-state {
+  background: var(--live);
+  color: var(--live-ink);
 }
 
 /* Phones: no box, one row of chips that scrolls sideways */
