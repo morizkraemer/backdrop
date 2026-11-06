@@ -1,5 +1,5 @@
 /**
- * The Grid (setup/DMX.md): a 12x4 grid of lights on the LED wall, drawn by an
+ * The Grid (setup/DMX.md): an 8x2 grid of lights on the LED wall, drawn by an
  * mpv shader (grid/lights.glsl) and played from the desk's Grid fixture: Shape
  * (square, circle, triangle, Fresnel), one RGB colour and a dimmer per cell.
  * It's on the wall while the wall mode is Grid (server.js setWallMode). Without
@@ -12,8 +12,8 @@ const visuals = require('./visuals');
 const { maFixtureType, dmxChannel, dmxSet } = require('./visuals-lab');
 
 const FILE = path.join(__dirname, 'grid', 'lights.glsl');
-const COLS = 12;
-const ROWS = 4;
+const COLS = 8;
+const ROWS = 2;
 const CELLS = COLS * ROWS;
 const SHAPES = ['Square', 'Circle', 'Triangle', 'Fresnel'];
 const CELL_FNS = Array.from({ length: CELLS }, (_, i) => `cell${i + 1}`);
@@ -30,7 +30,7 @@ const NEUTRAL = {
 // Shape 0-63 square, 64-127 circle, 128-191 triangle, 192-255 Fresnel
 const shapeOf = (v) => Math.min(SHAPES.length - 1, Math.floor(v / 64));
 
-// The Grid fixture for the dot2: Shape, RGB, then 48 cells as subfixtures
+// The Grid fixture for the dot2: Shape, RGB, then 16 cells as subfixtures
 function dot2GridFixture() {
   return maFixtureType('Grid', [
     dmxChannel(1, 'GOBO1', 'GOBO', 'GOBO', SHAPES.map((name, i) => dmxSet(name, i * 64, i * 64 + 63))),
@@ -98,7 +98,7 @@ function createGrid({ config, mpv, broadcast }) {
     broadcast();
   }
 
-  // values/prev: { shape, grid_red, ..., cell48 } 0-255 or null for unused; the
+  // values/prev: { shape, grid_red, ..., cell16 } 0-255 or null for unused; the
   // grid follows every channel that's patched, only while it's on the wall
   function applyDmx(dmx) {
     if (!active) return;
