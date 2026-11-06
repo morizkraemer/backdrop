@@ -36,7 +36,7 @@ function sortSets(sets) {
     .slice(0, MAX_SLOTS);
 }
 
-function createHighlights({ config, state, broadcast, enrichMedia, removeThumbnail, remove, onSwap }) {
+function createHighlights({ config, state, broadcast, enrichMedia, removeThumbnail, getDiskFree, remove, onSwap }) {
   const feedUrl = config.ledFeedUrl;
   const status = {
     configured: !!feedUrl,
@@ -51,6 +51,7 @@ function createHighlights({ config, state, broadcast, enrichMedia, removeThumbna
 
   // Downloads the slot's video and puts it into its library item
   async function download(id, slot, set, date) {
+    if (getDiskFree() < config.minFreeDisk) throw new Error(`${set.eventName}: not enough disk space`);
     const url = new URL(set.highlightLoop, feedUrl);
     const res = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
     if (res.status === 202) {

@@ -49,7 +49,7 @@ module.exports = {
   remoteUploadHost: process.env.REMOTE_UPLOAD_HOST || '0.0.0.0',
   remoteUploadFolder: process.env.REMOTE_UPLOAD_FOLDER || 'Phone uploads',
   // Zentrale's LED feed (setup/HIGHLIGHTS.md): the full today.json link, e.g.
-  // http://<VM-IP>:3001/s/<token>/led/today.json. Empty = no Highlights item.
+  // http://<VM-IP>:3001/s/<token>/led/today.json. Empty = no highlights.
   ledFeedUrl: process.env.LED_FEED_URL || null,
   remoteUploadSettingsPath: process.env.REMOTE_UPLOAD_SETTINGS || path.join(__dirname, 'remote-upload.json'),
 };

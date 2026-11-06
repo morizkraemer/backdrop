@@ -64,15 +64,16 @@ const lab = createVisualsLab({
   broadcast: () => broadcastState(),
 });
 const grid = createGrid({ config, mpv, broadcast: () => broadcastState() });
-// Event highlights from Zentrale (setup/HIGHLIGHTS.md): one built-in Highlights
-// item per event of the day, each holding that event's video. When one is
-// swapped while its cue is on the wall, the cue starts again with the new file.
+// Event highlights from Zentrale (setup/HIGHLIGHTS.md): one built-in item per
+// event of the day, each holding that event's video, toggled onto the wall from
+// above the cue list (showHighlight). A swapped video on the wall restarts.
 const highlights = createHighlights({
   config,
   state,
   broadcast: () => broadcastState(),
   enrichMedia,
   removeThumbnail,
+  getDiskFree,
   // Items of events that aren't on today any more: they and their cues go
   remove: (ids) => {
     const gone = new Set(ids);
@@ -654,7 +655,7 @@ app.patch('/api/library/:id', (req, res) => {
     if (!name) return res.status(400).json({ error: 'Name required' });
     patch.originalName = name;
   }
-  if (req.body.folderId !== undefined && !item.builtin) { // built-in items stay at the top
+  if (req.body.folderId !== undefined && !item.builtin) { // built-in items stay out of folders
     const folderId = req.body.folderId || null;
     if (folderId && !s.folders.some((f) => f.id === folderId)) return res.status(404).json({ error: 'Folder not found' });
     patch.folderId = folderId;
