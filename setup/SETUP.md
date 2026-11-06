@@ -45,7 +45,7 @@ GRUB_CMDLINE_LINUX="... consoleblank=0"
 
 ```bash
 apt update
-apt install -y nodejs npm mpv ffmpeg   # ffmpeg is optional: video thumbnails and lengths
+apt install -y nodejs npm mpv ffmpeg ghostscript   # optional: ffmpeg for thumbnails and lengths, ghostscript for EPS uploads (turned into PNGs)
 ```
 
 If Node.js is too old, use [NodeSource](https://github.com/nodesource/distributions) for Node 20 LTS.
