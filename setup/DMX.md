@@ -32,21 +32,23 @@ By default right after the Control fixture (channels 5-14). It only acts while t
 
 The lab's **Virtual desk** plays the Control and Visuals fixtures from the browser, to try them without the dot2.
 
-### Grid fixture (52 channels)
+### Grid fixture (20 channels)
 
-By default right after the Visuals fixture (channels 15-66). It only acts while the wall is on the Grid tab, and then the wall shows 12×4 lights in one colour. Without the desk every cell is lit white; once Art-Net arrives the cells follow the fixture exactly (back to all white 3 s after it stops).
+By default right after the Visuals fixture (channels 15-34). It only acts while the wall is on the Grid tab, and then the wall shows 8×2 lights in one colour. Without the desk every cell is lit white; once Art-Net arrives the cells follow the fixture exactly (back to all white 3 s after it stops).
 
 | Fixture channel | Function | Behaviour |
 |---|---|---|
 | 1 | Shape | 0-63 square, 64-127 circle, 128-191 triangle, 192-255 Fresnel (a stage light seen from the front: black housing, a ringed lens glowing in the colour, a wire safety mesh). |
 | 2-4 | Red, green, blue | The colour of every cell. |
-| 5-52 | Cell 1-48 | Each cell's dimmer, row by row from the top left (cell 1-12 the top row). |
+| 5-20 | Cell 1-16 | Each cell's dimmer, row by row from the top left (cell 1-8 the top row). |
+
+The Grid used to be 12×4 (52 channels). A saved Grid start address stays where it is, so channels 21-52 after it are free now; import the new Grid fixture on the dot2 and repatch it.
 
 The Grid page has its own **Virtual desk**: shape, colour, and click cells on and off.
 
 ### dot2 fixture types
 
-The Visuals lab has **Download Visuals fixture** (`/api/visuals/dot2.xml`) and **Download Control fixture** (`/api/visuals/dot2-control.xml`), the Grid page **Download Grid fixture** (`/api/grid/dot2.xml`): one MA fixture type (grandMA2 XML) each, with every visual named on the Visuals fixture's select channel and the Grid's cells as 48 subfixtures (Grid.1-48). Download the Visuals one again after adding visuals, so the names stay current.
+The Visuals lab has **Download Visuals fixture** (`/api/visuals/dot2.xml`) and **Download Control fixture** (`/api/visuals/dot2-control.xml`), the Grid page **Download Grid fixture** (`/api/grid/dot2.xml`): one MA fixture type (grandMA2 XML) each, with every visual named on the Visuals fixture's select channel and the Grid's cells as 16 subfixtures (Grid.1-16). Download the Visuals one again after adding visuals, so the names stay current.
 
 To import: copy them to a USB stick in `dot2/library/`, then on the dot2 open Setup → Patch and Fixture Schedule → Add New Fixtures → Select other... → Import, pick the USB drive, manufacturer "backdrop", then "Control", "Visuals" or "Grid". Patch each at any address on the universe the node forwards, and enter the same addresses in backdrop.
 
@@ -68,6 +70,6 @@ dot2 only has its own attribute names, so the functions sit on the nearest ones:
 | Visuals | 10 | Gobo 3 | Control 3 (what Control 1-3 move per visual is shown in the lab) |
 | Grid | 1 | Gobo 1 (named buttons) | Shape |
 | Grid | 2-4 | Color RGB | Red, green, blue |
-| Grid | 5-52 | Dimmer of subfixtures .1-.48 | Cell 1-48 |
+| Grid | 5-20 | Dimmer of subfixtures .1-.16 | Cell 1-16 |
 
 If an import fails, patch generic fixtures from the dot2 library at the same channels instead (dimmers for GO, BACK, brightness, blackout and select, an RGB LED, more dimmers for the rest); everything works, only the names are missing.

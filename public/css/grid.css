@@ -21,10 +21,10 @@
   gap: 14px;
 }
 
-/* 12 x 4, like the wall */
+/* 8 x 2, like the wall */
 .grid-cells {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 4px;
   max-width: 600px;
 }
@@ -49,7 +49,7 @@
 
 .grid-levels {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 2px;
 }
 

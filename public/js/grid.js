@@ -1,10 +1,10 @@
-// Grid page: the 12x4 grid of lights on the wall (grid.js on the server), its
+// Grid page: the 8x2 grid of lights on the wall (grid.js on the server), its
 // dot2 fixture and a virtual desk to play it without the desk (setup/DMX.md).
 const API = '/api';
 const WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
 
 const $ = (id) => document.getElementById(id);
-const CELLS = 48;
+const CELLS = 16;
 const CELL_FNS = Array.from({ length: CELLS }, (_, i) => `cell${i + 1}`);
 const SHAPES = ['Square', 'Circle', 'Triangle', 'Fresnel'];
 
@@ -94,7 +94,7 @@ $('dmxChannels').innerHTML = `<div class="dmx-ch dmx-ch-head"><span>Channel</spa
 ${FIXED.map(([fn, name]) => `<div class="dmx-ch" data-fn="${fn}">
   <span class="dmx-num"></span><span>${name}</span><span class="dmx-bar"><span></span></span><span class="dmx-val"></span>
 </div>`).join('')}
-<div class="dmx-ch" data-fn="cells"><span class="dmx-num"></span><span>Cells 1-48</span><span class="grid-levels" id="dmxLevels">${CELL_FNS.map(() => '<span></span>').join('')}</span><span></span></div>`;
+<div class="dmx-ch" data-fn="cells"><span class="dmx-num"></span><span>Cells 1-${CELLS}</span><span class="grid-levels" id="dmxLevels">${CELL_FNS.map(() => '<span></span>').join('')}</span><span></span></div>`;
 
 function renderDmx() {
   const d = state.dmx || {};
