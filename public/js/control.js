@@ -57,6 +57,8 @@ const ICONS = {
   grip: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>',
   folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+  soundOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z" fill="currentColor"/><path d="M16 9l5 6"/><path d="M21 9l-5 6"/></svg>',
+  soundOn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
   more: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>',
 };
 
@@ -172,6 +174,16 @@ function endLong(cue, media) {
 
 function cueMode(cue) {
   return DISPLAY_LABELS[cue.settings?.displayMode ?? 'fill'];
+}
+
+// Videos with an audio track get a speaker toggle on their row. Off (the
+// default) plays the video muted; on plays its sound and switches the Pi
+// speakers from Spotify to backdrop while it runs.
+function soundButton(cue, media) {
+  if (media?.type !== 'video' || media.hasAudio === false) return '';
+  const on = !!cue.settings?.sound;
+  const title = on ? 'Sound on: plays on the speakers. Tap to mute' : 'Sound off. Tap to play this video on the speakers';
+  return `<button type="button" class="btn-icon sound${on ? ' on' : ''}" data-cue-id="${cue.id}" aria-pressed="${on}" aria-label="Sound" title="${title}">${on ? ICONS.soundOn : ICONS.soundOff}</button>`;
 }
 
 function cueSummary(cue, media) {
@@ -594,6 +606,7 @@ function renderCues() {
           <span class="cue-summary">${escapeHtml(cueSummary(cue, media))}</span>
         </span>
         ${tag}
+        ${soundButton(cue, media)}
         <span class="cue-mode">${cueMode(cue)}</span>
         <span class="cue-end">${endShort(cue, media)}</span>
         <button type="button" class="btn-icon more" data-cue-id="${cue.id}" aria-label="Cue settings">${ICONS.more}</button>
@@ -700,6 +713,27 @@ function selectCue(cueId) {
   if (selectedCueId !== cueId) saveStatus = null;
   selectedCueId = cueId;
   render();
+}
+
+function toggleSound(cueId) {
+  const cue = state.playlist.find((c) => c.id === cueId);
+  if (!cue) return;
+  const sound = !cue.settings?.sound;
+  state = {
+    ...state,
+    playlist: state.playlist.map((c) => (c.id === cueId ? { ...c, settings: { ...c.settings, sound } } : c)),
+  };
+  render();
+  const undo = () => {
+    state = {
+      ...state,
+      playlist: state.playlist.map((c) => (c.id === cueId ? { ...c, settings: { ...c.settings, sound: !sound } } : c)),
+    };
+    render();
+  };
+  api('PUT', `/playlist/${cueId}`, { sound })
+    .then((r) => { if (!r.ok) undo(); })
+    .catch(undo);
 }
 
 function updateCue(patch) {
@@ -1136,6 +1170,10 @@ cueList.addEventListener('click', (e) => {
   const row = e.target.closest('.cue-row');
   if (!row) return;
   const cueId = row.dataset.cueId;
+  if (e.target.closest('.sound')) {
+    toggleSound(cueId);
+    return;
+  }
   const isDouble = !e.target.closest('button')
     && lastCueClick.id === cueId
     && e.timeStamp - lastCueClick.at < DOUBLE_CLICK_MS;

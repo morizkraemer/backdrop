@@ -220,6 +220,7 @@ class MpvController extends EventEmitter {
   async loadFile(path, opts = {}) {
     const {
       loop = false,
+      mute = false, // the cue's sound is off (see cueHasSound in server.js)
       displayMode = 'fill',
       isImage = false,
       framing,
@@ -233,6 +234,7 @@ class MpvController extends EventEmitter {
     // cue loads; eof-reached tells the server when to move on.
     const options = {
       'pause': 'no',
+      'mute': mute ? 'yes' : 'no',
       'loop-file': loop ? 'inf' : 'no',
       'keep-open': isImage ? 'no' : 'yes',
       'keepaspect': mode.keepaspect ? 'yes' : 'no',

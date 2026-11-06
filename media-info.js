@@ -26,6 +26,18 @@ async function probeDuration(filePath) {
   return Number.isFinite(sec) ? sec : null;
 }
 
+// true when the file has at least one audio stream
+async function probeHasAudio(filePath) {
+  const out = await run('ffprobe', [
+    '-v', 'error',
+    '-select_streams', 'a',
+    '-show_entries', 'stream=index',
+    '-of', 'csv=p=0',
+    filePath,
+  ]);
+  return out.trim().length > 0;
+}
+
 async function makeThumbnail(filePath, outPath, duration) {
   // Grab a frame a little way in, so fade-ins don't give a black thumbnail
   // (stills get no -ss at all: seeking a single image yields no frame)
@@ -43,9 +55,9 @@ async function makeThumbnail(filePath, outPath, duration) {
 }
 
 /**
- * Returns { thumb, duration } for a library item. thumb is relative to uploadsDir;
- * duration is only probed for videos. Either field may be null when ffmpeg is
- * unavailable or the file can't be read.
+ * Returns { thumb, duration, hasAudio } for a library item. thumb is relative to
+ * uploadsDir; duration and hasAudio are only probed for videos. Any field may be
+ * null when ffmpeg is unavailable or the file can't be read.
  */
 async function analyzeMedia(uploadsDir, item) {
   const filePath = path.resolve(uploadsDir, item.filename);
@@ -55,9 +67,11 @@ async function analyzeMedia(uploadsDir, item) {
 
   let duration = null;
   let thumb = null;
+  let hasAudio = null;
   if (item.type === 'video') {
     try {
       duration = await probeDuration(filePath);
+      hasAudio = await probeHasAudio(filePath);
     } catch (e) {
       console.warn(`ffprobe failed for ${item.originalName}:`, e.code === 'ENOENT' ? 'ffprobe not installed' : e.message);
     }
@@ -70,7 +84,7 @@ async function analyzeMedia(uploadsDir, item) {
   } catch (e) {
     console.warn(`Thumbnail failed for ${item.originalName}:`, e.code === 'ENOENT' ? 'ffmpeg not installed' : e.message);
   }
-  return { thumb, duration };
+  return { thumb, duration, hasAudio };
 }
 
 function removeThumbnail(uploadsDir, item) {
@@ -80,4 +94,13 @@ function removeThumbnail(uploadsDir, item) {
   } catch (_) {}
 }
 
-module.exports = { analyzeMedia, removeThumbnail };
+// Only whether a video has sound, for videos analyzed before that was probed
+async function probeAudio(uploadsDir, item) {
+  try {
+    return await probeHasAudio(path.resolve(uploadsDir, item.filename));
+  } catch (_) {
+    return null;
+  }
+}
+
+module.exports = { analyzeMedia, probeAudio, removeThumbnail };

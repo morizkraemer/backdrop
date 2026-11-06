@@ -9,7 +9,7 @@ const { WebSocketServer } = require('ws');
 const config = require('./config');
 const { MpvController } = require('./mpv-controller');
 const { createStateManager } = require('./state');
-const { analyzeMedia, removeThumbnail } = require('./media-info');
+const { analyzeMedia, probeAudio, removeThumbnail } = require('./media-info');
 const { createMatrix } = require('./hdmi-matrix');
 const { listenArtNet } = require('./artnet');
 const { createRemoteUpload } = require('./remote-upload');
@@ -33,6 +33,7 @@ const mpv = new MpvController(config.mpvSocket);
 
 let durationTimer = null;
 let isTransitioning = false;
+let cueFinished = false; // the live video reached its end (frozen on its last frame)
 let wss = null;
 let mpvProcess = null;
 let led = { configured: !!config.novaHost, available: false, brightness: null };
@@ -40,6 +41,7 @@ let led = { configured: !!config.novaHost, available: false, brightness: null };
 let black = 0;
 let blackTarget = 0;
 let fadeTimer = null;
+let piSpeakers = null; // what the Pi speakers play, as last read (see syncSpeakers)
 const FADE_MS = 1000;
 const FADE_STEP_MS = 40;
 const matrix = config.hdmiHosts.length ? createMatrix(config.hdmiHosts) : null;
@@ -89,6 +91,7 @@ function getDiskFree() {
 }
 
 function broadcastState() {
+  syncSpeakers();
   const s = state.getState();
   const payload = JSON.stringify({
     ...s,
@@ -101,6 +104,7 @@ function broadcastState() {
     visual: lab.status(),
     grid: grid.status(),
     blackout: blackTarget === 1,
+    speakers: piSpeakers,
   });
   if (wss) {
     wss.clients.forEach((client) => {
@@ -109,11 +113,12 @@ function broadcastState() {
   }
 }
 
-// Adds a small thumbnail (and a video's duration) in the background, then pushes the update
+// Adds a small thumbnail (and a video's duration and whether it has sound) in
+// the background, then pushes the update
 function enrichMedia(item) {
-  return analyzeMedia(config.uploadsDir, item).then(({ thumb, duration }) => {
+  return analyzeMedia(config.uploadsDir, item).then(({ thumb, duration, hasAudio }) => {
     if (!thumb && duration == null) return;
-    const patch = item.type === 'video' ? { thumb, duration } : { thumb };
+    const patch = item.type === 'video' ? { thumb, duration, hasAudio } : { thumb };
     state.updateState((s) => ({
       ...s,
       library: s.library.map((m) => (m.id === item.id ? { ...m, ...patch } : m)),
@@ -193,9 +198,16 @@ function parseFraming(body) {
   return { framing };
 }
 
+// A video plays with sound only when its cue's speaker toggle is on (and the
+// file has an audio track at all). hasAudio null: not probed, so allow it.
+function cueHasSound(cue, media) {
+  return media?.type === 'video' && media.hasAudio !== false && !!cue?.settings?.sound;
+}
+
 function getCuePlaybackOptions(cue, media) {
   const settings = cue.settings || {};
   return {
+    mute: !cueHasSound(cue, media),
     loop: settings.loop ?? false,
     displayMode: settings.displayMode ?? 'fill',
     isImage: media.type === 'image',
@@ -278,6 +290,7 @@ function playCue(index) {
   }
 
   isTransitioning = true;
+  cueFinished = false;
   broadcastState();
 
   const duration = cue.settings?.duration ?? null;
@@ -335,6 +348,7 @@ function isCurrentCueVideo(s) {
 // its last frame by keep-open) instead of reloading it, so there is no gap.
 function restartCurrentCue() {
   const index = state.getState().currentCueIndex;
+  cueFinished = false;
   mpv.restart().catch((err) => {
     console.error('mpv restart error:', err);
     playCue(index);
@@ -343,6 +357,9 @@ function restartCurrentCue() {
 
 function handleFileEnded() {
   if (isTransitioning || wallMode() !== 'cues') return;
+  // A frozen last frame has no more sound: the speakers can go back
+  cueFinished = true;
+  broadcastState();
   const s = state.getState();
   const cue = s.playlist[s.currentCueIndex];
   if (!cue) return;
@@ -403,10 +420,19 @@ fs.mkdirSync(config.uploadsDir, { recursive: true });
   if (!WALL_MODES.includes(state.getState().wallMode)) state.updateState({ wallMode: 'cues' });
 }
 
-// Backfill thumbnails for media uploaded before thumbnails existed, one at a time
+// Backfill thumbnails for media uploaded before thumbnails existed, and whether
+// older videos have sound, one at a time
 (async () => {
   for (const item of state.getState().library) {
     if (!item.thumb) await enrichMedia(item);
+    else if (item.type === 'video' && item.hasAudio === undefined) {
+      const hasAudio = await probeAudio(config.uploadsDir, item);
+      state.updateState((s) => ({
+        ...s,
+        library: s.library.map((m) => (m.id === item.id ? { ...m, hasAudio } : m)),
+      }));
+      broadcastState();
+    }
   }
 })();
 
@@ -812,7 +838,7 @@ app.put('/api/playlist/:cueId', (req, res) => {
   const s = state.getState();
   const idx = s.playlist.findIndex((c) => c.id === req.params.cueId);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  const { loop, displayMode, duration, freeze } = req.body;
+  const { loop, displayMode, duration, freeze, sound } = req.body;
   const { framing, error } = parseFraming(req.body);
   if (error) return res.status(400).json({ error });
   const cue = { ...s.playlist[idx] };
@@ -820,6 +846,7 @@ app.put('/api/playlist/:cueId', (req, res) => {
   cue.settings = { ...before, ...framing };
   if (loop !== undefined) cue.settings.loop = !!loop;
   if (freeze !== undefined) cue.settings.freeze = !!freeze;
+  if (sound !== undefined) cue.settings.sound = !!sound;
   if (displayMode !== undefined) {
     if (!isValidDisplayMode(displayMode)) return res.status(400).json({ error: 'Invalid displayMode' });
     cue.settings.displayMode = displayMode;
@@ -841,11 +868,15 @@ app.put('/api/playlist/:cueId', (req, res) => {
     // nothing
   } else if (idx === s.currentCueIndex && !needsReload) {
     mpv.setFraming(getCueFraming(cue.settings)).catch(console.error);
+    // The speaker toggle (un)mutes the live video in place
+    const media = s.library.find((m) => m.id === cue.mediaId);
+    mpv.setProperty('mute', !cueHasSound(cue, media)).catch(console.error);
   } else if (idx === s.currentCueIndex) {
     const media = s.library.find((m) => m.id === cue.mediaId);
     if (media) {
       const filePath = path.resolve(config.uploadsDir, media.filename);
       if (fs.existsSync(filePath)) {
+        cueFinished = false;
         mpv.loadFile(filePath, getCuePlaybackOptions(cue, media)).catch(console.error);
       }
     }
@@ -1029,6 +1060,18 @@ const PI_SOURCES = {
 const PI_MIXER = 'amixer -c CODEC';
 
 async function piAudioSource() {
+  piSpeakers = await readPiAudioSource();
+  return piSpeakers;
+}
+
+async function setPiAudioSource(source) {
+  const control = PI_SOURCES[source];
+  const levels = Object.values(PI_SOURCES).map((c) => `${PI_MIXER} -q sset ${c} ${c === control ? '100%' : '0%'}`);
+  await sshCommand(levels.join(' && '));
+  return piAudioSource();
+}
+
+async function readPiAudioSource() {
   // sget fails for a control that doesn't exist yet, so always succeed
   const out = await sshCommand(Object.values(PI_SOURCES)
     .map((c) => `echo "${c} $(${PI_MIXER} sget ${c} 2>/dev/null | grep -o '\\[[0-9]*%\\]' | head -1)"`)
@@ -1053,16 +1096,72 @@ app.get('/api/pi-audio/status', async (req, res) => {
 
 app.post('/api/pi-audio/source', async (req, res) => {
   if (!config.btHost) return res.status(501).json({ error: 'BT_HOST not configured' });
-  const control = PI_SOURCES[req.body.source];
-  if (!control) return res.status(400).json({ error: `source must be one of ${Object.keys(PI_SOURCES).join(', ')}` });
-  const levels = Object.values(PI_SOURCES).map((c) => `${PI_MIXER} -q sset ${c} ${c === control ? '100%' : '0%'}`);
+  if (!PI_SOURCES[req.body.source]) return res.status(400).json({ error: `source must be one of ${Object.keys(PI_SOURCES).join(', ')}` });
+  // Picked by hand while a sound cue has the speakers: leave them as picked
+  if (soundTake) soundTake.manual = true;
   try {
-    await sshCommand(levels.join(' && '));
-    res.json({ source: await piAudioSource() });
+    const source = await speakersJob(() => setPiAudioSource(req.body.source));
+    res.json({ source });
+    broadcastState();
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Sound cues: videos play muted unless their cue's speaker toggle is on. Only
+// while such a cue is on the wall do the Pi speakers play backdrop; once it's
+// off the wall they go back to what they played before (Spotify, unless that
+// was Bluetooth), so Spotify stays the speakers' everyday source.
+// Called from broadcastState, which runs after every change to the wall.
+let soundTake = null; // { restore, manual } while a sound cue has the speakers
+let soundReleaseTimer = null;
+let speakersQueue = Promise.resolve();
+// Snapcast buffers about a second, so let the end of the sound play out
+const SOUND_RELEASE_MS = 1500;
+
+// One SSH switch at a time, in order
+function speakersJob(fn) {
+  const job = speakersQueue.then(fn);
+  speakersQueue = job.catch(() => {});
+  return job;
+}
+
+function soundCueOnWall() {
+  if (wallMode() !== 'cues' || isTransitioning || cueFinished) return false;
+  const s = state.getState();
+  const cue = s.playlist[s.currentCueIndex];
+  return !!cue && cueHasSound(cue, s.library.find((m) => m.id === cue.mediaId));
+}
+
+function syncSpeakers() {
+  if (!config.btHost) return;
+  if (soundCueOnWall()) {
+    clearTimeout(soundReleaseTimer);
+    soundReleaseTimer = null;
+    if (soundTake) return;
+    const take = { restore: 'spotify', manual: false };
+    soundTake = take;
+    speakersJob(async () => {
+      const before = await piAudioSource();
+      if (before === 'bluetooth') take.restore = 'bluetooth';
+      if (before !== 'backdrop' && !take.manual && soundTake === take) {
+        await setPiAudioSource('backdrop');
+        broadcastState();
+      }
+    }).catch((err) => console.warn('Speakers to backdrop:', err.message));
+  } else if (soundTake && !soundReleaseTimer) {
+    soundReleaseTimer = setTimeout(() => {
+      soundReleaseTimer = null;
+      if (soundCueOnWall()) return;
+      const take = soundTake;
+      soundTake = null;
+      if (take.manual) return;
+      speakersJob(() => setPiAudioSource(take.restore))
+        .then(() => broadcastState())
+        .catch((err) => console.warn(`Speakers back to ${take.restore}:`, err.message));
+    }, SOUND_RELEASE_MS);
+  }
+}
 
 // LED panel brightness via the NovaStar controller (see setup/NOVASTAR.md)
 let ledTarget = null;

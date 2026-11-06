@@ -1441,6 +1441,29 @@ button.crumb:hover {
   display: none;
 }
 
+/* Speaker toggle on video rows: dim when muted (the default), green when on */
+.cue-row .sound {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: #5c5f66;
+}
+
+.cue-row .sound:hover {
+  color: var(--text-2);
+}
+
+.cue-row .sound.on {
+  color: var(--live);
+}
+
+.cue-row .sound svg {
+  width: 18px;
+  height: 18px;
+}
+
 .cue-row .more {
   display: none;
 }
