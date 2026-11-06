@@ -548,6 +548,11 @@
       if (PAGES[state.wallMode] && state.wallMode !== page) location.replace(PAGES[state.wallMode]);
       renderStatus();
       renderBlack();
+      // The server switches the speakers by itself for a sound cue
+      if (state.speakers && state.speakers !== piSource && !piPending && !$('piAudio').hidden) {
+        piSource = state.speakers;
+        renderPiAudio();
+      }
       renderLed();
       renderHdmi();
       renderDmx();
