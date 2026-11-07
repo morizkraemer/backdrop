@@ -25,6 +25,10 @@ function load(statePath) {
       currentCueIndex: typeof parsed.currentCueIndex === 'number' ? parsed.currentCueIndex : -1,
       playlistLoop: typeof parsed.playlistLoop === 'boolean' ? parsed.playlistLoop : false,
       dmxConfig: parsed.dmxConfig ?? null,
+      // What the wall shows (server.js setWallMode), so a restart (every deploy)
+      // comes back to it instead of the cue list
+      ...(typeof parsed.wallMode === 'string' ? { wallMode: parsed.wallMode } : {}),
+      ...(typeof parsed.highlightOnWall === 'string' ? { highlightOnWall: parsed.highlightOnWall } : {}),
     };
   } catch (err) {
     if (err.code === 'ENOENT') return { ...DEFAULT_STATE };

@@ -403,7 +403,8 @@ mpv.onReconnect(() => {
   if (black > 0) mpv.setBlack(black).catch(() => {});
   if (wallMode() === 'visuals') lab.enter().catch((err) => console.warn('Visuals:', err.message));
   else if (wallMode() === 'grid') grid.enter().catch((err) => console.warn('Grid:', err.message));
-  else if (wallMode() === 'highlights') showHighlight(s.highlightOnWall);
+  // A highlight that's gone since (e.g. after a restart) hands the wall back to the cues
+  else if (wallMode() === 'highlights') { if (!showHighlight(s.highlightOnWall)) setWallMode('cues'); }
   else if (s.currentCueIndex >= 0 && s.currentCueIndex < s.playlist.length) {
     playCue(s.currentCueIndex);
   }
