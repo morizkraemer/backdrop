@@ -336,9 +336,11 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
     const on = (fn) => engaged.has(fn) && values[fn] !== null;
     const level = (fn) => values[fn] / 255;
 
+    // Select changed slot: the new visual starts below (lab values, desk colour)
+    let target = null;
     if (on('visual') && Math.floor(values.visual / DMX_SLOT) !== Math.floor((prev.visual ?? 0) / DMX_SLOT)) {
       const v = list()[Math.floor(values.visual / DMX_SLOT) - 1];
-      if (v && onAir?.id !== v.id) play(v.id).catch((err) => console.warn('DMX visual:', err.message));
+      if (v && onAir?.id !== v.id) target = v;
     }
 
     const nextFx = { ...visuals.FX_NEUTRAL };
@@ -372,6 +374,18 @@ function createVisualsLab({ config, mpv, takeScreen, broadcast }) {
 
     const fxChanged = Object.keys(nextFx).some((k) => nextFx[k] !== fx[k]);
     fx = nextFx;
+    // A visual the desk switches to starts with its lab values, except colour: the
+    // desk's RGB (hue) and Colour channel win once they're in use, so a look keeps
+    // its colour across switches (a temp executor flashing another visual and back)
+    if (target) {
+      const tp = (name) => target.params.find((p) => p.name === name);
+      const colour = {};
+      if (rgb && rgb.s > 0.02 && tp('hue')) colour.hue = tp('hue').min + (tp('hue').max - tp('hue').min) * rgb.h;
+      const second2 = secondColour(target);
+      if (on('colour') && second2) colour[second2] = tp(second2).min + (tp(second2).max - tp(second2).min) * level('colour');
+      play(target.id, { ...savedValues(target), ...colour }).catch((err) => console.warn('DMX visual:', err.message));
+      return;
+    }
     if (onAir && (fxChanged || Object.keys(patch).length)) setLive(onAir.id, patch);
   }
 
