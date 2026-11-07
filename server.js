@@ -25,7 +25,9 @@ const ALLOWED_EXT = [
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
 const TRANSITION_TIMEOUT_MS = 2000;
 // What the wall shows (the tabs at the top of every page): the cue list, the
-// Visuals lab's visual or the Grid. state.wallMode; see setWallMode.
+// Visuals lab's visual or the Grid. state.wallMode; see setWallMode. A highlight
+// from Zentrale isn't a tab: it plays on the Cues tab, over the cue list
+// (state.highlightOnWall; see showHighlight).
 const WALL_MODES = ['cues', 'visuals', 'grid'];
 
 const app = express();
@@ -59,7 +61,7 @@ const lab = createVisualsLab({
   takeScreen: () => {
     clearDurationTimer();
     grid.release();
-    state.updateState({ wallMode: 'visuals' });
+    state.updateState({ wallMode: 'visuals', highlightOnWall: null });
   },
   broadcast: () => broadcastState(),
 });
@@ -77,14 +79,14 @@ const highlights = createHighlights({
   // Items of events that aren't on today any more: they and their cues go
   remove: (ids) => {
     const gone = new Set(ids);
-    if (wallMode() === 'highlights' && gone.has(state.getState().highlightOnWall)) setWallMode('cues');
+    if (gone.has(state.getState().highlightOnWall)) setWallMode('cues');
     state.updateState((s) => ({ ...s, library: s.library.map((m) => (gone.has(m.id) ? { ...m, builtin: false } : m)) }));
     removeMedia(ids);
   },
   onSwap: (mediaId) => {
     const s = state.getState();
-    if (wallMode() === 'highlights' && s.highlightOnWall === mediaId) showHighlight(mediaId);
-    else if (wallMode() === 'cues' && s.playlist[s.currentCueIndex]?.mediaId === mediaId) playCue(s.currentCueIndex);
+    if (s.highlightOnWall === mediaId) showHighlight(mediaId);
+    else if (cuesOnWall() && s.playlist[s.currentCueIndex]?.mediaId === mediaId) playCue(s.currentCueIndex);
   },
 });
 // The dot2 fixtures (setup/DMX.md), each patched from its own start address:
@@ -244,16 +246,22 @@ function wallMode() {
   return state.getState().wallMode ?? 'cues';
 }
 
-// Puts mode on the wall. Back on the cue list, the current cue plays again
-// from the start (or the wall goes dark when none is current); while the
-// wall shows Visuals or the Grid, the cue list waits where it is.
+// The cue list has the wall: the Cues tab, with no highlight over it
+function cuesOnWall() {
+  return wallMode() === 'cues' && !state.getState().highlightOnWall;
+}
+
+// Puts mode on the wall, and takes a highlight off it. Back on the cue list,
+// the current cue plays again from the start (or the wall goes dark when none
+// is current); while the wall shows Visuals or the Grid, the cue list waits
+// where it is.
 function setWallMode(mode) {
   const s = state.getState();
-  if (mode === wallMode()) return;
+  if (mode === wallMode() && !s.highlightOnWall) return;
   clearDurationTimer();
   if (mode !== 'visuals') lab.release();
   if (mode !== 'grid') grid.release();
-  state.updateState({ wallMode: mode });
+  state.updateState({ wallMode: mode, highlightOnWall: null });
   if (mode === 'visuals') lab.enter().catch((err) => console.warn('Visuals:', err.message));
   else if (mode === 'grid') grid.enter().catch((err) => console.warn('Grid:', err.message));
   else if (s.currentCueIndex >= 0 && s.currentCueIndex < s.playlist.length) playCue(s.currentCueIndex);
@@ -262,8 +270,8 @@ function setWallMode(mode) {
 }
 
 // A highlight from Zentrale straight on the wall, looping, over the cue list:
-// a toggle on the control page (wall mode 'highlights', no tab of its own). The
-// cue list waits where it is; toggling it off, GO, BACK, a cue or STOP go back.
+// a toggle on the control page, so the wall is on the Cues tab. The cue list
+// waits where it is; toggling it off, GO, BACK, a cue, STOP or another tab go back.
 function showHighlight(id) {
   const media = state.getState().library.find((m) => m.id === id && m.builtin);
   const filePath = media && path.resolve(config.uploadsDir, media.filename);
@@ -271,7 +279,7 @@ function showHighlight(id) {
   clearDurationTimer();
   lab.release();
   grid.release();
-  state.updateState({ wallMode: 'highlights', highlightOnWall: id });
+  state.updateState({ wallMode: 'cues', highlightOnWall: id });
   mpv.loadFile(filePath, { loop: true, displayMode: 'fill', isImage: false, freeze: false, framing: getCueFraming() })
     .catch((err) => console.error('mpv loadFile (highlight):', err));
   broadcastState();
@@ -280,19 +288,19 @@ function showHighlight(id) {
 
 // A cue action (GO, BACK, a cue picked, STOP) brings the wall back to the cue list
 function toCues() {
-  if (wallMode() === 'cues') return;
+  if (cuesOnWall()) return;
   lab.release();
   grid.release();
-  state.updateState({ wallMode: 'cues' });
+  state.updateState({ wallMode: 'cues', highlightOnWall: null });
 }
 
 function playCue(index) {
   if (isTransitioning) return;
   const s = state.getState();
   const cue = s.playlist[index];
-  // Another mode has the wall: the cue list only moves, it plays when the wall
-  // comes back to it
-  if (wallMode() !== 'cues') {
+  // Another tab or a highlight has the wall: the cue list only moves, it plays
+  // when the wall comes back to it
+  if (!cuesOnWall()) {
     state.updateState({ currentCueIndex: cue ? index : -1 });
     broadcastState();
     return;
@@ -383,7 +391,7 @@ function restartCurrentCue() {
 }
 
 function handleFileEnded() {
-  if (isTransitioning || wallMode() !== 'cues') return;
+  if (isTransitioning || !cuesOnWall()) return;
   const s = state.getState();
   const cue = s.playlist[s.currentCueIndex];
   if (!cue) return;
@@ -403,7 +411,7 @@ mpv.onReconnect(() => {
   if (black > 0) mpv.setBlack(black).catch(() => {});
   if (wallMode() === 'visuals') lab.enter().catch((err) => console.warn('Visuals:', err.message));
   else if (wallMode() === 'grid') grid.enter().catch((err) => console.warn('Grid:', err.message));
-  else if (wallMode() === 'highlights') showHighlight(s.highlightOnWall);
+  else if (s.highlightOnWall) showHighlight(s.highlightOnWall);
   else if (s.currentCueIndex >= 0 && s.currentCueIndex < s.playlist.length) {
     playCue(s.currentCueIndex);
   }
@@ -444,7 +452,9 @@ highlights.start();
       ...(onVisuals ? { wallMode: 'visuals' } : {}),
     });
   }
+  // A restart goes back to the cue list
   if (!WALL_MODES.includes(state.getState().wallMode)) state.updateState({ wallMode: 'cues' });
+  state.updateState({ highlightOnWall: null });
 }
 
 // Backfill thumbnails for media uploaded before thumbnails existed, one at a time
@@ -581,7 +591,7 @@ app.get('/api/highlights', (req, res) => res.json(highlights.status()));
 // The toggle above the cue list: the highlight on the wall, or (again) back to the cues
 app.post('/api/highlights/:id/toggle', (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
-  const on = wallMode() === 'highlights' && state.getState().highlightOnWall === req.params.id;
+  const on = state.getState().highlightOnWall === req.params.id;
   if (on) setWallMode('cues');
   else if (!showHighlight(req.params.id)) return res.status(404).json({ error: 'Not found' });
   res.json({ wallMode: wallMode() });
@@ -761,7 +771,7 @@ function takeScreenshot() {
   if (Date.now() - screenshot.at < SCREENSHOT_MAX_AGE_MS) return Promise.resolve(true);
   if (!screenshot.pending) {
     // A visual's (or the Grid's) source is 16x16, so its 'video' shot would be too: take the output
-    screenshot.pending = mpv.screenshotToFile(SCREENSHOT_PATH, !['cues', 'highlights'].includes(wallMode()) ? 'window' : 'video')
+    screenshot.pending = mpv.screenshotToFile(SCREENSHOT_PATH, wallMode() !== 'cues' ? 'window' : 'video')
       .then(() => { screenshot.at = Date.now(); return true; })
       .catch(() => false)
       .finally(() => { screenshot.pending = null; });
@@ -890,8 +900,8 @@ app.put('/api/playlist/:cueId', (req, res) => {
   // Only the framing changed: move the picture in place instead of reloading
   const needsReload = ['loop', 'freeze', 'displayMode', 'duration']
     .some((k) => (cue.settings[k] ?? null) !== (before[k] ?? null));
-  // While another mode has the wall, the cue shows its new settings when it plays
-  if (wallMode() !== 'cues') {
+  // While another tab or a highlight has the wall, the cue shows its new settings when it plays
+  if (!cuesOnWall()) {
     // nothing
   } else if (idx === s.currentCueIndex && !needsReload) {
     mpv.setFraming(getCueFraming(cue.settings)).catch(console.error);

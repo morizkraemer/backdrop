@@ -6,8 +6,7 @@
 // fills <header id="appHeader" data-page="..."> by loading this script first,
 // then calls appHeader.update(state, connected) on every WebSocket update.
 (function () {
-  // A highlight from Zentrale on the wall belongs to the cue page (its toggle is there)
-  const PAGES = { cues: '/control', visuals: '/visuals', grid: '/grid', highlights: '/control' };
+  const PAGES = { cues: '/control', visuals: '/visuals', grid: '/grid' };
   const el = document.getElementById('appHeader');
   const page = el.dataset.page;
   el.classList.add('header');
