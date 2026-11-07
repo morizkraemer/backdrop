@@ -573,7 +573,7 @@ function renderLibrary() {
 
 // The highlight on the wall right now (server: showHighlight), or null
 function highlightOnWall() {
-  return state.wallMode === 'highlights' ? getMedia(state.highlightOnWall) ?? null : null;
+  return state.highlightOnWall ? getMedia(state.highlightOnWall) ?? null : null;
 }
 
 // Today's highlights from Zentrale (one per event), above the cue list: cards on
