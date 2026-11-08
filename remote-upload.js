@@ -270,4 +270,4 @@ function createRemoteUpload({ config, allowedExt, getDiskFree, sanitizeFilename,
   return { controlRouter, publicApp };
 }
 
-module.exports = { createRemoteUpload, sameToken, CHUNK_SIZE };
+module.exports = { createRemoteUpload, CHUNK_SIZE };

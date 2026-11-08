@@ -12,7 +12,7 @@ const { createStateManager } = require('./state');
 const { analyzeMedia, removeThumbnail } = require('./media-info');
 const { createMatrix } = require('./hdmi-matrix');
 const { listenArtNet } = require('./artnet');
-const { createRemoteUpload, sameToken } = require('./remote-upload');
+const { createRemoteUpload } = require('./remote-upload');
 const { createIngest } = require('./ingest');
 const { createVisualsLab } = require('./visuals-lab');
 const { createGrid, DMX_FUNCTIONS: gridDmxFunctions } = require('./grid');
@@ -526,20 +526,19 @@ const remoteUpload = config.remoteUploadPort
 if (remoteUpload) app.use('/api/remote-upload', remoteUpload.controlRouter);
 else app.get('/api/remote-upload', (req, res) => res.json({ disabled: true }));
 
-// Mail ingest for Zentrale (setup/INGEST.md): bearer token, 404 without INGEST_TOKEN
+// Mail ingest for Zentrale (setup/INGEST.md): only INGEST_ALLOWED_IPS, 404 without it
 const ingest = createIngest({
   config,
   allowedExt: ALLOWED_EXT,
   upload,
   getDiskFree,
   sanitizeFilename,
-  sameToken,
   findBySource,
   addItem: addIngestItem,
 });
 app.use('/api/ingest', ingest.router);
 
-// "Link einfügen" in the library: the same downloads, without the token (LAN UI)
+// "Link einfügen" in the library: the same downloads, from the control UI's own route
 app.post('/api/library/link', async (req, res) => {
   const folderId = typeof req.body?.folderId === 'string' && req.body.folderId ? req.body.folderId : null;
   const { status, body } = await ingest.addLink({

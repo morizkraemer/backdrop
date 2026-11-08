@@ -4,9 +4,9 @@
  * handing over a share link (WeTransfer, Dropbox, Google Drive, a direct file
  * link) that backdrop downloads itself in the background.
  *
- * Lives on the main app under /api/ingest and needs
- * `Authorization: Bearer <INGEST_TOKEN>`. Without INGEST_TOKEN the routes 404.
- * The control UI's "Link einfügen" uses addLink directly, without the token.
+ * Lives on the main app under /api/ingest and only answers the IPs in
+ * INGEST_ALLOWED_IPS (Zentrale's VM). Without it the routes 404.
+ * The control UI's "Link einfügen" calls addLink from its own route.
  */
 const crypto = require('crypto');
 const express = require('express');
@@ -38,18 +38,17 @@ function validSourceId(value) {
 
 /**
  * @param {object} opts
- * @param {object} opts.config        app config (ingestToken, ingestJobsPath, uploadsDir, maxFileSize, minFreeDisk)
+ * @param {object} opts.config        app config (ingestAllowedIps, ingestJobsPath, uploadsDir, maxFileSize, minFreeDisk)
  * @param {string[]} opts.allowedExt
  * @param {object} opts.upload        the multer instance of /api/upload
  * @param {() => number} opts.getDiskFree
  * @param {(name: string) => string} opts.sanitizeFilename
- * @param {(a: string, b: string) => boolean} opts.sameToken
  * @param {(sourceId: string) => object[]} opts.findBySource   library items with that source.sourceId
  * @param {(file: {filename, originalName, size}, where: {subfolder?, folderId?, source}) => object} opts.addItem
  * @param {(hostname: string) => Promise<void>} [opts.assertHost]  throws for hosts on the LAN (tests replace it)
  */
 function createIngest({
-  config, allowedExt, upload, getDiskFree, sanitizeFilename, sameToken, findBySource, addItem, assertHost = assertPublicHost,
+  config, allowedExt, upload, getDiskFree, sanitizeFilename, findBySource, addItem, assertHost = assertPublicHost,
 }) {
   const jobsPath = config.ingestJobsPath;
   const partialDir = path.join(config.uploadsDir, '.partial');
@@ -399,9 +398,10 @@ function createIngest({
   const router = express.Router();
 
   router.use((req, res, next) => {
-    if (!config.ingestToken) return res.status(404).json({ error: 'Not found' });
-    const m = /^Bearer\s+(.+)$/i.exec(req.get('authorization') || '');
-    if (!m || !sameToken(m[1].trim(), config.ingestToken)) return res.status(401).json({ error: 'Invalid or missing token' });
+    if (!config.ingestAllowedIps?.length) return res.status(404).json({ error: 'Not found' });
+    // The socket's address, never X-Forwarded-For: only Zentrale's VM may call this
+    const ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/i, '');
+    if (!config.ingestAllowedIps.includes(ip)) return res.status(403).json({ error: 'Not allowed from this address' });
     next();
   });
 

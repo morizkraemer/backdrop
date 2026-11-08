@@ -16,11 +16,12 @@ its ⋮ menu and in the cue inspector.
 
 The same downloads are behind **Link einfügen** (the link button in the
 Library header): paste a WeTransfer/Dropbox/Drive link and the files land in
-the folder that's open. That button calls the server directly and needs no
-token, since the control UI is LAN only.
+the folder that's open. That button uses its own control-UI route
+(`/api/library/link`), which calls the same code; the IP-restricted routes stay
+closed to everyone but Zentrale.
 
 ```
-Zentrale VM ──http, Bearer token──▶ 192.168.178.75:3000/api/ingest*
+Zentrale prod VM ──http (IP allowlist)──▶ 192.168.178.75:3000/api/ingest*
                                             │  (links: downloads from WeTransfer etc.)
                                             ▼
                           uploads/ + library folder "Aus E-Mails/<subfolder>"
@@ -32,24 +33,28 @@ separate and has nothing to do with this.
 
 ## Setup
 
-1. Make a token, e.g. `openssl rand -base64 32`.
-2. In `/opt/screenview/backdrop/.env` set `INGEST_TOKEN=<token>` and
-   `sudo systemctl restart screenview.service`.
-3. In Zentrale set `BACKDROP_INGEST_TOKEN=<the same token>` (and backdrop's
-   address, `http://192.168.178.75:3000`).
+There is no token: backdrop only accepts `/api/ingest*` from the addresses in
+`INGEST_ALLOWED_IPS`, which is Zentrale's prod VM.
 
-Without `INGEST_TOKEN` every `/api/ingest*` route answers 404 (feature off).
+1. In `/opt/screenview/backdrop/.env` set `INGEST_ALLOWED_IPS=<the prod VM's IP>`.
+   It's the same host as in `LED_FEED_URL`.
+2. `sudo systemctl restart screenview.service`.
+3. In Zentrale, point the ingest at `http://192.168.178.75:3000`.
 
-### Rotating the token
+The check uses the TCP connection's address (`req.socket.remoteAddress`, with
+a `::ffff:` prefix stripped), never `X-Forwarded-For`, so the header can't be
+forged. Any other caller gets `403 { error }`. Without `INGEST_ALLOWED_IPS`,
+every `/api/ingest*` route answers 404 (feature off).
 
-Change `INGEST_TOKEN` here (restart `screenview.service`) and
-`BACKDROP_INGEST_TOKEN` in Zentrale. Until both match, Zentrale gets 401.
+**If Zentrale's VM ever gets a new IP, update `INGEST_ALLOWED_IPS`** (and
+restart), or every ingest call gets 403. Reserve the VM's address on the
+UniFi so it doesn't move.
 
 ## Env
 
 | Variable | Default | |
 |---|---|---|
-| `INGEST_TOKEN` | none | Bearer token for `/api/ingest*`. Empty = routes answer 404. |
+| `INGEST_ALLOWED_IPS` | none | Comma-separated IPs allowed to call `/api/ingest*` (the prod VM's IP). Empty = routes answer 404. |
 | `INGEST_FOLDER` | `Aus E-Mails` | Root library folder for everything from Zentrale. |
 | `INGEST_JOBS` | `ingest-jobs.json` next to the code | Where link jobs are kept (git-ignored). |
 
@@ -58,8 +63,7 @@ usual image and video formats become library items.
 
 ## Contract
 
-Every request needs `Authorization: Bearer <INGEST_TOKEN>`. Wrong or missing
-token: `401 { error }`.
+Only callers in `INGEST_ALLOWED_IPS`; anyone else gets `403 { error }`.
 
 `sourceId` is Zentrale's id for the attachment or link (string, required, max
 128 chars). It makes both endpoints idempotent: if library items with that
@@ -141,7 +145,8 @@ One resolver per provider (`ingest-links.js`):
 
 Only http and https. Every host along the way (redirects included) must
 resolve to a public address: links to the LAN, localhost, Tailscale (100.64/10)
-and the like are refused, since the server sits on the venue network.
+and the like are refused. Only Zentrale can call the API, but a mail could hold
+a link to an internal host, and the server sits on the venue network.
 
 ## Download and unpack
 

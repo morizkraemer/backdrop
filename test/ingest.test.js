@@ -9,10 +9,8 @@ const zlib = require('zlib');
 const express = require('express');
 const multer = require('multer');
 const { createIngest } = require('../ingest');
-const { sameToken } = require('../remote-upload');
 
 const ALLOWED = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'mp4', 'webm', 'mkv', 'avi', 'mov', 'm4v'];
-const TOKEN = 'test-token-0123456789';
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 
 // A minimal zip (stored entries) without a zip library
@@ -57,7 +55,7 @@ function setup() {
   const uploadsDir = path.join(dir, 'uploads');
   fs.mkdirSync(uploadsDir);
   const config = {
-    ingestToken: TOKEN,
+    ingestAllowedIps: ['127.0.0.1'],
     ingestJobsPath: path.join(dir, 'jobs.json'),
     uploadsDir,
     maxFileSize: 1024 * 1024,
@@ -75,7 +73,6 @@ function setup() {
     upload,
     getDiskFree: () => 1e12,
     sanitizeFilename: (n) => path.basename(n || '') || 'unnamed',
-    sameToken,
     findBySource: (id) => library.filter((m) => m.source?.sourceId === id),
     addItem: (file, where) => {
       const item = { id: file.filename.slice(0, 32), ...file, type: /\.(mp4|mov)$/i.test(file.filename) ? 'video' : 'image', folderId: where.subfolder || 'root', source: where.source };
@@ -121,8 +118,8 @@ async function listen(app) {
 test.before(async () => { filesBase = await listen(files); });
 test.after(() => servers.forEach((s) => s.close()));
 
-async function call(base, method, url, body, token = TOKEN) {
-  const headers = token ? { authorization: `Bearer ${token}` } : {};
+async function call(base, method, url, body) {
+  const headers = {};
   let payload = body;
   if (body && !(body instanceof FormData)) {
     headers['content-type'] = 'application/json';
@@ -141,13 +138,18 @@ async function waitJob(base, jobId) {
   throw new Error('job did not finish');
 }
 
-test('token: 401 when wrong, 404 when ingest is off', async () => {
+test('only allowed IPs; 404 when ingest is off', async () => {
   const { app, config } = setup();
   const base = await listen(app);
-  assert.equal((await call(base, 'GET', '/api/ingest/jobs/x', null, null)).status, 401);
-  assert.equal((await call(base, 'GET', '/api/ingest/jobs/x', null, 'wrong')).status, 401);
-  assert.equal((await call(base, 'GET', '/api/ingest/jobs/x')).status, 404);
-  config.ingestToken = null;
+  assert.equal((await call(base, 'GET', '/api/ingest/jobs/x')).status, 404); // allowed, unknown job
+  config.ingestAllowedIps = ['192.0.2.10'];
+  const denied = await call(base, 'GET', '/api/ingest/jobs/x');
+  assert.equal(denied.status, 403);
+  assert.ok(denied.body.error);
+  // A forged header doesn't help
+  const forged = await fetch(`${base}/api/ingest/jobs/x`, { headers: { 'x-forwarded-for': '192.0.2.10' } });
+  assert.equal(forged.status, 403);
+  config.ingestAllowedIps = [];
   assert.equal((await call(base, 'GET', '/api/ingest/jobs/x')).status, 404);
 });
 
@@ -268,7 +270,7 @@ test('jobs survive a restart; running ones fail', async () => {
     ],
   }));
   const ingest = createIngest({
-    config, allowedExt: ALLOWED, upload: null, getDiskFree: () => 1e12, sanitizeFilename: (n) => n, sameToken,
+    config, allowedExt: ALLOWED, upload: null, getDiskFree: () => 1e12, sanitizeFilename: (n) => n,
     findBySource: () => [], addItem: () => {}, assertHost: async () => {},
   });
   const app = express();
