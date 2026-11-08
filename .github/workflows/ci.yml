@@ -23,6 +23,7 @@ jobs:
       - name: Syntax check
         run: |
           for f in *.js public/js/*.js; do node --check "$f"; done
+      - run: npm test
 
   # Runs on the self-hosted runner inside the backdrop container
   # (see setup/ACCESS.md). Only pushes to main reach this job.

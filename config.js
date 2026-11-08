@@ -51,5 +51,11 @@ module.exports = {
   // Zentrale's LED feed (setup/HIGHLIGHTS.md): the full today.json link, e.g.
   // http://<VM-IP>:3001/s/<token>/led/today.json. Empty = no highlights.
   ledFeedUrl: process.env.LED_FEED_URL || null,
+  // Mail ingest for Zentrale (setup/INGEST.md): comma-separated IPs allowed to
+  // call /api/ingest* (Zentrale's prod VM). Empty = the ingest routes answer 404.
+  ingestAllowedIps: (process.env.INGEST_ALLOWED_IPS || '')
+    .split(',').map((ip) => ip.trim().replace(/^::ffff:/i, '')).filter(Boolean),
+  ingestFolder: process.env.INGEST_FOLDER || 'Aus E-Mails',
+  ingestJobsPath: process.env.INGEST_JOBS || path.join(__dirname, 'ingest-jobs.json'),
   remoteUploadSettingsPath: process.env.REMOTE_UPLOAD_SETTINGS || path.join(__dirname, 'remote-upload.json'),
 };

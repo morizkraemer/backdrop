@@ -6,6 +6,8 @@ state.json.tmp
 state.json.corrupt.*
 remote-upload.json
 remote-upload.json.tmp
+ingest-jobs.json
+ingest-jobs.json.tmp
 *.log
 .DS_Store
 .env

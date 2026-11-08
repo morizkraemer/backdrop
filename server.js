@@ -13,6 +13,7 @@ const { analyzeMedia, removeThumbnail } = require('./media-info');
 const { createMatrix } = require('./hdmi-matrix');
 const { listenArtNet } = require('./artnet');
 const { createRemoteUpload } = require('./remote-upload');
+const { createIngest } = require('./ingest');
 const { createVisualsLab } = require('./visuals-lab');
 const { createGrid, DMX_FUNCTIONS: gridDmxFunctions } = require('./grid');
 const visuals = require('./visuals');
@@ -158,15 +159,18 @@ function sanitizeFilename(name) {
   return base.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').slice(0, 200) || 'unnamed';
 }
 
-// Adds a finished phone upload to the library, inside a root folder of that
-// name (created on first use so phone uploads don't mix into the root)
-function addRemoteUpload({ filename, originalName, size }, folderName) {
-  let folder = state.getState().folders.find((f) => !f.parentId && f.name === folderName);
+// A library folder of that name under parentId (null = root), created on first use
+function ensureFolder(name, parentId = null) {
+  let folder = state.getState().folders.find((f) => (f.parentId || null) === parentId && f.name === name);
   if (!folder) {
-    folder = { id: `f-${uuidv4().slice(0, 8)}`, name: folderName, parentId: null };
+    folder = { id: `f-${uuidv4().slice(0, 8)}`, name, parentId };
     const created = folder;
     state.updateState((s) => ({ ...s, folders: [...s.folders, created] }));
   }
+  return folder;
+}
+
+function addToLibrary({ filename, originalName, size }, folderId, extra = {}) {
   const item = {
     id: filename.slice(0, 32),
     filename,
@@ -174,12 +178,37 @@ function addRemoteUpload({ filename, originalName, size }, folderName) {
     type: getMediaType(filename),
     size,
     addedAt: new Date().toISOString(),
-    folderId: folder.id,
+    folderId,
+    ...extra,
   };
   state.updateState((s) => ({ ...s, library: [...s.library, item] }));
   broadcastState();
   enrichMedia(item);
   return item;
+}
+
+// Adds a finished phone upload to the library, inside a root folder of that
+// name (created on first use so phone uploads don't mix into the root)
+function addRemoteUpload(file, folderName) {
+  return addToLibrary(file, ensureFolder(folderName).id);
+}
+
+// Media from Zentrale's mails (setup/INGEST.md) goes into INGEST_FOLDER, or a
+// subfolder of it per mail/event. A link pasted in the control UI goes into the
+// folder that was open (folderId).
+function addIngestItem(file, { subfolder, folderId, source }) {
+  let target;
+  if (folderId !== undefined) {
+    target = folderId && state.getState().folders.some((f) => f.id === folderId) ? folderId : null;
+  } else {
+    const root = ensureFolder(config.ingestFolder);
+    target = subfolder ? ensureFolder(subfolder, root.id).id : root.id;
+  }
+  return addToLibrary(file, target, { source });
+}
+
+function findBySource(sourceId) {
+  return state.getState().library.filter((m) => m.source?.sourceId === sourceId);
 }
 
 function isValidId(id) {
@@ -496,6 +525,31 @@ const remoteUpload = config.remoteUploadPort
   : null;
 if (remoteUpload) app.use('/api/remote-upload', remoteUpload.controlRouter);
 else app.get('/api/remote-upload', (req, res) => res.json({ disabled: true }));
+
+// Mail ingest for Zentrale (setup/INGEST.md): only INGEST_ALLOWED_IPS, 404 without it
+const ingest = createIngest({
+  config,
+  allowedExt: ALLOWED_EXT,
+  upload,
+  getDiskFree,
+  sanitizeFilename,
+  findBySource,
+  addItem: addIngestItem,
+});
+app.use('/api/ingest', ingest.router);
+
+// "Link einfügen" in the library: the same downloads, from the control UI's own route
+app.post('/api/library/link', async (req, res) => {
+  const folderId = typeof req.body?.folderId === 'string' && req.body.folderId ? req.body.folderId : null;
+  const { status, body } = await ingest.addLink({
+    url: req.body?.url,
+    sourceId: `ui-${uuidv4()}`,
+    folderId,
+    origin: 'ui',
+  });
+  res.status(status).json(body);
+});
+app.get('/api/library/links', (req, res) => res.json({ jobs: ingest.recentJobs() }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/visuals/thumbs', express.static(path.join(visuals.BUILTIN_DIR, 'thumbs')));
 app.use('/api/visuals', lab.router);
