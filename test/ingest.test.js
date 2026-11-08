@@ -203,6 +203,16 @@ test('url: direct file, idempotent, follows redirects', async () => {
   assert.equal(library.length, 1);
 });
 
+test('url: the same link sent twice at once becomes one job', async () => {
+  const { app, library } = setup();
+  const base = await listen(app);
+  const body = { url: `${filesBase}/noext`, sourceId: 'twice' };
+  const [a, b] = await Promise.all([call(base, 'POST', '/api/ingest/url', body), call(base, 'POST', '/api/ingest/url', body)]);
+  assert.equal(a.body.jobId, b.body.jobId);
+  await waitJob(base, a.body.jobId);
+  assert.equal(library.length, 1);
+});
+
 test('url: Content-Type decides for links without an extension', async () => {
   const { app } = setup();
   const base = await listen(app);

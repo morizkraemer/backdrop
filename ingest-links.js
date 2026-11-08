@@ -231,8 +231,13 @@ function isPrivateAddress(ip) {
   if (net.isIPv6(addr)) {
     const lower = addr.toLowerCase();
     const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    // The URL parser writes [::ffff:127.0.0.1] as [::ffff:7f00:1]
+    const hex = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
     if (mapped) addr = mapped[1];
-    else {
+    else if (hex) {
+      const n = (parseInt(hex[1], 16) << 16) + parseInt(hex[2], 16); // eslint-disable-line no-bitwise
+      addr = [24, 16, 8, 0].map((shift) => (n >>> shift) & 255).join('.'); // eslint-disable-line no-bitwise
+    } else {
       if (lower === '::' || lower === '::1') return true;
       if (/^f[cd]/.test(lower)) return true; // fc00::/7 unique local
       if (/^fe[89ab]/.test(lower)) return true; // fe80::/10 link local

@@ -80,7 +80,7 @@ test('File names from Content-Disposition and URL', () => {
 
 test('Private addresses', () => {
   for (const ip of ['127.0.0.1', '10.1.2.3', '172.16.0.1', '172.31.255.1', '192.168.178.75', '169.254.1.1',
-    '100.101.37.10', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:192.168.1.1']) {
+    '100.101.37.10', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:192.168.1.1', '::ffff:7f00:1', '::ffff:c0a8:b24b']) {
     assert.equal(isPrivateAddress(ip), true, ip);
   }
   for (const ip of ['8.8.8.8', '172.32.0.1', '151.101.1.1', '2a00:1450:4001::1']) {
@@ -95,4 +95,5 @@ test('LAN hosts are refused', async () => {
   await assert.rejects(assertPublicHost('[::1]', lookup), /lokalen Netz/);
   await assert.rejects(assertPublicHost('evil.test', lookup), /lokalen Netz/);
   await assertPublicHost('example.com', lookup);
+  await assert.rejects(assertPublicHost(new URL('http://[::ffff:127.0.0.1]/a.png').hostname, lookup), /lokalen Netz/);
 });

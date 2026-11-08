@@ -201,7 +201,17 @@ function createIngest({
    * Starts (or returns) the download of a share link.
    * @returns {Promise<{ status: number, body: object }>}
    */
-  async function addLink({ url, sourceId, sender, subject, subfolder, folderId, origin = 'email' }) {
+  // Two sends of the same link at once (e.g. Zentrale retrying) share one answer
+  const adding = new Map(); // sourceId -> Promise
+  function addLink(opts) {
+    const key = opts?.sourceId;
+    if (adding.has(key)) return adding.get(key);
+    const p = addLinkNow(opts).finally(() => adding.delete(key));
+    if (validSourceId(key)) adding.set(key, p);
+    return p;
+  }
+
+  async function addLinkNow({ url, sourceId, sender, subject, subfolder, folderId, origin = 'email' }) {
     if (typeof url !== 'string' || !url.trim()) return { status: 400, body: { error: 'url required' } };
     if (!validSourceId(sourceId)) return { status: 400, body: { error: 'sourceId required (string, max 128 chars)' } };
 
@@ -236,8 +246,8 @@ function createIngest({
       updatedAt: now,
       finishedAt: null,
     };
-    if (items.length && !existing) {
-      const job = { jobId: crypto.randomUUID(), ...base, status: 'done', items: items.map(itemView), finishedAt: now };
+    if (items.length) {
+      const job = { jobId: existing?.jobId ?? crypto.randomUUID(), ...base, status: 'done', items: items.map(itemView), finishedAt: now };
       jobs.set(job.jobId, job);
       saveJobs();
       return { status: 200, body: jobView(job) };
