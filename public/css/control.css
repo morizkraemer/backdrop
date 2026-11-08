@@ -2432,6 +2432,64 @@ button.crumb:hover {
   color: var(--text-dim);
 }
 
+/* "Link einfügen": share links downloaded into the library */
+.link-form {
+  display: flex;
+  gap: 8px;
+}
+
+.link-form input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.link-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.link-job {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.link-job-name {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-job-status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.link-job-status.error {
+  color: var(--danger);
+}
+
+.lib-menu-source {
+  padding: 6px 8px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 /* What the wall shows: the tabs at the top of every page (js/header.js) */
 .wall-tabs {
   display: flex;

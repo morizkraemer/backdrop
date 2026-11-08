@@ -159,6 +159,13 @@ function mediaMeta(media) {
   return parts.join(' · ');
 }
 
+// Media Zentrale saved from a mail (setup/INGEST.md): who sent it, and the subject
+function mailSource(media) {
+  const src = media?.source;
+  if (src?.kind !== 'email') return '';
+  return `Aus Mail: ${[src.sender, src.subject].filter(Boolean).join(' · ') || 'unbekannt'}`;
+}
+
 function endShort(cue, media) {
   const st = cue.settings || {};
   if (media?.type === 'video') return st.loop ? 'Loop' : st.freeze ? 'Freeze' : 'To end';
@@ -692,7 +699,7 @@ function renderInspector() {
   const isVideo = media?.type === 'video';
   $('inspCue').textContent = `CUE Q${idx + 1}`;
   $('inspName').textContent = media?.originalName ?? '?';
-  $('inspMeta').textContent = mediaMeta(media);
+  $('inspMeta').textContent = [mediaMeta(media), mailSource(media)].filter(Boolean).join(' · ');
   renderStage(cue, media);
   setSegment(segDisplay, st.displayMode ?? 'fill');
 
@@ -997,7 +1004,9 @@ function openMenu(kind, id, button) {
   const moveRows = [{ id: '', name: 'Library', depth: 0 }, ...targets]
     .map((t) => `<button type="button" role="menuitem" data-move="${t.id}" style="--depth:${t.depth}" ${(t.id || null) === here ? 'disabled' : ''}>${t.depth ? ICONS.folder : ''}${escapeHtml(t.name)}</button>`)
     .join('');
+  const source = kind === 'media' ? mailSource(entry) : '';
   libraryMenu.innerHTML = `
+    ${source ? `<div class="lib-menu-source">${escapeHtml(source)}</div>` : ''}
     <button type="button" role="menuitem" data-action="rename">Rename</button>
     ${kind === 'folder' ? '<button type="button" role="menuitem" data-action="open">Open</button>' : ''}
     <button type="button" role="menuitem" data-action="delete" class="danger">Delete${kind === 'folder' ? ' folder' : ''}</button>
@@ -1444,6 +1453,84 @@ qrBody.addEventListener('click', (e) => {
       .then(() => { e.target.textContent = 'Copied'; })
       .catch(selectUrl);
   }
+});
+
+// --- "Link einfügen": a WeTransfer/Dropbox/Drive or file link, downloaded by
+// the server into the open folder (same downloads as Zentrale's, setup/INGEST.md) ---
+
+const linkBackdrop = $('linkBackdrop');
+const linkInput = $('linkInput');
+const btnPasteLink = $('btnPasteLink');
+let linkPoll = null;
+let linkError = null;
+
+const LINK_STATUS = {
+  queued: () => 'Wartet…',
+  downloading: (j) => (j.totalBytes ? `Lädt ${Math.floor((j.receivedBytes / j.totalBytes) * 100)} %` : `Lädt ${formatBytes(j.receivedBytes)}`),
+  unpacking: () => 'Entpackt…',
+  done: (j) => `Fertig: ${j.items.length} ${j.items.length === 1 ? 'Datei' : 'Dateien'}${j.skipped.length ? `, ${j.skipped.length} übersprungen` : ''}`,
+  failed: (j) => j.error || 'Fehlgeschlagen',
+};
+
+function renderLinkJobs(jobs) {
+  const folder = currentFolderId ? getFolder(currentFolderId)?.name : null;
+  $('linkNote').className = `qr-note${linkError ? ' error' : ''}`;
+  $('linkNote').textContent = linkError || `Bilder und Videos landen in „${folder || 'Library'}“. Zips werden entpackt.`;
+  setHtml($('linkJobs'), (jobs || []).map((j) => `
+    <div class="link-job">
+      <span class="link-job-name" title="${escapeHtml(j.url)}">${escapeHtml(j.names[0] || j.subject || j.url)}${j.names.length > 1 ? ` +${j.names.length - 1}` : ''}</span>
+      <span class="link-job-status${j.status === 'failed' ? ' error' : ''}">${j.origin === 'email' ? 'Aus Mail · ' : ''}${escapeHtml(LINK_STATUS[j.status]?.(j) ?? j.status)}</span>
+    </div>`).join(''));
+}
+
+function loadLinkJobs() {
+  return api('GET', '/library/links')
+    .then((r) => r.json())
+    .then((data) => renderLinkJobs(data.jobs))
+    .catch(() => {});
+}
+
+function setLinkOpen(open) {
+  linkBackdrop.hidden = !open;
+  clearInterval(linkPoll);
+  linkPoll = null;
+  if (!open) return btnPasteLink.focus();
+  linkError = null;
+  renderLinkJobs([]);
+  loadLinkJobs();
+  linkPoll = setInterval(loadLinkJobs, 1500);
+  linkInput.focus();
+}
+
+btnPasteLink.addEventListener('click', () => setLinkOpen(true));
+$('linkClose').addEventListener('click', () => setLinkOpen(false));
+linkBackdrop.addEventListener('click', (e) => {
+  if (e.target === linkBackdrop) setLinkOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !linkBackdrop.hidden) setLinkOpen(false);
+});
+$('linkForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const url = linkInput.value.trim();
+  if (!url) return;
+  $('linkSubmit').disabled = true;
+  linkError = null;
+  api('POST', '/library/link', { url, folderId: currentFolderId })
+    .then(async (r) => {
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        throw new Error(data.error === 'unsupported_link'
+          ? 'Diesen Link kennt backdrop nicht. Geht: WeTransfer, Dropbox, Google Drive oder ein direkter Bild-/Video-Link.'
+          : data.error || 'Hat nicht geklappt');
+      }
+      linkInput.value = '';
+    })
+    .catch((err) => { linkError = err.message; })
+    .finally(() => {
+      $('linkSubmit').disabled = false;
+      loadLinkJobs();
+    });
 });
 
 connectWs();
